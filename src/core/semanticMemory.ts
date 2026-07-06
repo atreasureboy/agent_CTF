@@ -196,24 +196,4 @@ export class SemanticMemory {
     const limit = options.limit ?? 20
     return results.slice(0, limit)
   }
-
-  /** Count total entries */
-  count(): number {
-    this.ensureLoaded()
-    return this.entries.size
-  }
-
-  /** Force reload from disk (e.g. if another process wrote to the file) */
-  reload(): void {
-    this.loaded = false
-    this.entries.clear()
-    this.tagIndex = {}
-    this.ensureLoaded()
-  }
-
-  /** Clear all entries (in-memory only; does not delete the file) */
-  clear(): void {
-    this.entries.clear()
-    this.tagIndex = {}
-  }
 }

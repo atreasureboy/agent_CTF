@@ -76,22 +76,6 @@ export class EventLog {
     }
   }
 
-  /** Query events by type and/or tags */
-  query(options: { type?: EventType; tags?: string[]; limit?: number }): EventLogEntry[] {
-    const all = this.readAll()
-    let filtered = all
-    if (options.type) {
-      filtered = filtered.filter((e) => e.type === options.type)
-    }
-    if (options.tags && options.tags.length > 0) {
-      filtered = filtered.filter((e) =>
-        e.tags && options.tags!.some((t) => e.tags!.includes(t)),
-      )
-    }
-    const limit = options.limit ?? 50
-    return filtered.slice(-limit)
-  }
-
   /** Get the file path (for tools that want to cat/tail it) */
   getFilePath(): string {
     return this.filePath

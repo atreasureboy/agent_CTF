@@ -96,34 +96,6 @@ export const SPINNER_VERBS = [
 ]
 
 // ─────────────────────────────────────────────────────────────
-// Word wrap utility
-// ─────────────────────────────────────────────────────────────
-
-export function wrapText(text: string, width: number, indent = ''): string {
-  if (!text) return ''
-  const lines: string[] = []
-  const paragraphs = text.split('\n')
-  for (const paragraph of paragraphs) {
-    if (!paragraph.trim()) {
-      lines.push('')
-      continue
-    }
-    const words = paragraph.split(' ')
-    let line = indent
-    for (const word of words) {
-      if (line.length + word.length + 1 > width && line.trim()) {
-        lines.push(line.trimEnd())
-        line = indent + word + ' '
-      } else {
-        line += word + ' '
-      }
-    }
-    if (line.trim()) lines.push(line.trimEnd())
-  }
-  return lines.join('\n')
-}
-
-// ─────────────────────────────────────────────────────────────
 // Stripe helpers — colored left-border per section type
 // ─────────────────────────────────────────────────────────────
 

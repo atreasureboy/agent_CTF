@@ -76,7 +76,7 @@ export class ReflectionModule implements AgentModule {
       }, { timeout: 30_000 })
 
       const output = response.choices[0]?.message?.content ?? ''
-      const parsed = this.parseReflection(output)
+      const parsed = parseReflection(output)
 
       for (const entry of parsed) {
         this.semantic.write({
@@ -117,30 +117,31 @@ export class ReflectionModule implements AgentModule {
     }
     return parts.join('\n')
   }
+}
 
-  private parseReflection(output: string): Array<{
-    content: string
-    tags: string[]
-    confidence: number
-  }> {
-    try {
-      const parsed = JSON.parse(output) as {
-        knowledge?: Array<{
-          content: string
-          tags?: string[]
-          confidence?: number
-        }>
-      }
-      return (parsed.knowledge ?? [])
-        .filter(e => e.content && e.content.length > 10)
-        .map(e => ({
-          content: e.content.slice(0, 500),
-          tags: e.tags ?? [],
-          confidence: typeof e.confidence === 'number' ? e.confidence : 0.5,
-        }))
-    } catch {
-      return []
+/** Parse LLM reflection output into knowledge entries (standalone, not private) */
+function parseReflection(output: string): Array<{
+  content: string
+  tags: string[]
+  confidence: number
+}> {
+  try {
+    const parsed = JSON.parse(output) as {
+      knowledge?: Array<{
+        content: string
+        tags?: string[]
+        confidence?: number
+      }>
     }
+    return (parsed.knowledge ?? [])
+      .filter(e => e.content && e.content.length > 10)
+      .map(e => ({
+        content: e.content.slice(0, 500),
+        tags: e.tags ?? [],
+        confidence: typeof e.confidence === 'number' ? e.confidence : 0.5,
+      }))
+  } catch {
+    return []
   }
 }
 
@@ -183,14 +184,10 @@ export async function consolidateSession(
       max_tokens: REFLECTION_MAX_TOKENS,
     }, { timeout: 30_000 })
 
-    const output = response.choices[0]?.message?.content ?? ''
-    // Parse and write — reuse the same parser as per-turn reflection
-    const reflectionInstance = new ReflectionModule(client, model, semantic)
-    const parsed = (reflectionInstance as unknown as {
-      parseReflection: (o: string) => Array<{ content: string; tags: string[]; confidence: number }>
-    }).parseReflection(output)
+      const output = response.choices[0]?.message?.content ?? ''
+      const parsed = parseReflection(output)
 
-    for (const entry of parsed) {
+      for (const entry of parsed) {
       semantic.write({
         content: `[session] ${entry.content}`,
         tags: entry.tags,

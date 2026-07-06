@@ -19,11 +19,7 @@ export interface TodoItem {
 // Module-level store — shared across all tool invocations in a session
 let todoList: TodoItem[] = []
 
-export function getTodoList(): TodoItem[] {
-  return todoList
-}
-
-export function renderTodoList(): string {
+function renderTodoList(): string {
   if (todoList.length === 0) return '(no tasks)'
   return todoList
     .map((item) => {

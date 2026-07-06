@@ -87,6 +87,6 @@ export function formatMessagesForCritic(messages: OpenAIMessage[]): string {
  */
 export function parseCriticOutput(output: string): string | null {
   const trimmed = output.trim()
-  if (!trimmed || /^ok$/i.test(trimmed)) return null
+  if (!trimmed || /^ok[.!]?$/i.test(trimmed)) return null
   return trimmed
 }

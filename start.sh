@@ -1,38 +1,28 @@
 #!/bin/bash
-# ovogogogo 启动脚本
-# 用法: ./start.sh
+# ovolv999 快速启动 (macOS / Linux)
+# 用法: ./start.sh 或 ./start.sh "your task"
 
 set -e
 cd "$(dirname "$0")"
 
-# ── 环境变量检查 ──────────────────────────────────────────────
+# 加载 .env
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | xargs)
+    export "$(grep -v '^#' .env | xargs)"
 fi
 
+# 检查 API Key
 if [ -z "$OPENAI_API_KEY" ]; then
-  echo "[错误] 请设置 OPENAI_API_KEY"
-  echo "  方式1: export OPENAI_API_KEY=xxx && ./start.sh"
-  echo "  方式2: 在项目根目录创建 .env 文件写入 OPENAI_API_KEY=xxx"
-  exit 1
+    echo "[error] OPENAI_API_KEY not set"
+    echo "  Option 1: export OPENAI_API_KEY=sk-... && ./start.sh"
+    echo "  Option 2: Copy .env.example to .env and fill in your key"
+    exit 1
 fi
 
-if [ -z "$OPENAI_BASE_URL" ]; then
-  echo "[错误] 请设置 OPENAI_BASE_URL（OpenAI 兼容 API 地址）"
-  exit 1
-fi
-
-# 武器库 API 默认指向本机，VPS 上需要改成服务器地址
-export WEAPON_RADAR_URL="${WEAPON_RADAR_URL:-http://127.0.0.1:8765}"
-
-# ── 编译检查 ──────────────────────────────────────────────────
+# 自动编译
 if [ ! -f dist/bin/ovogogogo.js ]; then
-  echo "[*] 未找到编译产物，正在编译..."
-  npm install && npm run build
+    echo "[*] Building..."
+    pnpm install && pnpm run build
 fi
 
-# ── 启动 ──────────────────────────────────────────────────────
-echo "[*] OPENAI_BASE_URL = $OPENAI_BASE_URL"
-echo "[*] WEAPON_RADAR_URL = $WEAPON_RADAR_URL"
-echo ""
-node dist/bin/ovogogogo.js
+# 启动
+node dist/bin/ovogogogo.js "$@"

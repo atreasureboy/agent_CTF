@@ -1,183 +1,146 @@
 #!/bin/bash
 # ================================================================
-#  Ovogo 一键环境配置脚本 (macOS / Linux)
+#  ovolv999 一键安装 (macOS / Linux)
 #
-#  功能：
-#    1. 检测 Node.js + 包管理器 (pnpm / yarn / npm)
-#    2. 安装依赖 (跳过已安装的情况)
-#    3. 编译 TypeScript
-#    4. 将 ovogogogo 添加为全局命令 ovogo
-#    5. 验证安装
+#  用法: ./setup.sh
+#  安装后: 终端输入 ovolv999 即可启动
 # ================================================================
 
 set -e
 
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo ""
-echo "============================================="
-echo "  Ovogo 环境配置 — macOS / Linux"
-echo "============================================="
+echo "  ======================================="
+echo "    ovolv999 Agent Base — Setup"
+echo "  ======================================="
 echo ""
 
-# ── 1. 检查 Node.js ──────────────────────────
+# ── 1. Node.js ──
 if ! command -v node &> /dev/null; then
-    echo -e "${RED}[ERROR] Node.js 未安装！${NC}"
-    echo "请先安装 Node.js:"
-    echo "  macOS: brew install node"
-    echo "  Ubuntu/Debian: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt install -y nodejs"
-    echo "  CentOS/RHEL: curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash - && sudo yum install -y nodejs"
+    echo -e "${RED}[X] Node.js not found${NC}"
+    echo "    Install: https://nodejs.org (LTS)"
     exit 1
 fi
+echo -e "${GREEN}[OK]${NC} Node.js: $(node -v)"
 
-NODE_VER=$(node -v)
-echo -e "${GREEN}[OK]${NC} Node.js 已安装: $NODE_VER"
-
-# ── 2. 确定项目根目录 ────────────────────────
+# ── 2. Project dir ──
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_DIR"
 
-# ── 3. 选择包管理器 ─────────────────────────
-# 优先级: pnpm > yarn > npm
-# 如果 node_modules/.pnpm 存在，说明之前用 pnpm 安装过，必须继续用 pnpm
-PKG_MANAGER=""
-PKG_INSTALL_CMD=""
-
-if [ -d "node_modules/.pnpm" ]; then
-    # 之前用 pnpm 安装过
-    if command -v pnpm &> /dev/null; then
-        PKG_MANAGER="pnpm"
-        PKG_INSTALL_CMD="pnpm install"
-        PNPM_VER=$(pnpm -v)
-        echo -e "${GREEN}[OK]${NC} pnpm 已安装: $PNPM_VER (检测到已有 pnpm 依赖)"
-    else
-        echo -e "${RED}[ERROR] 检测到项目使用 pnpm 管理依赖，但 pnpm 未安装${NC}"
-        echo "安装 pnpm: npm install -g pnpm"
-        echo "然后重新运行本脚本"
-        exit 1
-    fi
-elif command -v pnpm &> /dev/null; then
-    PKG_MANAGER="pnpm"
-    PKG_INSTALL_CMD="pnpm install"
-    PNPM_VER=$(pnpm -v)
-    echo -e "${GREEN}[OK]${NC} pnpm 已安装: $PNPM_VER"
+# ── 3. Package manager ──
+PKG="npm"
+if command -v pnpm &> /dev/null; then
+    PKG="pnpm"
+    echo -e "${GREEN}[OK]${NC} pnpm: $(pnpm -v)"
 elif command -v yarn &> /dev/null; then
-    PKG_MANAGER="yarn"
-    PKG_INSTALL_CMD="yarn install"
-    YARN_VER=$(yarn -v)
-    echo -e "${GREEN}[OK]${NC} yarn 已安装: $YARN_VER"
-elif command -v npm &> /dev/null; then
-    PKG_MANAGER="npm"
-    # --legacy-peer-deps 避免 peer dependency 冲突
-    PKG_INSTALL_CMD="npm install --legacy-peer-deps"
-    NPM_VER=$(npm -v)
-    echo -e "${GREEN}[OK]${NC} npm 已安装: $NPM_VER"
+    PKG="yarn"
+    echo -e "${GREEN}[OK]${NC} yarn: $(yarn -v)"
 else
-    echo -e "${RED}[ERROR] 未找到任何包管理器 (pnpm / yarn / npm)${NC}"
-    exit 1
+    echo -e "${GREEN}[OK]${NC} npm: $(npm -v)"
+    echo -e "${YELLOW}[!]${NC} For faster installs: npm install -g pnpm"
 fi
 
-# ── 4. 安装依赖 ─────────────────────────────
+# ── 4. Install ──
 echo ""
-echo -e "${BLUE}[1/3]${NC} 安装依赖 (使用 $PKG_MANAGER)..."
-
+echo -e "${CYAN}[1/4]${NC} Installing dependencies..."
 if [ -d "node_modules" ]; then
-    echo -e "${YELLOW}[SKIP]${NC} node_modules 已存在，跳过安装"
-    echo -e "       如需重新安装，请先删除 node_modules: ${CYAN}rm -rf node_modules${NC}"
+    echo -e "${YELLOW}[SKIP]${NC} node_modules exists"
 else
-    eval "$PKG_INSTALL_CMD"
-    echo -e "${GREEN}[OK]${NC} 依赖安装完成"
+    eval "$PKG install"
 fi
+echo -e "${GREEN}[OK]${NC} Dependencies ready"
 
-# ── 5. 编译 TypeScript ──────────────────────
+# ── 5. Build ──
 echo ""
-echo -e "${BLUE}[2/3]${NC} 编译 TypeScript..."
-
-if [ -d "dist/bin" ] && [ -f "dist/bin/ovogogogo.js" ]; then
-    echo -e "${YELLOW}[SKIP]${NC} dist/ 已存在，跳过编译"
-    echo -e "       如需重新编译，请先删除 dist: ${CYAN}rm -rf dist${NC}"
+echo -e "${CYAN}[2/4]${NC} Building TypeScript..."
+if [ -f "dist/bin/ovogogogo.js" ]; then
+    echo -e "${YELLOW}[SKIP]${NC} dist/ exists (rm -rf dist to rebuild)"
 else
-    eval "$PKG_MANAGER run build"
-    echo -e "${GREEN}[OK]${NC} 编译完成"
+    eval "$PKG run build"
 fi
+echo -e "${GREEN}[OK]${NC} Build complete"
 
-# ── 6. 添加全局命令 ovogo ──────────────────
+# ── 6. API Key ──
 echo ""
-echo -e "${BLUE}[3/3]${NC} 添加全局命令 \"ovogo\"..."
-
-BIN_FILE="$PROJECT_DIR/dist/bin/ovogogogo.js"
-if [ ! -f "$BIN_FILE" ]; then
-    echo -e "${RED}[ERROR] 编译输出未找到: $BIN_FILE${NC}"
-    exit 1
-fi
-
-# 尝试使用已安装的包管理器获取全局路径，回退到默认值
-if [ "$PKG_MANAGER" = "pnpm" ]; then
-    GLOBAL_PREFIX=$(pnpm root -g 2>/dev/null | xargs dirname 2>/dev/null || npm prefix -g 2>/dev/null || echo "$HOME/.local")
-elif [ "$PKG_MANAGER" = "yarn" ]; then
-    GLOBAL_PREFIX=$(yarn global bin 2>/dev/null || npm prefix -g 2>/dev/null || echo "$HOME/.local")
+echo -e "${CYAN}[3/4]${NC} API Key configuration..."
+if [ -f ".env" ]; then
+    echo -e "${YELLOW}[SKIP]${NC} .env already exists"
+elif [ -n "$OPENAI_API_KEY" ]; then
+    echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+    echo -e "${GREEN}[OK]${NC} Wrote .env from current environment"
 else
-    GLOBAL_PREFIX=$(npm prefix -g 2>/dev/null || echo "$HOME/.local")
-fi
-GLOBAL_BIN="$GLOBAL_PREFIX/bin"
-
-mkdir -p "$GLOBAL_BIN"
-
-# 检查是否已存在
-if [ -f "$GLOBAL_BIN/ovogo" ]; then
-    echo -e "${YELLOW}[SKIP]${NC} $GLOBAL_BIN/ovogo 已存在，跳过创建"
-else
-    # 创建 ovogo shell 脚本 (使用绝对路径，避免子 shell 变量丢失)
-    printf '#!/bin/bash\nnode "%s/dist/bin/ovogogogo.js" "$@"\n' "$PROJECT_DIR" > "$GLOBAL_BIN/ovogo"
-    chmod +x "$GLOBAL_BIN/ovogo"
-    echo -e "${GREEN}[OK]${NC} 全局命令 \"ovogo\" 已创建: $GLOBAL_BIN/ovogo"
-fi
-
-# ── 7. 检查 PATH ────────────────────────────
-if ! echo "$PATH" | tr ':' '\n' | grep -q "$GLOBAL_BIN"; then
-    echo -e "${YELLOW}[WARN]${NC} $GLOBAL_BIN 不在 PATH 中"
     echo ""
-    echo "请将以下行添加到 ~/.bashrc 或 ~/.zshrc:"
-    echo -e "  ${CYAN}export PATH=\"$GLOBAL_BIN:\$PATH\"${NC}"
-    echo ""
-    echo "然后运行: source ~/.bashrc  (或 source ~/.zshrc)"
+    echo "  API Key is required. Paste your key (or Enter to skip):"
+    read -r -p "  Key: " API_KEY
+    if [ -n "$API_KEY" ]; then
+        echo "OPENAI_API_KEY=$API_KEY" > .env
+        echo -e "${GREEN}[OK]${NC} Saved to .env"
+    else
+        echo -e "${YELLOW}[!]${NC} Skipped — set OPENAI_API_KEY or create .env manually"
+    fi
 fi
 
-# ── 8. 验证 ─────────────────────────────────
+# ── 7. Global command ──
 echo ""
-echo "============================================="
-echo "  安装验证"
-echo "============================================="
-echo ""
-
-export PATH="$GLOBAL_BIN:$PATH"
-if command -v ovogo &> /dev/null; then
-    echo -n "运行: ovogo --version  →  "
-    ovogo --version
-    echo -e "${GREEN}[OK]${NC} ovogo 命令可用！"
+echo -e "${CYAN}[4/4]${NC} Creating global command \"ovolv999\"..."
+if [ "$PKG" = "pnpm" ]; then
+    pnpm link --global 2>/dev/null && echo -e "${GREEN}[OK]${NC} Linked via pnpm" || {
+        # Fallback: manual symlink
+        GLOBAL_BIN="$(npm prefix -g)/bin"
+        mkdir -p "$GLOBAL_BIN"
+        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovolv999"
+        chmod +x "$GLOBAL_BIN/ovolv999"
+        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovolv999"
+    }
+elif [ "$PKG" = "yarn" ]; then
+    yarn global add file:"$PROJECT_DIR" 2>/dev/null && echo -e "${GREEN}[OK]${NC} Linked via yarn" || {
+        GLOBAL_BIN="$(npm prefix -g)/bin"
+        mkdir -p "$GLOBAL_BIN"
+        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovolv999"
+        chmod +x "$GLOBAL_BIN/ovolv999"
+        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovolv999"
+    }
 else
-    echo -e "${YELLOW}[WARN]${NC} ovogo 命令未立即生效，请手动刷新 PATH"
-    echo "运行: ${CYAN}export PATH=\"$GLOBAL_BIN:\$PATH\"${NC}"
+    npm link 2>/dev/null && echo -e "${GREEN}[OK]${NC} Linked via npm" || {
+        GLOBAL_BIN="$(npm prefix -g)/bin"
+        mkdir -p "$GLOBAL_BIN"
+        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovolv999"
+        chmod +x "$GLOBAL_BIN/ovolv999"
+        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovolv999"
+    }
+fi
+
+# ── 8. Verify ──
+echo ""
+echo "  ======================================="
+echo "    Verification"
+echo "  ======================================="
+echo ""
+if command -v ovolv999 &> /dev/null; then
+    ovolv999 --version
+    echo -e "${GREEN}[OK]${NC} ovolv999 is ready!"
+else
+    echo -e "${YELLOW}[!]${NC} Not in PATH yet — restart terminal or run:"
+    echo "    node $PROJECT_DIR/dist/bin/ovogogogo.js"
 fi
 
 echo ""
-echo "============================================="
-echo "  安装完成！"
-echo "============================================="
+echo "  ======================================="
+echo "    Done!"
+echo "  ======================================="
 echo ""
-echo -e "使用方法:"
-echo -e "  ${CYAN}ovogo${NC}                          # 交互模式"
-echo -e "  ${CYAN}ovogo \"对目标进行渗透测试\"${NC}      # 直接任务"
-echo -e "  ${CYAN}ovogo --help${NC}                   # 查看帮助"
+echo -e "  Usage:"
+echo -e "    ${CYAN}ovolv999${NC}                         Interactive REPL"
+echo -e "    ${CYAN}ovolv999 \"fix type errors\"${NC}        Single task"
+echo -e "    ${CYAN}ovolv999 --help${NC}                   Show help"
 echo ""
-echo -e "环境变量:"
-echo -e "  ${CYAN}export OPENAI_API_KEY=sk-xxx${NC}      # 设置 API 密钥"
-echo -e "  ${CYAN}export OPENAI_BASE_URL=https://...${NC} # 兼容端点 (可选)"
-echo -e "  ${CYAN}export OVOGO_MODEL=gpt-4o${NC}         # 设置模型 (可选)"
-echo -e "  ${CYAN}export OVOGO_MAX_ITER=200${NC}         # 设置最大轮数 (可选)"
+echo -e "  Config (.env or environment vars):"
+echo -e "    OPENAI_API_KEY=sk-...             Required"
+echo -e "    OPENAI_BASE_URL=https://...       Optional (proxy)"
+echo -e "    OVOGO_MODEL=claude-sonnet-4-6     Optional (model name)"
 echo ""

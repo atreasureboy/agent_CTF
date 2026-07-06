@@ -131,6 +131,41 @@ export function resolveAgentConfig(input: {
 }
 
 /**
+ * Validate and sanitize an LLM-supplied agent_config object.
+ * Returns a safe AgentConfig or null if the input is malformed.
+ */
+export function validateAgentConfig(raw: unknown): AgentConfig | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const obj = raw as Record<string, unknown>
+  const identity = obj.identity
+  if (typeof identity !== 'object' || identity === null) return null
+  const id = identity as Record<string, unknown>
+  // systemPrompt must be a function (preset pattern) — if LLM passes a string, wrap it
+  let systemPrompt: (cwd: string) => string
+  if (typeof id.systemPrompt === 'function') {
+    systemPrompt = id.systemPrompt as (cwd: string) => string
+  } else if (typeof id.systemPrompt === 'string') {
+    const sp = id.systemPrompt
+    systemPrompt = () => sp
+  } else {
+    return null
+  }
+  return {
+    identity: {
+      systemPrompt,
+      planMode: id.planMode === true,
+    },
+    modules: typeof obj.modules === 'object' && obj.modules !== null
+      ? obj.modules
+      : undefined,
+    tools: Array.isArray(obj.tools) ? (obj.tools as unknown[]).filter((t): t is string => typeof t === 'string') : undefined,
+    maxIterations: typeof obj.maxIterations === 'number' ? Math.min(obj.maxIterations, 200) : undefined,
+    temperature: typeof obj.temperature === 'number' ? obj.temperature : undefined,
+    maxOutputTokens: typeof obj.maxOutputTokens === 'number' ? obj.maxOutputTokens : undefined,
+  }
+}
+
+/**
  * Merge AgentConfig into EngineConfig fields.
  * Called by the engine constructor when config.agent is set.
  */

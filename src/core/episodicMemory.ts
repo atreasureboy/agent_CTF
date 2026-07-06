@@ -67,9 +67,4 @@ export class EpisodicMemory {
     const all = this.readAll()
     return all.filter((e) => e.toolName === toolName).slice(-limit)
   }
-
-  /** Count total entries */
-  count(): number {
-    return this.readAll().length
-  }
 }

@@ -11,7 +11,7 @@
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../core/types.js'
 import type { EngineConfig } from '../core/types.js'
 import type { AgentConfig } from '../core/agentPresets.js'
-import { resolveAgentConfig, PRESET_NAMES } from '../core/agentPresets.js'
+import { resolveAgentConfig, validateAgentConfig, PRESET_NAMES } from '../core/agentPresets.js'
 import { Renderer } from '../ui/renderer.js'
 import { tmuxLayout } from '../ui/tmuxLayout.js'
 import { appendFileSync } from 'fs'
@@ -23,11 +23,6 @@ import { str } from '../core/strings.js'
 
 let _callDepth = 0
 const MAX_CALL_DEPTH = 5
-
-/** Get current call depth (for external reporting) */
-export function getCallDepth(): number {
-  return _callDepth
-}
 
 // ── Verification gate (AgentOS §6 "No Tuple, No Merge") ─────────────────────
 
@@ -104,17 +99,6 @@ export function registerAgentFactory(
   _engineFactory = factory
   _currentConfig = config
   _currentRenderer = renderer
-}
-
-export function resetAgentFactory(): void {
-  _engineFactory = null
-  _currentConfig = null
-  _currentRenderer = null
-  _callDepth = 0
-}
-
-export function isFactoryRegistered(): boolean {
-  return _engineFactory !== null
 }
 
 // ── runAgentTask ─────────────────────────────────────────────────────────────
@@ -360,7 +344,11 @@ export class AgentTool implements Tool {
     }
 
     const presetName = str(input.subagent_type, '') || undefined
-    const customConfig = input.agent_config as AgentConfig | undefined
+    const rawConfig = input.agent_config
+    const customConfig = rawConfig ? validateAgentConfig(rawConfig) ?? undefined : undefined
+    if (rawConfig && !customConfig) {
+      return { content: 'Error: agent_config is malformed — need identity.systemPrompt at minimum', isError: true }
+    }
     const agentConfig = resolveAgentConfig({
       preset: customConfig ? undefined : presetName,
       config: customConfig,

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/bin/ovogogogo.js",
   "bin": {
-    "ovogogogo": "./dist/bin/ovogogogo.js"
+    "ovolv999": "./dist/bin/ovogogogo.js"
   },
   "scripts": {
     "build": "tsc",
