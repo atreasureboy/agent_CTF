@@ -22,6 +22,7 @@ export type EventType =
   | 'permission'
   | 'token_usage'
   | 'log'
+  | 'error'
   | 'user_input'
   | 'user_interrupt'
 

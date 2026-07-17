@@ -853,13 +853,21 @@ export class ExecutionEngine {
         result = { stopped: true, reason: 'max_iterations', output: finalOutput }
       }
     } catch (err) {
+      const errMsg = (err as Error).message || String(err)
       // Lifecycle hook: OnError
       this.config.hookRunner?.runOnError?.(err as Error, {
         turnNumber: iterations,
         lastToolName,
       })
-      // Don't re-throw — construct error result so onComplete hooks still fire
-      result = { stopped: true, reason: 'error', output: finalOutput }
+      // Persist to audit trail + preserve message on the result so callers can
+      // surface WHY the run failed (previously dropped → user saw only "error").
+      this.eventLog?.append('error', 'engine', {
+        stage: 'run',
+        turn: iterations,
+        error: errMsg,
+        ...(lastToolName ? { lastToolName } : {}),
+      })
+      result = { stopped: true, reason: 'error', output: finalOutput, error: errMsg }
     } finally {
       this.currentTurnAbortController = null
     }

@@ -180,4 +180,6 @@ export interface TurnResult {
    */
   reason: 'max_iterations' | 'stop_sequence' | 'error' | 'interrupted'
   output: string
+  /** Error message when reason === 'error' due to an exception (aborts leave this unset). */
+  error?: string
 }

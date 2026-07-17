@@ -541,6 +541,9 @@ async function runRepl(
         // Normal finish (stop / max_iterations / error)
         const elapsed = ((Date.now() - startMs) / 1000).toFixed(1)
         renderer.info(`Done in ${elapsed}s · ${result.reason}`)
+        if (result.reason === 'error' && result.error) {
+          renderer.error(`失败原因: ${result.error}`)
+        }
         const u = engine.getTokenUsage()
         renderer.usage(u.totalTokens, u.costUsd)
         break
@@ -654,6 +657,9 @@ async function runTask(
   const elapsed = ((Date.now() - startMs) / 1000).toFixed(1)
 
   renderer.info(`Done in ${elapsed}s · ${result.reason}`)
+  if (result.reason === 'error' && result.error) {
+    renderer.error(`失败原因: ${result.error}`)
+  }
   const u = engine.getTokenUsage()
   renderer.usage(u.totalTokens, u.costUsd)
   updateProgressLog(cwd, 'complete', 'done')
