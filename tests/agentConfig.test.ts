@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -65,7 +65,8 @@ describe('loadAgentConfig', () => {
     expect(cfg.pricing?.inputPer1M).toBe(3)
   })
 
-  it('survives a malformed config file (no throw, no model resolved)', () => {
+  it('survives a malformed config file (no throw, no model resolved) and warns', () => {
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const cfgDir = join(workDir, '.ovogo')
     mkdirSync(cfgDir, { recursive: true })
     writeFileSync(join(cfgDir, 'agent.json'), '{ broken', 'utf8')
@@ -73,5 +74,9 @@ describe('loadAgentConfig', () => {
     expect(cfg.model).toBeUndefined()
     expect(cfg.modules).toBeUndefined()
     expect(cfg.mcpServers).toEqual({})
+    // A malformed file must not be silently ignored — surface why it was dropped.
+    const warned = writeSpy.mock.calls.some(c => String(c[0]).includes('invalid JSON'))
+    expect(warned).toBe(true)
+    writeSpy.mockRestore()
   })
 })
