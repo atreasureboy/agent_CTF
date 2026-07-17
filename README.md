@@ -40,7 +40,7 @@ ovolv999 是一个**纯 Agent 基座框架**，仿 Claude Code，核心设计参
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                        ovolv999 — 统一 Harness + 模块化 Agent 基座             ║
-║               42 files · 8,300+ lines · tsc 0 · eslint 0 · 66 tests          ║
+║               41 files · 8,300+ lines · tsc 0 · eslint 0 · 66 tests          ║
 ║               Runtime deps: openai · glob · zod (仅 3 个)                     ║
 ║               API retry: 5x exponential backoff · 120s timeout                ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
@@ -81,7 +81,7 @@ ovolv999 是一个**纯 Agent 基座框架**，仿 Claude Code，核心设计参
 ║  │  Abort: softAbort(ESC) / hardAbort(Ctrl+C)                            │   ║
 ║  └────────────────────────────────────────────────────────────────────────┘   ║
 ║                                                                              ║
-║  ┌─ Modules (4) ──────┐  ┌─ Tools (14) ────────┐  ┌─ Memory ───────────┐    ║
+║  ┌─ Modules (4) ──────┐  ┌─ Tools (13) ────────┐  ┌─ Memory ───────────┐    ║
 ║  │ memory             │  │ Bash / Read / Write  │  │ Semantic:          │    ║
 ║  │  ├ boot: 相关性检索│  │ Edit / Glob / Grep   │  │  关键词去重 +       │    ║
 ║  │  ├ tools: write/   │  │ TodoWrite / WebFetch │  │  来源优先级冲突解决  │    ║
@@ -90,7 +90,7 @@ ovolv999 是一个**纯 Agent 基座框架**，仿 Claude Code，核心设计参
 ║  │     episodic 写入  │  │ memory_write         │  │ Boot: 相关性 top-10│    ║
 ║  │ critic             │  │ memory_search        │  │ Exit: session 整合  │    ║
 ║  │  └ onIteration:    │  │ memory_recall        │  └────────────────────┘    ║
-║  │     每 N 轮纠错    │  │ TmuxSession / Shell  │                             ║
+║  │     每 N 轮纠错    │  │ TmuxSession          │                             ║
 ║  │ workspace          │  └──────────────────────┘  ┌─ Communication ─────┐   ║
 ║  │  └ boot: sessionDir│                              │ Agent (invoke):     │   ║
 ║  │ reflection         │  ┌─ Verification Gate ───┐   │  AgentConfig 驱动   │   ║
@@ -338,7 +338,7 @@ ovolv999/
 │   │   ├── critic.ts                   # 每 N 轮 LLM 纠错
 │   │   ├── workspace.ts                # sessionDir 注入
 │   │   └── reflection.ts               # per-turn 知识提取 + session-level 整合
-│   ├── tools/                          # 工具层 (14 files)
+│   ├── tools/                          # 工具层 (13 files)
 │   │   ├── agent.ts                    # AgentConfig 驱动 + 验证闸门 + 调用链追踪
 │   │   ├── loadSkill.ts                # 技能懒加载 + 权限检查
 │   │   ├── bash.ts                     # 跨平台 shell + 后台模式

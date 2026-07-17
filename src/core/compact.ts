@@ -18,9 +18,11 @@ const CHARS_PER_TOKEN = 3.5
 // Sub-agents inherit the same model so one constant is sufficient here.
 export const MODEL_MAX_CONTEXT_TOKENS = 200_000
 
-// Percentage-based thresholds — the single source of truth for context pressure
-const CONTEXT_WARN_PCT    = 0.70   // 70%  → display yellow warning
-const CONTEXT_COMPACT_PCT = 0.85   // 85%  → force auto-compact
+// Percentage-based thresholds — the SINGLE source of truth for context pressure.
+// Both the engine (evaluateContextBudget) and tests read these constants so the
+// warn/compact boundaries can never drift between modules.
+export const CONTEXT_WARN_PCT    = 0.70   // 70%  → display yellow warning
+export const CONTEXT_COMPACT_PCT = 0.85   // 85%  → force auto-compact
 
 /** Compression strategy selected based on context pressure */
 export type CompressionStrategy = 'proportional' | 'priority' | 'aggressive'
@@ -32,8 +34,14 @@ export function getCompressionStrategy(pct: number): CompressionStrategy {
   return 'proportional'
 }
 
-// Keep this many recent messages verbatim after compaction
-const KEEP_RECENT_MESSAGES = 8
+// Keep this many recent messages verbatim after compaction, varying by strategy:
+//   proportional (low pressure) keeps the most, aggressive (near-overflow) keeps fewest
+// so we maximise summarised headroom exactly when we need it most.
+function keepRecentFor(strategy: CompressionStrategy): number {
+  if (strategy === 'aggressive') return 4
+  if (strategy === 'priority') return 6
+  return 8 // proportional
+}
 
 // Reserve tokens for the summary output itself
 const SUMMARY_OUTPUT_RESERVE = 4_000
@@ -41,8 +49,12 @@ const SUMMARY_OUTPUT_RESERVE = 4_000
 // ── Context state ────────────────────────────────────────────────────────────
 
 export interface ContextState {
-  /** Estimated current token count */
+  /** Estimated current token count (messages + system prompt) */
   currentTokens: number
+  /** Token count attributable to the conversation messages only */
+  messageTokens: number
+  /** Token count attributable to the system prompt */
+  systemPromptTokens: number
   /** Model maximum context window */
   maxTokens: number
   /** Usage fraction 0–1 */
@@ -57,15 +69,23 @@ export interface ContextState {
 
 /**
  * Calculate current context usage and determine whether to warn or compact.
+ *
+ * This is the single computation path for context pressure: the engine calls it
+ * (passing `systemPromptTokens` for an accurate budget) and tests call it too.
+ * Both reference the exported `CONTEXT_WARN_PCT` / `CONTEXT_COMPACT_PCT`.
  */
 export function calculateContextState(
   messages: OpenAIMessage[],
   maxTokens: number = MODEL_MAX_CONTEXT_TOKENS,
+  systemPromptTokens: number = 0,
 ): ContextState {
-  const currentTokens = estimateTokens(messages)
+  const messageTokens = estimateTokens(messages)
+  const currentTokens = messageTokens + systemPromptTokens
   const pct = currentTokens / maxTokens
   return {
     currentTokens,
+    messageTokens,
+    systemPromptTokens,
     maxTokens,
     pct,
     shouldWarn:   pct >= CONTEXT_WARN_PCT,
@@ -189,13 +209,15 @@ export async function maybeCompact(
   client: OpenAI,
   model: string,
   messages: OpenAIMessage[],
+  strategy: CompressionStrategy = 'proportional',
 ): Promise<CompactResult> {
   const originalTokens = estimateTokens(messages)
+  const keepRecent = keepRecentFor(strategy)
 
   // Keep the most recent messages verbatim — they're the freshest context.
   // Ensure we don't split between an assistant message with tool_calls and its
   // tool result messages (OpenAI API requires them to stay together).
-  let splitPoint = messages.length - KEEP_RECENT_MESSAGES
+  let splitPoint = messages.length - keepRecent
   if (splitPoint > 0) {
     // Walk forward from split point — if we're in the middle of tool results,
     // extend to include all results for the last assistant tool_calls.
@@ -211,7 +233,7 @@ export async function maybeCompact(
   const recentMessages = messages.slice(splitPoint)
   const olderMessages = messages.slice(0, splitPoint)
 
-  if (olderMessages.length === 0 || messages.length < KEEP_RECENT_MESSAGES * 2) {
+  if (olderMessages.length === 0 || messages.length < keepRecent * 2) {
     // Not enough messages to compact meaningfully
     return { compacted: false, messages, summaryTokens: 0, originalTokens }
   }

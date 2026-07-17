@@ -22,6 +22,7 @@ export interface GrepInput {
 
 export class GrepTool implements Tool {
   name = 'Grep'
+  concurrencySafe = true
 
   definition: ToolDefinition = {
     type: 'function',

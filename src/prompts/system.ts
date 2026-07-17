@@ -109,7 +109,6 @@ function getToolUsageSection(): string {
     '**Agent** — 委派子 agent（预设名或自定义 AgentConfig）',
     '**load_skill** — 按需加载技能的完整 prompt（懒加载）',
     '**TmuxSession** — 管理本地交互进程（REPL、需要等待提示符的程序）',
-    '**ShellSession** — 管理入站连接（持久 shell 会话）',
   ]
   return [
     '# 工具使用',
@@ -138,11 +137,7 @@ function getInteractiveSection(): string {
     TmuxSession({ action: "new", session: "repl", command: "python3 -i" })
     TmuxSession({ action: "wait_for", session: "repl", pattern: ">>>", timeout: 10000 })
     TmuxSession({ action: "send", session: "repl", text: "print(1+1)" })
-    TmuxSession({ action: "capture", session: "repl" })
-
-## 用 ShellSession 管理入站持久连接
- - **TmuxSession**：本地启动的交互工具（本地进程）
- - **ShellSession**：外部连回来的持久 shell（入站连接）`
+    TmuxSession({ action: "capture", session: "repl" })`
 }
 
 function getMultiAgentSection(): string {
@@ -243,15 +238,16 @@ function formatTaskContextSection(t: TaskContext, sessionDir?: string): string {
  * Assemble the full system prompt from:
  *   1. Base agent prompt (identity, tools, work principles, etc.)
  *   2. OVOGO.md files (project + user instructions)
- *   3. Memory system section (MEMORY.md index + write instructions)
+ *   3. Skill index (lazy-loaded skill catalogue)
  *
- * This is called once at startup and cached in EngineConfig.systemPrompt.
- * Sub-agents get their own type-specific prompts instead.
+ * Memory is NOT composed here: MemoryModule.boot() produces the memory section
+ * at runtime (relevance-scored, with write instructions) and the engine joins
+ * module sections to the base prompt. This is called once at startup and cached
+ * in EngineConfig.systemPrompt. Sub-agents get their own type-specific prompts.
  */
 export function buildFullSystemPrompt(
   cwd: string,
   ovogoMdFiles: OvogoMdFile[],
-  memorySection: string,
   taskContext?: TaskContext,
   sessionDir?: string,
   skillIndex?: string,
@@ -261,10 +257,6 @@ export function buildFullSystemPrompt(
   const ovogoMdSection = formatOvogoMdForPrompt(ovogoMdFiles)
   if (ovogoMdSection) {
     parts.push(ovogoMdSection)
-  }
-
-  if (memorySection) {
-    parts.push(memorySection)
   }
 
   if (skillIndex) {

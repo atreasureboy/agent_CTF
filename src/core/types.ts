@@ -4,6 +4,8 @@ import type { EventLog } from './eventLog.js'
 import type { SemanticMemory } from './semanticMemory.js'
 import type { EpisodicMemory } from './episodicMemory.js'
 import type { AgentConfig } from './agentPresets.js'
+import type { PermissionChecker } from './permission.js'
+import type { PricingConfig } from '../config/agentConfig.js'
 
 // OpenAI-compatible tool call format
 export interface ToolCall {
@@ -44,6 +46,14 @@ export interface ToolResult {
 export interface Tool {
   name: string
   definition: ToolDefinition
+  /**
+   * True if this tool is safe to run concurrently with other safe tools within
+   * a single LLM response (e.g. read-only tools, independent Bash calls). The
+   * engine collects every tool with `concurrencySafe: true` into a parallel
+   * batch; state-mutating tools leave this false/undefined and run serially.
+   * Lets custom/extra tools opt into parallelism without a hardcoded list.
+   */
+  concurrencySafe?: boolean
   execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult>
 }
 
@@ -134,6 +144,30 @@ export interface EngineConfig {
    * Replaces the legacy AgentType enum with config-driven differentiation.
    */
   agent?: AgentConfig
+  /**
+   * Permission gate — consulted before every tool execution. When omitted the
+   * engine permits all calls (legacy autonomous behaviour). Inject a
+   * PermissionChecker to enforce allow/deny/ask rules + an approval callback.
+   */
+  permissionChecker?: PermissionChecker
+  /** Token pricing for cost estimation (USD per 1M tokens). Optional. */
+  pricing?: PricingConfig
+  /**
+   * Commands run by the Agent verification gate after a sub-agent completes code
+   * changes. Replaces the hardcoded `tsc`. Configured per-project via agent.json.
+   */
+  verifyCommands?: string[]
+}
+
+/** Cumulative token usage across one or more turns, for cost observability. */
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  /** Estimated USD cost, computed when pricing is configured. */
+  costUsd: number
+  /** Number of LLM calls counted. */
+  calls: number
 }
 
 export interface TurnResult {

@@ -8,7 +8,7 @@
  * Storage: ~/.ovogo/projects/{slug}/memory/episodes.jsonl
  */
 
-import { appendFileSync, existsSync, readFileSync, mkdirSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 
@@ -26,6 +26,12 @@ export interface EpisodicMemoryEntry {
 function nextId(): string {
   return `epi_${randomUUID()}`
 }
+
+// Hard cap on retained episodes. The file grows by one line per tool call, so
+// without a bound it becomes unbounded over long sessions and every read (which
+// loads the whole file then slices) turns O(n). When the file exceeds the cap we
+// trim the oldest entries in place — keeping the freshest trajectory.
+const MAX_EPISODES = 2000
 
 export class EpisodicMemory {
   private filePath: string
@@ -51,12 +57,23 @@ export class EpisodicMemory {
     return all.slice(-limit)
   }
 
-  /** Read all entries */
+  /** Read all entries, trimming oldest when the file exceeds MAX_EPISODES */
   readAll(): EpisodicMemoryEntry[] {
     if (!existsSync(this.filePath)) return []
     try {
       const lines = readFileSync(this.filePath, 'utf8').trim().split('\n').filter(Boolean)
-      return lines.map((l) => JSON.parse(l) as EpisodicMemoryEntry)
+      // Lazy rotation: if the file outgrew the cap, rewrite it keeping the
+      // newest MAX_EPISODES entries so subsequent reads stay cheap.
+      let kept = lines
+      if (lines.length > MAX_EPISODES) {
+        kept = lines.slice(-MAX_EPISODES)
+        try {
+          writeFileSync(this.filePath, kept.join('\n') + '\n', 'utf8')
+        } catch { /* best-effort rotation; in-memory slice still correct */ }
+      }
+      return kept.map((l) => {
+        try { return JSON.parse(l) as EpisodicMemoryEntry } catch { return null }
+      }).filter((e): e is EpisodicMemoryEntry => e !== null)
     } catch {
       return []
     }

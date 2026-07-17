@@ -15,15 +15,16 @@ IMPORTANT: Avoid using this for file operations when dedicated tools exist:
 
 Reserve Bash for: shell commands, build tools, test runners, git, scripts, system operations.
 
-## Timeout Strategy
+## Timeout Strategy (ALL values in MILLISECONDS)
 
-Default timeout: **1800 seconds (30 min)**. Max: **14400 seconds (4 hours)**.
+The timeout parameter is ALWAYS in milliseconds. Default: 1800000 (30 min). Max: 14400000 (4 h).
 
-Always set an explicit timeout for long-running commands based on expected duration:
-- Quick commands (ls, git status): default is fine
-- Build / compile: timeout=300000
-- Test suites: timeout=600000
-- Long-running tasks (full builds, large migrations): timeout=3600000+
+Do NOT pass small numbers like 300 or 1800 — those mean 0.3s / 1.8s and will kill your command instantly. If unsure, OMIT the timeout field and let the default (30 min) apply.
+
+When you do set an explicit timeout, use milliseconds:
+- Build / compile: timeout=300000 (5 min)
+- Test suites: timeout=600000 (10 min)
+- Long-running tasks: timeout=3600000+ (1 h+)
 
 ## Background Pattern for Long-Running Commands
 

@@ -32,14 +32,14 @@ import type {
   ToolResult,
   TurnResult,
   ToolDefinition,
+  TokenUsage,
 } from './types.js'
 import { createTools, findTool, getToolDefinitions } from '../tools/index.js'
 import { getPlanModePrefix } from '../prompts/system.js'
 import type { Renderer } from '../ui/renderer.js'
 import {
   maybeCompact,
-  estimateTokens,
-  getCompressionStrategy,
+  calculateContextState,
   MODEL_MAX_CONTEXT_TOKENS,
 } from './compact.js'
 import type { AgentModule, ModuleBootResult, ModuleBootContext } from './module.js'
@@ -63,6 +63,11 @@ const PLAN_MODE_TOOLS = new Set([
  * Concurrency-safe tools: run in parallel within a single LLM response.
  * When the LLM emits multiple tool calls in one response, they are intended
  * to be independent — execute them concurrently.
+ *
+ * This set is the FALLBACK used by the pure `partitionToolCalls` helper (and by
+ * the unit tests). At runtime the engine builds an equivalent set dynamically
+ * from each tool's `concurrencySafe` self-declaration (see buildToolSchedule),
+ * so custom/extra tools can opt into parallelism without editing this list.
  */
 const CONCURRENCY_SAFE_TOOLS = new Set([
   'Read',
@@ -72,7 +77,6 @@ const CONCURRENCY_SAFE_TOOLS = new Set([
   'WebSearch',
   'Bash', // parallel — dependent ops should use && in one call
   'Agent', // parallel — multiple sub-agents run simultaneously
-  'ShellSession', // parallel — different sessions
   'TmuxSession', // parallel — different sessions
 ])
 
@@ -88,6 +92,9 @@ interface StreamingToolCall {
 interface ParsedToolCall {
   tc: StreamingToolCall
   input: Record<string, unknown>
+  /** Set when the LLM emitted unparseable argument JSON. The call is not
+   * executed; instead an error tool_result is fed back so the model self-heals. */
+  parseError?: string
 }
 
 interface ToolBatch {
@@ -101,12 +108,19 @@ interface ToolBatch {
  * Partition tool calls into scheduling batches:
  * - All safe tools → merged into one parallel batch (Promise.all)
  * - Stateful tools (Write, Edit, etc.) → each gets its own serial batch
+ *
+ * `safeNames` defaults to CONCURRENCY_SAFE_TOOLS for the exported pure-function
+ * form (used by unit tests). The engine passes a set built from each tool's
+ * `concurrencySafe` self-declaration so custom tools participate.
  */
-function partitionToolCalls(calls: ParsedToolCall[]): ToolBatch[] {
+function partitionToolCalls(
+  calls: ParsedToolCall[],
+  safeNames: ReadonlySet<string> = CONCURRENCY_SAFE_TOOLS,
+): ToolBatch[] {
   const batches: ToolBatch[] = []
 
   for (const call of calls) {
-    const safe = CONCURRENCY_SAFE_TOOLS.has(call.tc.name)
+    const safe = safeNames.has(call.tc.name)
     const last = batches[batches.length - 1]
 
     if (last && last.safe && safe) {
@@ -151,6 +165,19 @@ export class ExecutionEngine {
   private systemPromptTokens = 0
   /** All available tools — base + module-provided (populated in runTurn) */
   private allTools: Tool[]
+  /**
+   * Names of tools that declared `concurrencySafe: true`. Built in runTurn from
+   * allTools so custom/extra tools participate without a hardcoded list.
+   */
+  private concurrencySafeNames: ReadonlySet<string> = CONCURRENCY_SAFE_TOOLS
+  /** Cumulative token usage across all turns in this engine (cost observability). */
+  private tokenUsage: TokenUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    calls: 0,
+  }
 
   constructor(config: EngineConfig, renderer: Renderer) {
     // Merge agent config into effective config (overrides legacy fields)
@@ -247,31 +274,27 @@ export class ExecutionEngine {
   private async evaluateContextBudget(messages: OpenAIMessage[]): Promise<void> {
     const maxCtxTokens =
       this.config.maxContextTokens ?? MODEL_MAX_CONTEXT_TOKENS
-    // Count messages + system prompt for accurate budget
-    const messageTokens = estimateTokens(messages)
-    const totalTokens = messageTokens + this.systemPromptTokens
-    const pct = totalTokens / maxCtxTokens
-    const shouldWarn = pct >= 0.70
-    const shouldCompact = pct >= 0.85
-    const strategy = getCompressionStrategy(pct)
+    // Single computation path — shares the threshold constants with compact.ts
+    const state = calculateContextState(messages, maxCtxTokens, this.systemPromptTokens)
 
-    if (this.config.sessionDir && shouldWarn) {
-      this.renderer.contextWarning(totalTokens, maxCtxTokens, pct)
+    if (this.config.sessionDir && state.shouldWarn) {
+      this.renderer.contextWarning(state.currentTokens, maxCtxTokens, state.pct)
     }
 
-    if (shouldCompact) {
-      this.renderer.compactStart(totalTokens)
+    if (state.shouldCompact) {
+      this.renderer.compactStart(state.currentTokens)
       this.eventLog?.append('context_compact', 'engine', {
-        strategy,
-        tokens_before: totalTokens,
+        strategy: state.strategy,
+        tokens_before: state.currentTokens,
         system_prompt_tokens: this.systemPromptTokens,
-        pct,
+        pct: state.pct,
       })
 
       const compactResult = await maybeCompact(
         this.client,
         this.config.model,
         messages,
+        state.strategy,
       )
 
       if (compactResult.compacted) {
@@ -305,6 +328,7 @@ export class ExecutionEngine {
     assistantText: string
     finishReason: string | null
     rawToolCalls: StreamingToolCall[]
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
   }> {
     this.renderer.startSpinner()
 
@@ -322,6 +346,8 @@ export class ExecutionEngine {
           temperature: this.config.temperature ?? 0,
           max_tokens: this.config.maxOutputTokens ?? 8192,
           stream: true,
+          // Request usage in the final stream chunk so we can track token cost.
+          stream_options: { include_usage: true },
         },
         { signal: turnAbortSignal },
       )
@@ -341,15 +367,26 @@ export class ExecutionEngine {
     assistantText: string
     finishReason: string | null
     rawToolCalls: StreamingToolCall[]
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
   }> {
     let assistantText = ''
     let finishReason: string | null = null
     const toolCallsMap = new Map<number, StreamingToolCall>()
     let firstToken = true
+    let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
 
     try {
       for await (const chunk of stream) {
         if (turnAbortSignal.aborted) break
+
+        // Usage arrives in a trailing chunk (choices empty) when include_usage is set.
+        if (chunk.usage) {
+          usage = {
+            prompt_tokens: chunk.usage.prompt_tokens,
+            completion_tokens: chunk.usage.completion_tokens,
+            total_tokens: chunk.usage.total_tokens,
+          }
+        }
 
         const delta = chunk.choices[0]?.delta
         if (!delta) continue
@@ -401,7 +438,7 @@ export class ExecutionEngine {
       (a, b) => a.index - b.index,
     )
 
-    return { assistantText, finishReason, rawToolCalls }
+    return { assistantText, finishReason, rawToolCalls, usage }
   }
 
   // ── Tool execution ──────────────────────────────────────────────────────
@@ -435,6 +472,24 @@ export class ExecutionEngine {
       return { content: `Unknown tool: ${toolName}`, isError: true }
     }
 
+    // ── Permission gate ──────────────────────────────────────────
+    // Consult the injected PermissionChecker (if any). This is the single choke
+    // point both parallel and serial execution pass through, so every tool call
+    // is gated exactly once. Denied calls return an error result the model sees.
+    if (this.config.permissionChecker) {
+      const decision = await this.config.permissionChecker.check({ tool: toolName, input })
+      this.eventLog?.append('permission', toolName, {
+        allowed: decision.allowed,
+        reason: decision.reason,
+      }, [toolName, decision.allowed ? 'allowed' : 'denied'])
+      if (!decision.allowed) {
+        return {
+          content: `Permission denied: ${decision.reason}. Tool "${toolName}" was not executed.`,
+          isError: true,
+        }
+      }
+    }
+
     const result = await tool.execute(input, context)
 
     // Notify modules of tool execution (e.g. episodic memory write)
@@ -460,7 +515,35 @@ export class ExecutionEngine {
     messages: OpenAIMessage[],
     turnNumber: number,
   ): Promise<{ aborted: boolean }> {
-    const batches = partitionToolCalls(parsedCalls)
+    // ── Self-heal: malformed tool arguments ───────────────────────
+    // If the LLM emitted unparseable JSON, feed back an error tool_result so it
+    // can self-correct on the next turn, rather than executing with empty input
+    // (which produced silent, confusing failures before this gate existed).
+    const validCalls: ParsedToolCall[] = []
+    for (const call of parsedCalls) {
+      if (call.parseError) {
+        const { tc } = call
+        const errContent =
+          `Error: malformed arguments for ${tc.name} — ${call.parseError}. ` +
+          `Re-emit the call with valid JSON matching the tool's schema. Raw: ${tc.arguments.slice(0, 200)}`
+        this.renderer.toolResult(tc.name, errContent, true)
+        this.eventLog?.append('tool_result', tc.name, {
+          parse_error: call.parseError,
+          isError: true,
+        }, [tc.name, 'parse_error'])
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: errContent,
+          name: tc.name,
+        })
+      } else {
+        validCalls.push(call)
+      }
+    }
+    if (validCalls.length === 0) return { aborted: false }
+
+    const batches = partitionToolCalls(validCalls, this.concurrencySafeNames)
 
     for (const batch of batches) {
       if (turnAbortSignal.aborted) return { aborted: true }
@@ -613,6 +696,10 @@ export class ExecutionEngine {
     // Collect tools provided by modules
     const moduleTools = this.moduleBootResults.flatMap(r => r.tools ?? [])
     this.allTools = [...this.tools, ...moduleTools]
+    // Build concurrency-safe set from each tool's self-declaration (P2-7)
+    this.concurrencySafeNames = new Set(
+      this.allTools.filter(t => t.concurrencySafe).map(t => t.name),
+    )
 
     // Record boot trajectory (AgentOS pattern)
     this.eventLog?.append('boot_context', 'engine', {
@@ -687,13 +774,16 @@ export class ExecutionEngine {
         }
 
         // ── Streaming LLM call ───────────────────────────────────
-        const { assistantText, finishReason, rawToolCalls } =
+        const { assistantText, finishReason, rawToolCalls, usage } =
           await this.callLLM(
             systemPrompt,
             messages,
             toolDefs,
             turnAbortController.signal,
           )
+
+        // Track token usage + cost for observability (best-effort).
+        if (usage) this.recordUsage(usage)
 
         if (assistantText) {
           finalOutput = assistantText
@@ -720,15 +810,18 @@ export class ExecutionEngine {
           break
         }
 
-        // Parse tool calls
+        // Parse tool calls — capture parse errors so they can be fed back to the
+        // model as error tool_results (self-heal) instead of silently empty input.
         const parsedCalls: ParsedToolCall[] = rawToolCalls.map((tc) => {
           let input: Record<string, unknown>
+          let parseError: string | undefined
           try {
             input = JSON.parse(tc.arguments || '{}') as Record<string, unknown>
-          } catch {
+          } catch (err) {
             input = {}
+            parseError = (err as Error).message
           }
-          return { tc, input }
+          return { tc, input, parseError }
         })
 
         // Track last tool name for OnError hook
@@ -781,8 +874,13 @@ export class ExecutionEngine {
           messages,
           eventLog: this.eventLog,
         })
-      } catch {
-        // module onComplete failures must never break the engine
+      } catch (err) {
+        // module onComplete failures must never break the engine, but should be
+        // surfaced in the audit trail so they are not silently invisible
+        this.eventLog?.append('module_error', module.name, {
+          stage: 'onComplete',
+          error: (err as Error).message,
+        })
       }
     }
 
@@ -794,6 +892,45 @@ export class ExecutionEngine {
 
   getModel(): string {
     return this.config.model
+  }
+
+  /** Session output directory (where artifacts + snapshots are written). */
+  getSessionDir(): string | undefined {
+    return this.config.sessionDir
+  }
+
+  /** Cumulative token usage + estimated cost across all turns (observability). */
+  getTokenUsage(): TokenUsage {
+    return { ...this.tokenUsage }
+  }
+
+  /** Fold one LLM response's usage into the cumulative totals + emit an event. */
+  private recordUsage(usage: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }): void {
+    const prev = this.tokenUsage
+    const pricing = this.config.pricing
+    const callCost =
+      pricing && (pricing.inputPer1M || pricing.outputPer1M)
+        ? ((usage.prompt_tokens * (pricing.inputPer1M ?? 0)) +
+           (usage.completion_tokens * (pricing.outputPer1M ?? 0))) / 1_000_000
+        : 0
+    this.tokenUsage = {
+      promptTokens: prev.promptTokens + usage.prompt_tokens,
+      completionTokens: prev.completionTokens + usage.completion_tokens,
+      totalTokens: prev.totalTokens + usage.total_tokens,
+      costUsd: prev.costUsd + callCost,
+      calls: prev.calls + 1,
+    }
+    this.eventLog?.append('token_usage', 'engine', {
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.total_tokens,
+      cost_usd: callCost || undefined,
+      cumulative: this.getTokenUsage(),
+    })
   }
 }
 

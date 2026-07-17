@@ -25,24 +25,41 @@ export class ModuleRegistry {
   /**
    * Resolve a list of enabled module names into instantiated modules.
    * Dependencies are resolved automatically (depth-first, deduplicated).
+   *
+   * Failure modes (previously silent — now surfaced):
+   *   - A dependency cycle raises an Error immediately. A cycle is a programming
+   *     bug that would otherwise produce a silently truncated module list.
+   *   - An unknown/unregistered name logs a warning and is skipped, so a typo in
+   *     config degrades gracefully instead of vanishing without a trace.
    */
   resolve(enabledNames: string[], ctx: ModuleContext): AgentModule[] {
     const resolved: AgentModule[] = []
     const seen = new Set<string>()
     const inProgress = new Set<string>()  // cycle detection
 
-    const resolveOne = (name: string): void => {
+    const resolveOne = (name: string, chain: string[]): void => {
       if (seen.has(name)) return
-      if (inProgress.has(name)) return // cycle — stop
+      if (inProgress.has(name)) {
+        const cyclePath = [...chain, name].join(' → ')
+        throw new Error(`ModuleRegistry: dependency cycle detected (${cyclePath})`)
+      }
       const factory = this.factories.get(name)
-      if (!factory) return
+      if (!factory) {
+        // Surface the typo instead of silently dropping it. eventLog is the
+        // project's audit channel; best-effort (skips when no session is active).
+        ctx.config.eventLog?.append('module_error', 'ModuleRegistry', {
+          unknown_module: name,
+          note: 'not registered, skipping',
+        })
+        return
+      }
 
       inProgress.add(name)
       const module = factory(ctx)
 
       // Resolve dependencies first
       for (const dep of module.dependencies ?? []) {
-        resolveOne(dep)
+        resolveOne(dep, [...chain, name])
       }
 
       inProgress.delete(name)
@@ -51,7 +68,7 @@ export class ModuleRegistry {
     }
 
     for (const name of enabledNames) {
-      resolveOne(name)
+      resolveOne(name, [])
     }
 
     return resolved

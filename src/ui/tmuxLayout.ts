@@ -29,7 +29,7 @@ function sq(s: string): string {
 // ─────────────────────────────────────────────────────────────
 function toWindowName(label: string): string {
   return label
-    .replace(/^\[([^\]]+)\]\s*/, '$1-')   // [dns-recon] xxx → dns-recon-xxx
+    .replace(/^\[([^\]]+)\]\s*/, '$1-')   // [explore] xxx → explore-xxx
     .replace(/[^a-zA-Z0-9_-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/, '')

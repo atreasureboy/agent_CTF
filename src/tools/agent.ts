@@ -17,38 +17,55 @@ import { tmuxLayout } from '../ui/tmuxLayout.js'
 import { appendFileSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
+import { AsyncLocalStorage } from 'async_hooks'
 import { str } from '../core/strings.js'
 
 // ── Call chain tracking (AgentOS §6 pattern) ─────────────────────────────────
+//
+// Per-call-chain depth via AsyncLocalStorage. This is concurrency-safe: when
+// the main agent fans out several Agent calls with Promise.all, each chain has
+// its own independent depth counter. A shared module-level counter would be
+// incremented by every concurrent child before the first await, falsely tripping
+// the MAX_CALL_DEPTH guard. ALS propagates correctly through awaits so each
+// branch's depth reflects its actual ancestry.
 
-let _callDepth = 0
 const MAX_CALL_DEPTH = 5
+const depthStorage = new AsyncLocalStorage<number>()
+
+/** Depth of the currently-executing call chain (0 at the top level). */
+function currentDepth(): number {
+  return depthStorage.getStore() ?? 0
+}
 
 // ── Verification gate (AgentOS §6 "No Tuple, No Merge") ─────────────────────
 
-/** Default verification commands */
-const VERIFY_COMMANDS = [
+/** Fallback verification commands when none are configured on the engine. */
+const DEFAULT_VERIFY_COMMANDS = [
   'npx tsc --noEmit 2>&1',
 ]
 
 /**
  * Run verification commands and return results.
+ * The command list comes from EngineConfig.verifyCommands (per-project, via
+ * agent.json) so non-TypeScript projects can run `pytest`/`cargo test`/etc.
  * Returns null if all pass, or a formatted failure summary.
  */
-function runVerification(cwd: string): { passed: boolean; output: string } | null {
+function runVerification(cwd: string, commands: string[]): { passed: boolean; output: string } | null {
   const results: string[] = []
   let allPassed = true
 
-  for (const cmd of VERIFY_COMMANDS) {
+  for (const cmd of commands) {
     try {
       execSync(cmd, { cwd, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] })
-      results.push(`✓ ${cmd.split(' ')[1] || cmd} — passed`)
+      const label = cmd.split(' ')[1] || cmd
+      results.push(`✓ ${label} — passed`)
     } catch (err: unknown) {
       allPassed = false
       const e = err as { stdout?: string; stderr?: string; message?: string }
       const output = (e.stdout ?? '') + (e.stderr ?? '')
       const trimmed = output.trim().slice(0, 800)
-      results.push(`✗ ${cmd.split(' ')[1] || cmd} — FAILED\n${trimmed}`)
+      const label = cmd.split(' ')[1] || cmd
+      results.push(`✗ ${label} — FAILED\n${trimmed}`)
     }
   }
 
@@ -115,14 +132,37 @@ async function runAgentTask(
     return { content: 'Error: AgentTool 未初始化', isError: true }
   }
 
-  // Call chain depth check (prevent infinite recursion)
-  _callDepth++
-  if (_callDepth > MAX_CALL_DEPTH) {
-    _callDepth--
+  // Call chain depth check (prevent infinite recursion).
+  // Depth is derived from the current async call-chain context, so concurrent
+  // sub-agents spawned in one response each carry their own depth lineage.
+  const myDepth = currentDepth() + 1
+  if (myDepth > MAX_CALL_DEPTH) {
     return {
-      content: `Max agent call depth (${MAX_CALL_DEPTH}) exceeded — possible recursion. Call chain: ${_callDepth} levels deep.`,
+      content: `Max agent call depth (${MAX_CALL_DEPTH}) exceeded — possible recursion. Call chain: ${myDepth - 1} levels deep.`,
       isError: true,
     }
+  }
+
+  // Run this entire sub-agent invocation inside a depth context = myDepth, so
+  // any further Agent calls it makes see myDepth as their parent depth.
+  return depthStorage.run(myDepth, async () =>
+    runAgentTaskInner(description, prompt, agentConfig, agentLabel, verify, context, myDepth),
+  )
+}
+
+// ── runAgentTaskInner (runs within the child depth context) ──────────────────
+
+async function runAgentTaskInner(
+  description: string,
+  prompt: string,
+  agentConfig: AgentConfig,
+  agentLabel: string,
+  verify: boolean,
+  context: ToolContext,
+  myDepth: number,
+): Promise<ToolResult> {
+  if (!_engineFactory || !_currentConfig || !_currentRenderer) {
+    return { content: 'Error: AgentTool 未初始化', isError: true }
   }
 
   const mainRenderer = _currentRenderer as {
@@ -140,7 +180,7 @@ async function runAgentTask(
     modules: agentConfig.modules ? Object.keys(agentConfig.modules) : [],
     planMode: agentConfig.identity.planMode ?? false,
     maxIterations: agentConfig.maxIterations,
-    call_depth: _callDepth,
+    call_depth: myDepth,
     verify_enabled: verify,
   }, [agentLabel, 'invoke'])
 
@@ -164,7 +204,7 @@ async function runAgentTask(
   const placeholdersReplaced = normalizedPrompt !== prompt
   const inheritedContextLines = [
     `- session_dir: ${_currentConfig.sessionDir ?? '未设置'}`,
-    `- call_depth: ${_callDepth}`,
+    `- call_depth: ${myDepth}`,
   ]
 
   const sessionDirHint = _currentConfig.sessionDir
@@ -193,7 +233,7 @@ async function runAgentTask(
     agent_label: agentLabel,
     description,
     max_iterations: agentConfig.maxIterations,
-    call_depth: _callDepth,
+    call_depth: myDepth,
     verify_enabled: verify,
     placeholders_replaced: placeholdersReplaced,
     prompt_preview: normalizedPrompt.slice(0, 500),
@@ -201,7 +241,6 @@ async function runAgentTask(
 
   if (context.signal) {
     if (context.signal.aborted) {
-      _callDepth--
       mainRenderer.agentDone(description, false)
       if (paneSlot) tmuxLayout.releaseSlot(paneSlot.slot)
       return { content: `[${agentLabel}] 已取消（父任务中止）`, isError: true }
@@ -226,7 +265,10 @@ async function runAgentTask(
     // ── Verification Gate (AgentOS "No Tuple, No Merge") ──
     let verifySection = ''
     if (verify && result.reason !== 'error' && !agentConfig.identity.planMode) {
-      const verifyResult = runVerification(context.cwd)
+      const verifyResult = runVerification(
+        context.cwd,
+        _currentConfig.verifyCommands ?? DEFAULT_VERIFY_COMMANDS,
+      )
       if (verifyResult) {
         const icon = verifyResult.passed ? '✓' : '✗'
         verifySection = `\n\n---\n[验证闸门] ${icon}\n${verifyResult.output}`
@@ -243,11 +285,9 @@ async function runAgentTask(
       success: result.reason !== 'error',
       reason: result.reason,
       duration_ms: durationMs,
-      call_depth: _callDepth,
+      call_depth: myDepth,
       output_preview: result.output.slice(0, 500),
     }, [agentLabel, 'invoke', result.reason !== 'error' ? 'success' : 'error'])
-
-    _callDepth--
 
     if (!result.output) {
       return {
@@ -272,7 +312,6 @@ async function runAgentTask(
     }
   } catch (err: unknown) {
     clearInterval(heartbeatTimer)
-    _callDepth--
     mainRenderer.agentDone(description, false)
     if (paneSlot) tmuxLayout.releaseSlot(paneSlot.slot)
     appendAgentEvent(_currentConfig, {
@@ -294,6 +333,7 @@ async function runAgentTask(
 
 export class AgentTool implements Tool {
   name = 'Agent'
+  concurrencySafe = true
 
   definition: ToolDefinition = {
     type: 'function',

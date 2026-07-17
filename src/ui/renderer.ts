@@ -298,7 +298,6 @@ export class Renderer {
       WebSearch:         FG.cyan,
       TodoWrite:         FG.brightGreen,
       Agent:             FG.brightMagenta,
-      ShellSession:      FG.brightRed,
       TmuxSession:       FG.brightRed,
     }
     return colors[name] ?? FG.white
@@ -316,7 +315,6 @@ export class Renderer {
       WebSearch:         `${FG.cyan}◎${RESET}`,
       TodoWrite:         `${FG.brightGreen}☐${RESET}`,
       Agent:             `${FG.brightMagenta}⎇${RESET}`,
-      ShellSession:      `${FG.brightRed}⌁${RESET}`,
       TmuxSession:       `${FG.brightRed}⌁${RESET}`,
     }
     return icons[name] ?? `${FG.white}·${RESET}`
@@ -505,6 +503,15 @@ export class Renderer {
       `\n  ${STRIPE.compact}  ${FG.brightYellow}⚠${RESET}` +
         `  ${DIM}上下文 ${pctStr}% · ~${Math.round(tokens / 1000)}k / ${Math.round(maxTokens / 1000)}k tokens — 接近压缩阈值${RESET}\n`,
     )
+  }
+
+  // ── Token / cost usage ──────────────────────────────────────
+
+  /** Compact turn-end usage line: tokens used (+ cost when pricing is set). */
+  usage(totalTokens: number, costUsd: number): void {
+    const parts = [`${totalTokens} tokens`]
+    if (costUsd > 0) parts.push(`$${costUsd.toFixed(4)}`)
+    this.write(`  ${STRIPE.info}  ${DIM}usage: ${parts.join(' · ')}${RESET}\n`)
   }
 
   // ── Input prompt ────────────────────────────────────────────

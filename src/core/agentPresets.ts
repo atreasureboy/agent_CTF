@@ -100,14 +100,14 @@ export const AGENT_PRESETS: Record<string, AgentConfig> = {
   'general-purpose': {
     identity: {
       systemPrompt: (cwd: string) =>
-        `Working directory: ${cwd}\n\nYou are a general-purpose sub-agent. Complete the specific task given in the user message without expanding scope.\nProvide a clear, complete summary when done (what you found, what you did, the result).\nIf unable to complete, explain why and what you tried.\nYou CANNOT call Agent (no recursion). Available tools: Bash, Read, Write, Edit, Glob, Grep, TodoWrite, WebFetch, WebSearch, TmuxSession, ShellSession.`,
+        `Working directory: ${cwd}\n\nYou are a general-purpose sub-agent. Complete the specific task given in the user message without expanding scope.\nProvide a clear, complete summary when done (what you found, what you did, the result).\nIf unable to complete, explain why and what you tried.\nYou CANNOT call Agent (no recursion). Available tools: Bash, Read, Write, Edit, Glob, Grep, TodoWrite, WebFetch, WebSearch, TmuxSession.`,
     },
     modules: {
       memory: { enabled: true },
       workspace: { enabled: true },
     },
     // Exclude Agent to prevent recursion
-    tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'TodoWrite', 'WebFetch', 'WebSearch', 'TmuxSession', 'ShellSession', 'load_skill', 'memory_write', 'memory_search', 'memory_recall'],
+    tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'TodoWrite', 'WebFetch', 'WebSearch', 'TmuxSession', 'load_skill', 'memory_write', 'memory_search', 'memory_recall'],
     maxIterations: 60,
   },
 }

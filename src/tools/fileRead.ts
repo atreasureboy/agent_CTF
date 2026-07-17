@@ -17,6 +17,7 @@ const MAX_LINES_DEFAULT = 2000
 
 export class FileReadTool implements Tool {
   name = 'Read'
+  concurrencySafe = true
 
   definition: ToolDefinition = {
     type: 'function',

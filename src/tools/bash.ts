@@ -16,6 +16,11 @@ import { join } from 'path'
 const MAX_OUTPUT_LENGTH = 30_000
 const DEFAULT_TIMEOUT_MS = 1_800_000  // 30 min — long-running commands default
 const MAX_TIMEOUT_MS = 14_400_000    // 4 h — max for very long tasks
+const MIN_TIMEOUT_MS = 1_000         // 1 s — sub-second timeouts are almost
+                                      // always a unit mistake (LLM passing
+                                      // seconds, e.g. 300 meaning "5 min").
+                                      // Clamp up to default instead of killing
+                                      // the command instantly.
 
 // Shell detection — OVOGO_SHELL env overrides; otherwise bash (resolves via PATH
 // on Windows if Git Bash/WSL is installed, /bin/bash on Unix).
@@ -39,6 +44,7 @@ function truncateOutput(output: string, maxLen: number): string {
 
 export class BashTool implements Tool {
   name = 'Bash'
+  concurrencySafe = true
 
   definition: ToolDefinition = {
     type: 'function',
@@ -54,7 +60,7 @@ export class BashTool implements Tool {
           },
           timeout: {
             type: 'number',
-            description: `Timeout in milliseconds. Default: ${DEFAULT_TIMEOUT_MS} (30 min). Max: ${MAX_TIMEOUT_MS} (4 h). For long-running commands, prefer run_in_background:true instead of raising timeout.`,
+            description: `Timeout in MILLISECONDS. Default: ${DEFAULT_TIMEOUT_MS} (30 min). Max: ${MAX_TIMEOUT_MS} (4 h). Values below ${MIN_TIMEOUT_MS} are treated as unit mistakes and clamped to the default. For long-running commands, prefer run_in_background:true instead of raising timeout.`,
           },
           run_in_background: {
             type: 'boolean',
@@ -82,7 +88,9 @@ export class BashTool implements Tool {
     }
 
     const timeoutMs = Math.min(
-      typeof timeout === 'number' ? timeout : DEFAULT_TIMEOUT_MS,
+      typeof timeout === 'number' && timeout >= MIN_TIMEOUT_MS
+        ? timeout
+        : DEFAULT_TIMEOUT_MS,
       MAX_TIMEOUT_MS,
     )
 

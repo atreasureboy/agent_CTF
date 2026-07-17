@@ -14,7 +14,6 @@ import { WebFetchTool } from './webFetch.js'
 import { WebSearchTool } from './webSearch.js'
 import { AgentTool } from './agent.js'
 import { TmuxSessionTool } from './tmuxSession.js'
-import { ShellSessionTool } from './shellSession.js'
 
 export function createTools(extraTools: Tool[] = []): Tool[] {
   return [
@@ -29,7 +28,6 @@ export function createTools(extraTools: Tool[] = []): Tool[] {
     new WebSearchTool(),
     new AgentTool(),
     new TmuxSessionTool(),
-    new ShellSessionTool(),
     ...extraTools,
   ]
 }
@@ -54,5 +52,4 @@ export {
   WebSearchTool,
   AgentTool,
   TmuxSessionTool,
-  ShellSessionTool,
 }

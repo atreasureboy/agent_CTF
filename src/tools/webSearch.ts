@@ -167,6 +167,7 @@ function formatResults(results: SearchResult[], query: string, backend: string):
 
 export class WebSearchTool implements Tool {
   name = 'WebSearch'
+  concurrencySafe = true
 
   definition: ToolDefinition = {
     type: 'function',

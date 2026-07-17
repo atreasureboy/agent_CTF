@@ -167,14 +167,14 @@ describe('ModuleRegistry', () => {
     expect(modules).toHaveLength(2) // a appears once
   })
 
-  it('detects circular dependencies without crashing', () => {
+  it('throws on circular dependencies instead of silently truncating', () => {
     const reg = new ModuleRegistry()
     reg.register('x', () => makeModule('x', ['y']))
     reg.register('y', () => makeModule('y', ['x']))
-    // Should not stack-overflow — cycle detection stops recursion
-    const modules = reg.resolve(['x'], makeCtx())
-    // Each module appears at most once
-    expect(modules.length).toBeLessThanOrEqual(2)
+    // A cycle is a programming bug — the registry must fail loudly with a
+    // readable path so it can be diagnosed, not return a truncated module list.
+    expect(() => reg.resolve(['x'], makeCtx())).toThrow(/dependency cycle/)
+    expect(() => reg.resolve(['x'], makeCtx())).toThrow(/x → y → x/)
   })
 
   it('returns empty for unknown modules', () => {

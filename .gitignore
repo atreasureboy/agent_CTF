@@ -29,13 +29,10 @@ ovogogogo_log.json
 ovogo_progress.json
 
 # Runtime artifacts
-hydra.restore
-resume.cfg
 *.restore
 .codex
 
-# Scan findings (contain target data)
-.ovogo/findings/
+# Tool backups
 .ovogo/.claude_backup/
 
 # Upload scripts (contains tokens)

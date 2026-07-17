@@ -90,6 +90,23 @@ describe('partitionToolCalls', () => {
     // Read(safe) → Edit(unsafe) → Read(safe) → Edit(unsafe)
     expect(batches).toHaveLength(4)
   })
+
+  it('honours a caller-provided concurrency-safe set (custom tools)', () => {
+    // P2-7: the engine builds the safe set from each tool's concurrencySafe
+    // self-declaration, so a custom tool not in the hardcoded list can still be
+    // scheduled in a parallel batch.
+    const calls = [
+      makeParsedToolCall('MySafeA', {}),
+      makeParsedToolCall('MySafeB', {}),
+      makeParsedToolCall('MyUnsafe', {}),
+    ]
+    const batches = partitionToolCalls(calls, new Set(['MySafeA', 'MySafeB']))
+    // MySafeA + MySafeB merge into one parallel batch; MyUnsafe is serial
+    expect(batches).toHaveLength(2)
+    expect(batches[0].safe).toBe(true)
+    expect(batches[0].calls).toHaveLength(2)
+    expect(batches[1].safe).toBe(false)
+  })
 })
 
 // ── estimateTokens / calculateContextState ──────────────────────────────────
@@ -165,6 +182,25 @@ describe('calculateContextState', () => {
     const state = calculateContextState(messages, MODEL_MAX_CONTEXT_TOKENS)
     expect(state.shouldWarn).toBe(false)
     expect(state.shouldCompact).toBe(false)
+  })
+
+  it('includes system prompt tokens in the budget (single source of truth)', () => {
+    // P1-3: the engine passes systemPromptTokens so the budget reflects the real
+    // token footprint, not just the conversation messages.
+    const messages = [{ role: 'user' as const, content: 'short' }]
+    const msgTokens = estimateTokens(messages)
+    const state = calculateContextState(messages, 10_000, 5_000)
+    expect(state.messageTokens).toBe(msgTokens)
+    expect(state.systemPromptTokens).toBe(5_000)
+    expect(state.currentTokens).toBe(msgTokens + 5_000)
+  })
+
+  it('compacts based on system prompt + message tokens combined', () => {
+    // Messages alone are tiny; with a large system prompt we cross the threshold.
+    const messages = [{ role: 'user' as const, content: 'hi' }]
+    expect(calculateContextState(messages, 10_000, 0).shouldCompact).toBe(false)
+    // 9000 system tokens + tiny messages ≈ 90% → well past the 85% compact line
+    expect(calculateContextState(messages, 10_000, 9_000).shouldCompact).toBe(true)
   })
 })
 

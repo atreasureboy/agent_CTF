@@ -56,7 +56,7 @@ export interface TaskContext {
   name?: string
   /** 当前任务阶段（自由字符串，如 "调研"、"实现"、"测试"）*/
   phase?: string
-  /** 工作范围（目录、仓库、服务名等，非攻击目标）*/
+  /** 工作范围（目录、仓库、服务名等工作目标）*/
   scope?: string[]
   /** 额外备注（约束、特殊要求等）*/
   notes?: string

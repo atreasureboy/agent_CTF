@@ -55,14 +55,14 @@ import { fileURLToPath } from 'url'
 import { ExecutionEngine } from '../src/core/engine.js'
 import { Renderer } from '../src/ui/renderer.js'
 import { InputHandler, readStdin } from '../src/ui/input.js'
-import type { EngineConfig, OpenAIMessage } from '../src/core/types.js'
+import type { EngineConfig, OpenAIMessage, Tool } from '../src/core/types.js'
 import { registerAgentFactory } from '../src/tools/agent.js'
 import { loadSettings } from '../src/config/settings.js'
 import { HookRunner, NoopHookRunner } from '../src/config/hooks.js'
 import { loadSkills, expandSkillPrompt, formatSkillIndex } from '../src/skills/loader.js'
 import type { Skill } from '../src/skills/loader.js'
 import { loadOvogoMd } from '../src/config/ovogomd.js'
-import { getMemoryDir, getMemoryStats } from '../src/memory/index.js'
+import { getMemoryDir, getMemoryStats, projectSlug } from '../src/memory/index.js'
 import { buildFullSystemPrompt } from '../src/prompts/system.js'
 import { EventLog } from '../src/core/eventLog.js'
 import { SemanticMemory } from '../src/core/semanticMemory.js'
@@ -74,6 +74,16 @@ import { WorkspaceModule } from '../src/modules/workspace.js'
 import { ReflectionModule, consolidateSession } from '../src/modules/reflection.js'
 import { createLoadSkillTool } from '../src/tools/loadSkill.js'
 import { tmuxLayout } from '../src/ui/tmuxLayout.js'
+import { loadAgentConfig, contextTokensForModel } from '../src/config/agentConfig.js'
+import { PermissionChecker, type Approver } from '../src/core/permission.js'
+import { loadMcpServers } from '../src/mcp/wrapper.js'
+import {
+  saveConversation,
+  loadConversation,
+  listSessions,
+  resolveSessionArg,
+} from '../src/core/sessionStore.js'
+import { Logger } from '../src/core/logger.js'
 
 const VERSION = '0.1.0'
 
@@ -83,11 +93,15 @@ const VERSION = '0.1.0'
 
 interface Args {
   task?: string
-  model: string
-  maxIter: number
+  model?: string
+  maxIter?: number
   cwd: string
   help: boolean
   version: boolean
+  resume?: string
+  permission?: 'auto' | 'ask' | 'deny'
+  noMcp: boolean
+  listSessions: boolean
 }
 
 const MAX_RECENT_HISTORY_MESSAGES = 120
@@ -125,11 +139,17 @@ function trimHistoryForNextTurn(messages: OpenAIMessage[]): OpenAIMessage[] {
 function parseArgs(argv: string[]): Args {
   const args = argv.slice(2)
   let task: string | undefined
-  let model = process.env.OVOGO_MODEL ?? 'gpt-4o'
-  let maxIter = parseInt(process.env.OVOGO_MAX_ITER ?? '200', 10)
+  // undefined → resolved in main() against agent.json + hardcoded defaults, so
+  // config can sit between CLI/env and the built-in fallback.
+  let model = process.env.OVOGO_MODEL
+  let maxIter = process.env.OVOGO_MAX_ITER ? parseInt(process.env.OVOGO_MAX_ITER, 10) : undefined
   let cwd = process.env.OVOGO_CWD ?? process.cwd()
   let help = false
   let version = false
+  let resume: string | undefined
+  let permission: 'auto' | 'ask' | 'deny' | undefined
+  let noMcp = false
+  let listSessions = false
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -139,11 +159,16 @@ function parseArgs(argv: string[]): Args {
       case '--model': case '-m': model = args[++i] ?? model; break
       case '--max-iter': maxIter = parseInt(args[++i] ?? '30', 10); break
       case '--cwd': cwd = args[++i] ?? cwd; break
+      case '--resume': resume = args[++i] ?? 'last'; break
+      case '--permission': case '-p':
+        permission = (args[++i] as 'auto' | 'ask' | 'deny') ?? permission; break
+      case '--no-mcp': noMcp = true; break
+      case '--sessions': listSessions = true; break
       default:
         if (!arg.startsWith('-')) task = task ? task + ' ' + arg : arg
     }
   }
-  return { task, model, maxIter, cwd, help, version }
+  return { task, model, maxIter, cwd, help, version, resume, permission, noMcp, listSessions }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -160,12 +185,20 @@ OPTIONS
   -m, --model <model>    LLM model  (env: OVOGO_MODEL, default: gpt-4o)
   --max-iter <n>         Think-Act-Observe max cycles  (env: OVOGO_MAX_ITER, default: 200)
   --cwd <path>           Working directory  (env: OVOGO_CWD, default: cwd)
+  -p, --permission <m>   Permission mode: auto | ask | deny  (default: auto)
+  --resume <name|last>   Resume a saved conversation  (use --sessions to list)
+  --sessions             List resumable sessions and exit
+  --no-mcp               Skip MCP server connection
   -v, --version          Print version and exit
   -h, --help             Show this help
 
 ENVIRONMENT
   OPENAI_API_KEY         Required — OpenAI API key
   OPENAI_BASE_URL        Optional — compatible endpoint URL
+
+CONFIG (.ovogo/agent.json)
+  model, maxIterations, maxContextTokens, modules, permission,
+  mcpServers, verifyCommands, pricing — see src/config/agentConfig.ts
 
 TOOLS
   Bash          Execute shell commands
@@ -180,7 +213,6 @@ TOOLS
   Agent         Spawn a sub-agent (preset or custom AgentConfig)
   load_skill    Lazily load a skill's full prompt
   TmuxSession   Manage local interactive processes (tmux)
-  ShellSession  Manage inbound persistent shell sessions
 
 REPL COMMANDS
   /plan <task>   Run task in plan mode (read-only analysis + confirm before execute)
@@ -410,10 +442,15 @@ async function runRepl(
   cwd: string,
   skills: Map<string, Skill>,
   hookRunner: { runUserPromptSubmit: (p: string) => void },
+  input: InputHandler,
   consolidate?: { config: EngineConfig; semanticMemory: SemanticMemory; episodicMemory: EpisodicMemory },
+  initialHistory?: OpenAIMessage[],
 ): Promise<void> {
-  const input = new InputHandler()
   const history: OpenAIMessage[] = []
+  if (initialHistory && initialHistory.length > 0) {
+    history.push(...initialHistory)
+    renderer.info(`History: resumed ${initialHistory.length} message(s)`)
+  }
 
   renderer.info(`Type your task and press Enter · /plan /skills /help /exit`)
   renderer.info(`ESC to pause/inject · Ctrl+D to exit`)
@@ -474,6 +511,8 @@ async function runRepl(
         history.length = 0
         history.push(...trimHistoryForNextTurn(newHistory))
         currentHistory = [...history]
+        // Persist a resumable snapshot (--resume can reload this).
+        saveConversation(engine.getSessionDir() ?? '', history, engine.getModel())
 
         if (result.reason === 'interrupted') {
           // ── Soft interrupt: ask user for guidance, then resume ──
@@ -502,6 +541,8 @@ async function runRepl(
         // Normal finish (stop / max_iterations / error)
         const elapsed = ((Date.now() - startMs) / 1000).toFixed(1)
         renderer.info(`Done in ${elapsed}s · ${result.reason}`)
+        const u = engine.getTokenUsage()
+        renderer.usage(u.totalTokens, u.costUsd)
         break
       }
     } catch (err: unknown) {
@@ -607,10 +648,14 @@ async function runTask(
   updateProgressLog(cwd, 'running', task.slice(0, 100))
 
   const startMs = Date.now()
-  const { result } = await engine.runTurn(task, [])
+  const { result, newHistory } = await engine.runTurn(task, [])
+  // Persist a resumable snapshot even for single-shot runs.
+  saveConversation(engine.getSessionDir() ?? '', newHistory, engine.getModel())
   const elapsed = ((Date.now() - startMs) / 1000).toFixed(1)
 
   renderer.info(`Done in ${elapsed}s · ${result.reason}`)
+  const u = engine.getTokenUsage()
+  renderer.usage(u.totalTokens, u.costUsd)
   updateProgressLog(cwd, 'complete', 'done')
 }
 
@@ -619,8 +664,23 @@ async function runTask(
 // ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { task, model, maxIter, cwd: rawCwd, help, version } = parseArgs(process.argv)
+  const { task, model: modelArg, maxIter: maxIterArg, cwd: rawCwd, help, version, resume, permission: permissionArg, noMcp, listSessions: listSessionsFlag } = parseArgs(process.argv)
   const cwd = resolve(rawCwd)
+
+  // --sessions: list resumable sessions and exit
+  if (listSessionsFlag) {
+    const sessions = listSessions(cwd)
+    process.stdout.write(`Resumable sessions in ${cwd}/sessions:\n`)
+    if (sessions.length === 0) {
+      process.stdout.write('  (none)\n')
+    } else {
+      for (const s of sessions) {
+        process.stdout.write(`  ${s.name}  ${s.savedAt}  ${s.messageCount} msgs${s.model ? '  ' + s.model : ''}\n`)
+      }
+      process.stdout.write('\nResume with: --resume <name> | --resume last\n')
+    }
+    process.exit(0)
+  }
 
   // Load skills early so --help can list them
   const skills = loadSkills(cwd)
@@ -644,9 +704,44 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
+  // ── Declarative config (.ovogo/agent.json): model, modules, permission, MCP, … ──
+  const agentConfig = loadAgentConfig(cwd)
+  const model = modelArg ?? agentConfig.model ?? 'gpt-4o'
+  const maxIter = maxIterArg ?? agentConfig.maxIterations ?? 200
+  const maxCtxTokens = contextTokensForModel(model, agentConfig.maxContextTokens)
+  const enabledModules = agentConfig.modules ?? ['memory', 'critic', 'workspace', 'reflection']
+  const verifyCommands = agentConfig.verifyCommands
+  const pricing = agentConfig.pricing
+  const permissionMode = permissionArg ?? agentConfig.permission?.mode ?? 'auto'
+  const permissionRules = agentConfig.permission?.rules ?? []
+
   const renderer = new Renderer()
   renderer.banner(VERSION, model)
   renderer.info(`cwd: ${cwd}`)
+  renderer.info(`permission: ${permissionMode} (${permissionRules.length} rule${permissionRules.length !== 1 ? 's' : ''}) · context: ~${Math.round(maxCtxTokens / 1000)}k tokens`)
+
+  // Shared input handler — used by the REPL and by the interactive permission
+  // approver (so a single readline owns stdin, avoiding interface conflicts).
+  const input = new InputHandler()
+  const logger = new Logger({ component: 'main' })
+
+  // ── Permission approver (interactive y/n/always) ──────────────
+  // Session-scoped "always allow" so a repeated command isn't re-prompted.
+  const alwaysAllow = new Set<string>()
+  const approver: Approver = async (req) => {
+    const ruleKey = `${req.tool}::${req.matchedRule?.pattern ?? '*'}`
+    if (alwaysAllow.has(ruleKey)) return true
+    // Headless / non-TTY: cannot prompt → fail safe (deny).
+    if (!process.stdin.isTTY) return false
+    const fp = req.fingerprint.slice(0, 100)
+    renderer.warn(`审批请求: ${req.tool} — ${fp}`)
+    process.stdout.write(`  允许执行? [y]es / [n]o / [a]lways 允许此类: `)
+    const { text } = await input.readLine('')
+    const a = text.trim().toLowerCase()
+    if (a === 'a' || a === 'always') { alwaysAllow.add(ruleKey); return true }
+    return a === 'y' || a === 'yes'
+  }
+  const permissionChecker = new PermissionChecker(permissionMode, permissionRules, approver)
 
   // Load settings + hooks
   const settings = loadSettings(cwd)
@@ -705,15 +800,15 @@ async function main(): Promise<void> {
 
   // Build the full system prompt once (memory section injected by MemoryModule at boot)
   const skillIndex = formatSkillIndex(skills)
-  const systemPrompt = buildFullSystemPrompt(cwd, ovogoMdFiles, '', taskContext, sessionDir, skillIndex)
+  const systemPrompt = buildFullSystemPrompt(cwd, ovogoMdFiles, taskContext, sessionDir, skillIndex)
 
   // Initialize optimization components
   const eventLog = new EventLog(sessionDir)
   renderer.info(`EventLog: ${eventLog.getFilePath()}`)
 
-  const projectSlug = cwd.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32)
-  const semanticMemory = new SemanticMemory(join(homedir(), '.ovogo', 'projects', projectSlug))
-  const episodicMemory = new EpisodicMemory(join(homedir(), '.ovogo', 'projects', projectSlug))
+  const projectSlugDir = join(homedir(), '.ovogo', 'projects', projectSlug(cwd))
+  const semanticMemory = new SemanticMemory(projectSlugDir)
+  const episodicMemory = new EpisodicMemory(projectSlugDir)
 
   // Register capability modules (factories read from EngineConfig at resolve time)
   globalModuleRegistry.register('memory', (ctx) =>
@@ -725,10 +820,42 @@ async function main(): Promise<void> {
   globalModuleRegistry.register('reflection', (ctx) =>
     new ReflectionModule(ctx.client, ctx.model, ctx.config.semanticMemory!))
 
-  const maxCtxTokens = 200_000 // claude-sonnet-4-x default
+  const maxCtxTokensFinal = maxCtxTokens
+
+  // ── MCP servers (.ovogo/agent.json → mcpServers) ──────────────
+  // Connect to declared stdio MCP servers and surface their tools. A failing
+  // server is logged and skipped (loadMcpServers never throws). --no-mcp opts out.
+  let mcpResult: { tools: Tool[]; close: () => Promise<void>; summary: string[] } | null = null
+  if (!noMcp && agentConfig.mcpServers && Object.keys(agentConfig.mcpServers).length > 0) {
+    mcpResult = await loadMcpServers(agentConfig.mcpServers, logger)
+    for (const line of mcpResult.summary) renderer.info(`  ${line}`)
+    renderer.info(`MCP: ${mcpResult.tools.length} tool(s) loaded`)
+  }
 
   // Create load_skill tool bound to the loaded skills map
   const loadSkillTool = createLoadSkillTool(skills)
+
+  // ── Session resume ────────────────────────────────────────────
+  let resumedHistory: OpenAIMessage[] = []
+  if (resume) {
+    const dir = resolveSessionArg(cwd, resume)
+    if (dir) {
+      const snap = loadConversation(dir)
+      if (snap && snap.messages.length > 0) {
+        resumedHistory = snap.messages
+        renderer.info(`Resumed: ${snap.messages.length} message(s) from ${dir}`)
+      } else {
+        renderer.warn(`--resume: no conversation found in ${dir}`)
+      }
+    } else {
+      renderer.warn(`--resume: no session matching "${resume}"`)
+    }
+  }
+
+  const extraTools: Tool[] = [
+    ...(skills.size > 0 ? [loadSkillTool] : []),
+    ...(mcpResult?.tools ?? []),
+  ]
 
   const config: EngineConfig = {
     model,
@@ -736,25 +863,28 @@ async function main(): Promise<void> {
     baseURL: process.env.OPENAI_BASE_URL,
     maxIterations: maxIter,
     cwd,
-    permissionMode: 'auto',
+    permissionMode,
     hookRunner,
     systemPrompt,
     sessionDir,
-    maxContextTokens: maxCtxTokens,
+    maxContextTokens: maxCtxTokensFinal,
     temperature: process.env.OVOGO_TEMPERATURE ? parseFloat(process.env.OVOGO_TEMPERATURE) : undefined,
     maxOutputTokens: process.env.OVOGO_MAX_OUTPUT_TOKENS ? parseInt(process.env.OVOGO_MAX_OUTPUT_TOKENS, 10) : undefined,
     eventLog,
     semanticMemory,
     episodicMemory,
-    extraTools: skills.size > 0 ? [loadSkillTool] : [],
-    enabledModules: ['memory', 'critic', 'workspace', 'reflection'],
+    extraTools,
+    enabledModules,
+    permissionChecker,
+    pricing,
+    verifyCommands,
   }
 
   // Plan-mode config: read-only analysis, no reflection (plans aren't completed work)
   const planConfig: EngineConfig = {
     ...config,
     planMode: true,
-    enabledModules: ['memory', 'workspace'],
+    enabledModules: enabledModules.filter(m => m !== 'critic' && m !== 'reflection'),
   }
 
   const engine = new ExecutionEngine(config, renderer)
@@ -766,12 +896,13 @@ async function main(): Promise<void> {
     renderer,
   )
 
-  // Cleanup tmux session on exit
+  // Cleanup tmux session + MCP servers on exit
   let cleanedUp = false
   const cleanup = () => {
     if (cleanedUp) return
     cleanedUp = true
     tmuxLayout.destroy()
+    mcpResult?.close().catch(() => undefined)
   }
   process.on('exit', cleanup)
   process.on('SIGTERM', () => { cleanup(); process.exit(0) })
@@ -782,6 +913,7 @@ async function main(): Promise<void> {
     const piped = await readStdin()
     if (piped) {
       hookRunner.runUserPromptSubmit(piped)
+      input.close()
       await runTask(engine, renderer, piped, cwd)
       return
     }
@@ -790,14 +922,15 @@ async function main(): Promise<void> {
   // Single task from args?
   if (task) {
     hookRunner.runUserPromptSubmit(task)
+    input.close()
     await runTask(engine, renderer, task, cwd)
     return
   }
 
   // Interactive REPL
-  await runRepl(engine, planConfig, renderer, cwd, skills, hookRunner, {
+  await runRepl(engine, planConfig, renderer, cwd, skills, hookRunner, input, {
     config, semanticMemory, episodicMemory,
-  })
+  }, resumedHistory)
 }
 
 main().catch((err: unknown) => {

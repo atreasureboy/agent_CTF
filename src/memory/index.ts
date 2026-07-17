@@ -19,8 +19,12 @@ interface SemanticEntry {
   confidence: number
 }
 
-/** Compute the project slug the same way bin/ovogogogo.ts does */
-function projectSlug(cwd: string): string {
+/**
+ * Compute a stable filesystem-safe project slug from a working directory.
+ * This is the SINGLE definition — bin/ovogogogo.ts imports it instead of
+ * duplicating the transform, so memory dirs can never diverge.
+ */
+export function projectSlug(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 32)
 }
 

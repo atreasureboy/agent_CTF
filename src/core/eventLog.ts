@@ -18,6 +18,10 @@ export type EventType =
   | 'memory_write'
   | 'context_compact'
   | 'module_flag'
+  | 'module_error'
+  | 'permission'
+  | 'token_usage'
+  | 'log'
   | 'user_input'
   | 'user_interrupt'
 
