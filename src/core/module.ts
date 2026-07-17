@@ -50,6 +50,8 @@ export interface ModuleIterationContext {
   iteration: number
   messages: OpenAIMessage[]
   abortSignal: AbortSignal
+  /** Audit log — modules should record non-fatal failures here (e.g. LLM errors). */
+  eventLog?: EventLog
 }
 
 /** Return value of module.onIteration() — can inject a message into the conversation */

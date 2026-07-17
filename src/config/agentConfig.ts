@@ -98,9 +98,19 @@ export function contextTokensForModel(model: string, override?: number): number 
 }
 
 function tryParse(path: string): AgentConfigFile {
+  if (!existsSync(path)) return {}
+  let raw: string
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as AgentConfigFile
+    raw = readFileSync(path, 'utf8')
   } catch {
+    return {}
+  }
+  try {
+    return JSON.parse(raw) as AgentConfigFile
+  } catch (err) {
+    process.stderr.write(
+      `[agentConfig] warning: ${path} has invalid JSON (${(err as Error).message}); ignoring this file\n`,
+    )
     return {}
   }
 }

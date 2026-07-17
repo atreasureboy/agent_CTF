@@ -68,9 +68,19 @@ export interface OvogoSettings {
 }
 
 function tryParse(path: string): OvogoSettings {
+  if (!existsSync(path)) return {}
+  let raw: string
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as OvogoSettings
+    raw = readFileSync(path, 'utf8')
   } catch {
+    return {}
+  }
+  try {
+    return JSON.parse(raw) as OvogoSettings
+  } catch (err) {
+    process.stderr.write(
+      `[settings] warning: ${path} has invalid JSON (${(err as Error).message}); ignoring this file\n`,
+    )
     return {}
   }
 }

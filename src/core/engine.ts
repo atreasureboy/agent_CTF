@@ -761,6 +761,7 @@ export class ExecutionEngine {
             iteration: iterations,
             messages,
             abortSignal: turnAbortController.signal,
+            eventLog: this.eventLog,
           })
           if (iterResult?.injectMessage) {
             const msg = iterResult.injectMessage
