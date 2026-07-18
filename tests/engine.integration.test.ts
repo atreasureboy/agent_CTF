@@ -13,7 +13,7 @@ import { tmpdir } from 'os'
 import { ExecutionEngine } from '../src/core/engine.js'
 import { EventLog } from '../src/core/eventLog.js'
 import { Renderer } from '../src/ui/renderer.js'
-import { PermissionChecker } from '../src/core/permission.js'
+import { PermissionChecker, type Approver } from '../src/core/permission.js'
 import type { Tool, EngineConfig } from '../src/core/types.js'
 import {
   createMockClient,
@@ -157,6 +157,38 @@ describe('ExecutionEngine runTurn — permission gate', () => {
     const toolMsg = newHistory.find(m => m.role === 'tool')
     expect(toolMsg).toBeDefined()
     expect(String(toolMsg!.content)).toContain('Permission denied')
+  })
+
+  it('ask-mode: invokes the injected approver and runs the tool when approved', async () => {
+    const rec = makeRecordingTool()
+    const seen: string[] = []
+    const approver: Approver = (req) => {
+      seen.push(`${req.tool}:${req.fingerprint}`)
+      return Promise.resolve(true)
+    }
+    const checker = new PermissionChecker('ask', [], approver) // no rules → default ask
+    const { engine } = makeEngine(
+      [toolCallResponse([{ name: 'Recorder', arguments: { input: 'z' } }]), textResponse('ok')],
+      { extraTools: [rec.tool], permissionChecker: checker },
+    )
+    await engine.runTurn('use it', [])
+    expect(seen).toHaveLength(1) // approver was consulted
+    expect(seen[0]).toContain('Recorder')
+    expect(rec.calls).toEqual([{ input: 'z' }]) // tool actually ran
+  })
+
+  it('ask-mode: blocks the tool when the approver returns false', async () => {
+    const rec = makeRecordingTool()
+    const approver: Approver = () => Promise.resolve(false)
+    const checker = new PermissionChecker('ask', [], approver)
+    const { engine } = makeEngine(
+      [toolCallResponse([{ name: 'Recorder', arguments: { input: 'z' } }]), textResponse('ok')],
+      { extraTools: [rec.tool], permissionChecker: checker },
+    )
+    const { newHistory } = await engine.runTurn('use it', [])
+    expect(rec.calls).toHaveLength(0) // approver said no → never ran
+    const toolMsg = newHistory.find(m => m.role === 'tool')
+    expect(String(toolMsg!.content)).toContain('denied by user')
   })
 })
 
