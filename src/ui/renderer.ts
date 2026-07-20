@@ -193,7 +193,7 @@ export class Renderer {
     // Tagline
     this.write(
       `  ${DIM}Unified Agent Harness — ` +
-      `${FG.brightMagenta}module-driven autonomous coding${RESET}${DIM}${RESET}\n`,
+      `${FG.brightMagenta}module-driven autonomous agent${RESET}${DIM}${RESET}\n`,
     )
     this.write('\n')
   }

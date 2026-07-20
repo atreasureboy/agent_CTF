@@ -1,7 +1,7 @@
 {
   "name": "ovogogogo",
   "version": "0.1.0",
-  "description": "Lightweight OpenAI-compatible autonomous code execution engine",
+  "description": "Lightweight OpenAI-compatible autonomous agent base",
   "type": "module",
   "main": "dist/bin/ovogogogo.js",
   "bin": {

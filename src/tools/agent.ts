@@ -39,10 +39,13 @@ function currentDepth(): number {
 
 // ── Verification gate (AgentOS §6 "No Tuple, No Merge") ─────────────────────
 
-/** Fallback verification commands when none are configured on the engine. */
-const DEFAULT_VERIFY_COMMANDS = [
-  'npx tsc --noEmit 2>&1',
-]
+/**
+ * Fallback verification commands when none are configured on the engine.
+ * A neutral base defaults to NO verification — TypeScript type-checking was
+ * coding-specific. Consumers configure verifyCommands via .ovogo/agent.json
+ * (e.g. ["npm run typecheck", "npm test"]) or EngineConfig.verifyCommands.
+ */
+const DEFAULT_VERIFY_COMMANDS: string[] = []
 
 /**
  * Run verification commands and return results.

@@ -19,6 +19,8 @@ ovolv999 是一个**纯 Agent 基座框架**，仿 Claude Code，核心设计参
 
 **所有 Agent 共享同一套运行时（Harness），通过启用/禁用模块获得差异化能力。** 不存在 `agent_type` 枚举——角色是 `AgentConfig`（identity + modules + tools）的组合配置。
 
+> **领域中立**：默认 system prompt / banner / verify 闸门均不含 coding 假设——基座不预设"编码助手"身份。文件工具（Read/Write/Edit/Glob/Grep）虽已注册可用，但身份、职责、工作准则都是领域无关的。要做编码 agent，通过 `AgentConfig.identity` 或 `OVOGO.md` 叠加编码身份即可。
+
 - **统一 Harness** — 所有 Agent 走同一套 Boot Sequence，按模块配置差异化执行
 - **模块化能力** — memory / critic / workspace / reflection 四个可组合模块
 - **配置驱动角色** — 探索者、规划者、审查者 = 不同 AgentConfig 配置实例，零代码新增角色
@@ -29,7 +31,7 @@ ovolv999 是一个**纯 Agent 基座框架**，仿 Claude Code，核心设计参
 - **Token/Cost 可观测** — 流式 usage 聚合 + 单价配置 → 每轮 token 计数与 USD 估算
 - **Memory 三原语** — `memory_write` / `memory_search` / `memory_recall`，Agent 主动操作长时记忆
 - **来源归因 + 冲突解决** — `user_stated > agent_inferred > tool_observed` 优先级链
-- **可配置验证闸门** — 子 agent 完成代码修改后自动跑 `verifyCommands`（默认 `tsc --noEmit`，可在 agent.json 改）
+- **可配置验证闸门** — 子 agent 完成任务后自动跑 `verifyCommands`（默认为空——基座不预设；在 agent.json 配如 `["npm run typecheck"]`）
 - **Session 整合** — REPL 退出时自动总结 episodic 经验写入 SemanticMemory（关闭学习闭环）
 - **调用链追踪** — 子 agent spawn 深度追踪（max 5，基于 AsyncLocalStorage 并发安全），防递归 + 审计
 - **Skill 懒加载** — Boot 时注入技能索引，LLM 按需通过 `load_skill` 加载
@@ -283,7 +285,7 @@ Agent({
   description: "实现登录功能",
   prompt: "...",
   subagent_type: "general-purpose",
-  verify: true   // ← 完成后跑 verifyCommands（默认 tsc --noEmit，可在 agent.json 改）
+  verify: true   // ← 完成后跑 verifyCommands（默认空；在 agent.json 配如 ["npm run typecheck"])
 })
 // 结果包含:
 // [验证闸门] ✓ typecheck — passed
@@ -575,7 +577,7 @@ ovolv999/
 | Boot 时相关性检索 | `extractKeywords` + `scoreRelevance` → top-10 |
 | Memory 整合 | `consolidateSession` — REPL 退出时 LLM 总结 |
 | Skill 懒加载 | `load_skill` + `formatSkillIndex` + 权限检查 |
-| 验证闸门 (No Tuple No Merge) | `verify:true` → `verifyCommands`（可配置，默认 tsc） |
+| 验证闸门 (No Tuple No Merge) | `verify:true` → `verifyCommands`（可配置，基座默认空） |
 | 调用链追踪 + 循环检测 | AsyncLocalStorage depth max 5 + EventLog（并发安全） |
 | 生命周期 Hooks | 6 种 Hook 类型 |
 | Trajectory 捕获 | `boot_context` + `invoke_sent/completed` + EventLog |
