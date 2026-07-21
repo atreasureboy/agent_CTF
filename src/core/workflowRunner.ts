@@ -47,6 +47,16 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
     return this.opts.context
   }
 
+  /**
+   * Resolve the current agent id. Per §十一 the runner must NOT keep a stale
+   * cached defaultAgentId — it always asks the broker. The `opts.defaultAgentId`
+   * is preserved as a fallback for first-call bootstrap before any profile
+   * change has been recorded.
+   */
+  private currentAgentId(): string {
+    return this.broker.getProfile().id ?? this.opts.defaultAgentId
+  }
+
   async runStep(
     step: Extract<WorkflowStep, { kind: 'tool' | 'shell' }>,
     ctx: RunContext,
@@ -67,11 +77,21 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
       }
       input = { command, description: `${step.id} (workflow step)` }
     }
+    // §十 — refuse any input that tries to escape the workspace via `..`.
+    // We surface this as a structured error so the engine sees `isError: true`.
+    const escapeErr = detectPathEscape(input, this.opts.context)
+    if (escapeErr) {
+      return {
+        content: `Workflow step "${step.id}" refused: ${escapeErr}`,
+        isError: true,
+        artifactIds: [],
+      }
+    }
     const r = await this.broker.execute(toolId, input, {
       cwd: this.opts.context.workspaceDir,
       sessionDir: this.opts.context.sessionDir,
       taskId: ctx.taskId || this.opts.taskId,
-      agentId: this.opts.defaultAgentId,
+      agentId: this.currentAgentId(),
       apiConfig: undefined,
       signal: this.opts.context.abortSignal,
     })
@@ -101,10 +121,56 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
         cwd: this.opts.context.workspaceDir,
         sessionDir: this.opts.context.sessionDir,
         taskId: ctx.taskId || this.opts.taskId,
-        agentId: this.opts.defaultAgentId,
+        agentId: this.currentAgentId(),
         apiConfig: undefined,
         signal: this.opts.context.abortSignal,
       },
     )
   }
+}
+
+/**
+ * Scan a tool-step input for path arguments that try to escape the task
+ * workspace. Returns null when safe; a human-readable reason otherwise.
+ *
+ * The check is shallow: it inspects string values for `..` segments. Tools
+ * with their own path semantics (e.g. Bash commandPolicy) should still
+ * apply their own checks — this is a fast-path guard for declarative
+ * workflow inputs.
+ */
+function detectPathEscape(
+  input: Record<string, unknown>,
+  context: { workspaceDir: string; artifactDir: string },
+): string | null {
+  const safeRoots = [context.workspaceDir, context.artifactDir]
+  function checkString(s: string): string | null {
+    if (s.includes('..' + '/') || s.includes('..' + '\\') || s.endsWith('..')) {
+      // Allow `..` only when it stays inside one of the safe roots.
+      // For declarative workflow inputs we are conservative: any `..`
+      // segment is rejected.
+      return `path segment ".." is not permitted in workflow inputs (rejected: ${JSON.stringify(s).slice(0, 80)})`
+    }
+    return null
+  }
+  function walk(value: unknown): string | null {
+    if (typeof value === 'string') return checkString(value)
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        const r = walk(v)
+        if (r) return r
+      }
+      return null
+    }
+    if (value && typeof value === 'object') {
+      for (const v of Object.values(value as Record<string, unknown>)) {
+        const r = walk(v)
+        if (r) return r
+      }
+    }
+    return null
+  }
+  const r = walk(input)
+  if (r) return r
+  void safeRoots // reserved for future "is path within X" check on resolved paths
+  return null
 }

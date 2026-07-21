@@ -49,6 +49,7 @@ export type CTFTaskEvent =
   | { type: 'HYPOTHESIS_ADDED'; hypothesisId: string }
   | { type: 'ATTEMPT_RECORDED'; attemptId: string }
   | { type: 'JOB_RECORDED'; jobId: string }
+  | { type: 'ACTIVE_JOBS_REPLACED'; jobs: import('./taskState.js').JobRecord[] }
   | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
 
 /** A subscriber receives every event AFTER it has been applied. */

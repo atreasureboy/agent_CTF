@@ -30,6 +30,7 @@ import type { ArtifactMeta } from '../artifacts.js'
 import type { WorkflowDefinition, WorkflowRunResult } from '../workflowDefinition.js'
 import { createHarness, type HarnessBundle } from '../harness.js'
 import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
+import { checkRegistryAvailability } from '../toolBroker.js'
 import type { Renderer } from '../../ui/renderer.js'
 import type OpenAI from 'openai'
 
@@ -184,6 +185,28 @@ export class CTFTaskOrchestrator {
     // Replace the main harness's context with the orchestrator-owned one so
     // the abort signal is shared.
     harness.context.abortSignal
+
+    // Wire the BackgroundJobManager so every spawned / completed / failed /
+    // cancelled job is mirrored into CTFTaskState.activeJobs (§七.10).
+    const jm = harness.jobManager
+    const origSpawn = jm.spawn.bind(jm)
+    ;(jm as unknown as { spawn: typeof origSpawn }).spawn = async (spec: Parameters<typeof origSpawn>[0]) => {
+      const job = await origSpawn(spec)
+      orch.recordJobStarted(job.id, spec.agentId)
+      // Poll-style mirror: each status transition the manager records is
+      // reflected. This avoids a tighter coupling between the manager and
+      // the orchestrator.
+      const tick = async (): Promise<void> => {
+        const j = jm.status(job.id)
+        if (!j) return
+        if (j.status === 'success') orch.recordJobCompleted(job.id)
+        else if (j.status === 'failed') orch.recordJobFailed(job.id)
+        else if (j.status === 'cancelled') orch.recordJobCancelled(job.id)
+        else setTimeout(tick, 25)
+      }
+      void tick()
+      return job
+    }
     return orch
   }
 
@@ -222,6 +245,65 @@ export class CTFTaskOrchestrator {
 
   recordAttempt(a: CTFAttempt): void {
     this.store.apply({ type: 'ATTEMPT_RECORDED', attemptId: a.id })
+  }
+
+  /**
+   * Record a background job's task-level state. The orchestrator maintains
+   * a `JobRecord` mirror of every job it spawned so that callers can inspect
+   * `state.activeJobs` and so that the terminal-task guard can verify no
+   * late updates sneak in after TASK_COMPLETED.
+   */
+  recordJobStarted(jobId: string, agentRunId?: string, workflowRunId?: string): void {
+    const state = this.store.getState()
+    const rec = {
+      id: jobId,
+      taskId: state.taskId,
+      agentRunId,
+      workflowRunId,
+      status: 'pending' as const,
+      startedAt: Date.now(),
+    }
+    this.store.apply({ type: 'JOB_RECORDED', jobId })
+    // Mutate activeJobs directly via a fresh state — the store doesn't have
+    // an event for this today; expose a dedicated event instead so the
+    // reducer is the single mutation point.
+    this.setActiveJobs([...state.activeJobs, rec])
+  }
+
+  recordJobCompleted(jobId: string): void {
+    const state = this.store.getState()
+    this.setActiveJobs(
+      state.activeJobs.map((j) =>
+        j.id === jobId ? { ...j, status: 'success' as const, endedAt: Date.now() } : j,
+      ),
+    )
+  }
+
+  recordJobFailed(jobId: string): void {
+    const state = this.store.getState()
+    this.setActiveJobs(
+      state.activeJobs.map((j) =>
+        j.id === jobId ? { ...j, status: 'failed' as const, endedAt: Date.now() } : j,
+      ),
+    )
+  }
+
+  recordJobCancelled(jobId: string): void {
+    const state = this.store.getState()
+    this.setActiveJobs(
+      state.activeJobs.map((j) =>
+        j.id === jobId ? { ...j, status: 'cancelled' as const, endedAt: Date.now() } : j,
+      ),
+    )
+  }
+
+  /** Push an updated `activeJobs[]` snapshot through the store. Used by the
+   *  `recordJob*` helpers above to keep `CTFTaskState.activeJobs` synced
+   *  with the BackgroundJobManager. */
+  private setActiveJobs(jobs: import('./taskState.js').JobRecord[]): void {
+    // We use a synthesized "phantom" event that the reducer handles by
+    // overwriting `activeJobs`. This keeps the single-mutation invariant.
+    this.store.apply({ type: 'ACTIVE_JOBS_REPLACED', jobs })
   }
 
   // ── Workflow runs ────────────────────────────────────────────────────
@@ -430,41 +512,75 @@ export class CTFTaskOrchestrator {
    *   5. Fallback: return null with a clear reason — NO silent downgrade to a
    *      wrong agent.
    *
-   * Tool availability is checked against the Agent's allowedTools + the
-   * profile's deniedTools. We do not check binary presence here — that is
-   * the broker's job at execution time.
+   * Binary availability is verified for the agent's `requiredTools` (tools
+   * whose metadata declares required binaries). Agents with any missing
+   * required binary are skipped so the spawned specialist never starts in a
+   * broken state.
    */
   private selectAgentForCapability(
     capability: string,
     fromAgentRunId: string,
     explicitAgentId?: string,
   ): { agentId: string | null; reason?: string } {
-    // 1. Explicit override (must be registered).
+    // 1. Explicit override (must be registered + have required binaries).
     if (explicitAgentId) {
-      if (getBuiltinProfile(explicitAgentId) || PROFILES[explicitAgentId]) {
-        return { agentId: explicitAgentId }
+      if (!getBuiltinProfile(explicitAgentId) && !PROFILES[explicitAgentId]) {
+        return { agentId: null, reason: `requestedAgentId "${explicitAgentId}" not registered` }
       }
-      return { agentId: null, reason: `requestedAgentId "${explicitAgentId}" not registered` }
+      const reason = this.checkAgentBinaryAvailability(explicitAgentId)
+      if (reason) return { agentId: null, reason }
+      return { agentId: explicitAgentId }
     }
 
-    // 2. Origin profile's preference list.
+    // 2. Origin profile's preference list, filtered for binary availability.
     const fromRun = this.store.getState().activeAgentRuns.find(
       (r) => r.id === fromAgentRunId,
     )
     const fromProfile = fromRun ? this.resolveProfile(fromRun.profileId) : undefined
     if (fromProfile?.preferredAgentsForHandoff) {
       for (const pref of fromProfile.preferredAgentsForHandoff) {
-        if (getBuiltinProfile(pref) || PROFILES[pref]) return { agentId: pref }
+        if (!getBuiltinProfile(pref) && !PROFILES[pref]) continue
+        if (!this.checkAgentBinaryAvailability(pref)) return { agentId: pref }
       }
     }
 
-    // 3. Built-in profile match.
-    if (getBuiltinProfile(capability)) return { agentId: capability }
-    // 4. Dynamically registered profile match.
-    if (PROFILES[capability]) return { agentId: capability }
+    // 3. Built-in profile match + binary availability.
+    if (getBuiltinProfile(capability)) {
+      if (!this.checkAgentBinaryAvailability(capability)) return { agentId: capability }
+    }
+    // 4. Dynamically registered profile match + binary availability.
+    if (PROFILES[capability]) {
+      if (!this.checkAgentBinaryAvailability(capability)) return { agentId: capability }
+    }
 
     // 5. No silent fallback.
-    return { agentId: null, reason: `no profile registers capability "${capability}"` }
+    return { agentId: null, reason: `no profile registers capability "${capability}" with all required binaries` }
+  }
+
+  /**
+   * Returns null when all required binaries for `agentId`'s allowedTools are
+   * available; returns a reason string otherwise. Uses the existing
+   * `checkRegistryAvailability` to avoid duplicating binary-check logic.
+   *
+   * IMPORTANT: tools that are listed in the profile but NOT registered in
+   * the broker's registry are NOT counted as failures here. An unregistered
+   * tool id is a configuration drift, not a binary issue — the broker will
+   * deny the call when the agent tries to use it. This method only checks
+   * for missing *binaries*.
+   */
+  private checkAgentBinaryAvailability(agentId: string): string | null {
+    const profile = getBuiltinProfile(agentId) ?? PROFILES[agentId]
+    if (!profile) return `profile "${agentId}" not found`
+    const toolIds = (profile.allowedTools ?? []).filter((id) =>
+      this.mainHarness.registry.has(id),
+    )
+    if (toolIds.length === 0) return null
+    const issues = checkRegistryAvailability(this.mainHarness.registry, toolIds)
+    // Filter out unknown-tool markers — they don't represent binary issues.
+    const realIssues = issues.filter((i) => !i.missingBinaries.includes('__unknown_tool__'))
+    if (realIssues.length === 0) return null
+    const missing = realIssues.flatMap((i) => i.missingBinaries).join(', ')
+    return `agent "${agentId}" missing required binaries: ${missing}`
   }
 
   /** Execute the Specialist. This is the only function in the codebase that
@@ -534,6 +650,7 @@ export class CTFTaskOrchestrator {
     const producedFindingIds: string[] = []
     const producedArtifactIds: string[] = []
 
+    let failureError: Error | undefined
     try {
       let result: import('../types.js').TurnResult & { newHistory: import('../types.js').OpenAIMessage[] }
       try {
@@ -543,8 +660,11 @@ export class CTFTaskOrchestrator {
           { systemPromptAddon: addon },
         )
       } catch (err) {
-        this.failAgentRun(agentRunId, handoffId, (err as Error).message)
-        return failedResult(profile.id, (err as Error).message)
+        const wrapped = this.wrapError('specialist turn threw', err)
+        failureError = wrapped
+        // Fall through to the outer catch which handles the state transition
+        // exactly once.
+        throw wrapped
       }
 
       if (!result.stopped) {
@@ -600,14 +720,29 @@ export class CTFTaskOrchestrator {
         producedArtifactIds,
       }
     } catch (err) {
-      this.failAgentRun(agentRunId, handoffId, (err as Error).message)
-      return failedResult(profile.id, (err as Error).message)
+      // §十四 — record the failure exactly once. The inner catch may have
+      // already captured the wrapped error; we use that to preserve the
+      // original `cause` chain. Either way, the lifecycle must close.
+      const e = failureError ?? (err instanceof Error ? err : new Error(String(err)))
+      this.failAgentRun(agentRunId, handoffId, e.message)
+      return failedResult(profile.id, e.message)
     }
   }
 
   private failAgentRun(agentRunId: string, handoffId: string, error: string): void {
     this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error })
     this.store.apply({ type: 'SPECIALIST_FAILED', handoffId, agentRunId, error })
+  }
+
+  /**
+   * Wrap a low-level Error with a user-friendly summary and a `cause` link
+   * back to the original exception. §十四.13 — errors must preserve the
+   * cause chain for diagnostics.
+   */
+  private wrapError(userSummary: string, cause: unknown): Error {
+    const msg = cause instanceof Error ? cause.message : String(cause)
+    const err = new Error(`${userSummary}: ${msg}`, { cause: cause instanceof Error ? cause : new Error(msg) })
+    return err
   }
 
   private cancelAgentRun(agentRunId: string, handoffId: string, reason: string): void {

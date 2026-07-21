@@ -325,6 +325,9 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'JOB_RECORDED':
       return state
 
+    case 'ACTIVE_JOBS_REPLACED':
+      return { ...state, activeJobs: event.jobs }
+
     case 'TASK_COMPLETED':
       return {
         ...state,
