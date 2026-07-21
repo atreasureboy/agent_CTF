@@ -148,6 +148,7 @@ export class CTFTaskStateStore {
         'WORKFLOW_STARTED',
         'WORKFLOW_COMPLETED',
         'WORKFLOW_FAILED',
+        'WORKFLOW_CANCELLED',
         'AGENT_RUN_STARTED',
         'AGENT_RUN_COMPLETED',
         'AGENT_RUN_FAILED',
@@ -244,15 +245,27 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     }
 
     case 'WORKFLOW_COMPLETED':
-    case 'WORKFLOW_FAILED': {
+    case 'WORKFLOW_FAILED':
+    case 'WORKFLOW_CANCELLED': {
       const workflowRuns = state.workflowRuns.map((r) =>
         r.id === event.workflowRunId
           ? {
               ...r,
-              status: event.type === 'WORKFLOW_COMPLETED' ? 'completed' as const : 'failed' as const,
+              status:
+                event.type === 'WORKFLOW_COMPLETED'
+                  ? ('completed' as const)
+                  : event.type === 'WORKFLOW_FAILED'
+                    ? ('failed' as const)
+                    : ('cancelled' as const),
               completedAt: Date.now(),
-              summary: event.type === 'WORKFLOW_COMPLETED' ? event.summary : undefined,
-              error: event.type === 'WORKFLOW_FAILED' ? event.error : undefined,
+              summary:
+                event.type === 'WORKFLOW_COMPLETED' ? event.summary : undefined,
+              error:
+                event.type === 'WORKFLOW_FAILED'
+                  ? event.error
+                  : event.type === 'WORKFLOW_CANCELLED'
+                    ? event.reason
+                    : undefined,
             }
           : r,
       )

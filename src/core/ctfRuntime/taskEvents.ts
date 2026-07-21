@@ -32,6 +32,7 @@ export type CTFTaskEvent =
   | { type: 'WORKFLOW_STARTED'; workflowRun: WorkflowRunRecord }
   | { type: 'WORKFLOW_COMPLETED'; workflowRunId: string; summary?: string }
   | { type: 'WORKFLOW_FAILED'; workflowRunId: string; error: string }
+  | { type: 'WORKFLOW_CANCELLED'; workflowRunId: string; reason: string }
   | { type: 'HANDOFF_REQUESTED'; handoff: HandoffRecord }
   | { type: 'HANDOFF_APPROVED'; handoffId: string; selectedAgentId: string }
   | { type: 'HANDOFF_REJECTED'; handoffId: string; reason: string }

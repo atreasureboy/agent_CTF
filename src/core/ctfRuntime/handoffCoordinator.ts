@@ -112,6 +112,36 @@ export class HandoffCoordinator {
   }
 
   /**
+   * Cancel every non-terminal handoff (requested/approved/running) and wait
+   * for the running specialist promises to settle. The abort signal is
+   * already wired through `deps.abort` into each specialist's context, so
+   * the specialist will throw or short-circuit once the parent's controller
+   * fires — the wrapper in runSpecialist catches and emits
+   * SPECIALIST_CANCELLED. We don't send the event ourselves; the handoff FSM
+   * reducer moves running→cancelled via SPECIALIST_CANCELLED only.
+   *
+   * For requested/approved handoffs (no specialist running yet) we emit
+   * HANDOFF_CANCELLED directly.
+   */
+  async cancelAll(reason: string): Promise<void> {
+    for (const h of this.deps.store.getState().handoffs) {
+      if (h.status === 'requested' || h.status === 'approved') {
+        try {
+          this.deps.store.apply({
+            type: 'HANDOFF_CANCELLED',
+            handoffId: h.id,
+            reason,
+          })
+        } catch {
+          /* terminal — skip */
+        }
+      }
+    }
+    // running handoffs: abort signal already in flight, just wait for them.
+    await Promise.allSettled([...this.inFlight.values()])
+  }
+
+  /**
    * Approve and run. Returns the AgentRunResult of the specialist.
    * Idempotent: re-approving a terminal handoff returns a synthetic stub;
    * re-approving while a specialist is running awaits the in-flight run.

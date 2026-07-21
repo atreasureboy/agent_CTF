@@ -294,10 +294,15 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     options: { systemPromptAddon?: string } = {},
   ): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
+    // §十五 — read the active Profile from the broker each turn so a
+    // switchProfile() call between turns is reflected in the next prompt.
+    // The closure-captured `profile` is only the initial fallback (used when
+    // no ProfileStore has been wired, e.g. legacy callers).
+    const currentProfile = broker.getProfile?.() ?? profile
     const baseSystemPrompt = composeSystemPrompt({
       cwd: input.cwd,
       taskWorkspaceDir: taskWorkspace.paths.workspaceDir,
-      profile,
+      profile: currentProfile,
     })
     const systemPrompt = options.systemPromptAddon
       ? `${baseSystemPrompt}\n\n${options.systemPromptAddon}`
@@ -313,7 +318,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       permissionMode: 'auto',
       broker,
       taskId,
-      agentId: profile.id,
+      agentId: currentProfile.id,
       eventLog: undefined,
       systemPrompt,
     }

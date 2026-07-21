@@ -94,6 +94,7 @@ export class CTFTaskOrchestrator {
   private readonly workflowUnsubscribes = new Map<string, () => void>()
   private readonly locks = new Map<string, Promise<unknown>>()
   private disposed = false
+  private cancelled = false
 
   private constructor(
     store: CTFTaskStateStore,
@@ -369,11 +370,21 @@ export class CTFTaskOrchestrator {
             producerProfileId: currentProfileId,
           })
           for (const ev of projection.events) this.store.apply(ev)
-          this.store.apply({
-            type: 'WORKFLOW_COMPLETED',
-            workflowRunId: id,
-            summary: `${r.status} (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
-          })
+          if (r.status === 'cancelled') {
+            // §九 — cancel path emits WORKFLOW_CANCELLED so the run record
+            // reflects the actual outcome (not 'completed').
+            this.store.apply({
+              type: 'WORKFLOW_CANCELLED',
+              workflowRunId: id,
+              reason: 'workflow cancelled via parent signal',
+            })
+          } else {
+            this.store.apply({
+              type: 'WORKFLOW_COMPLETED',
+              workflowRunId: id,
+              summary: `${r.status} (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
+            })
+          }
           return r
         } catch (err) {
           this.store.apply({
@@ -491,14 +502,59 @@ export class CTFTaskOrchestrator {
   }
 
   // ── Cancel / dispose ─────────────────────────────────────────────────
-  cancel(reason: string): Promise<void> {
-    if (this.disposed) return Promise.resolve()
+  /**
+   * Cancel the entire task:
+   *   1. Abort the Task-level AbortController → propagates to engine, workflows,
+   *      tools, jobs, and any running specialist.
+   *   2. Cancel all BackgroundJobs directly.
+   *   3. Cancel all in-flight handoffs (sends HANDOFF_CANCELLED for each active
+   *      handoff, then awaits the running specialist promise — abort signal
+   *      already wired to child context).
+   *   4. Cancel all in-flight workflows (engine returns status='cancelled' once
+   *      signal fires → reducer records WORKFLOW_CANCELLED).
+   *   5. Fire TASK_COMPLETED with status='cancelled' so phase converges to
+   *      'cancelled' and state.completion is populated.
+   *
+   * Idempotent: a second cancel() with the task already cancelled (or
+   * disposed) is a no-op.
+   */
+  async cancel(reason: string): Promise<void> {
+    if (this.disposed || this.cancelled) return
+    this.cancelled = true
+
+    // 1. Abort the Task-level signal — propagates everywhere.
     this.abort.controller.abort(reason)
+
+    // 2. Cancel background jobs (they emit their own JOB_CANCELLED events).
     this.mainHarness.cancelAllJobs(reason)
+
+    // 3. Cancel in-flight handoffs / specialists. cancelAll sends
+    //    HANDOFF_CANCELLED for every non-terminal handoff and awaits the
+    //    specialist promise so dispose can run cleanly.
+    await this.handoffCoordinator.cancelAll(reason)
+
+    // 4. Touch every in-flight workflow — abort signal already propagates
+    //    through the workflow runner, the engine will resolve the workflow
+    //    promise with status='cancelled', and our `runWorkflow` wrapper
+    //    emits WORKFLOW_CANCELLED. We swallow the rejection so a failed
+    //    cancel doesn't escape the cancel() call.
     for (const [, runP] of this.inFlightWorkflows) {
       void runP.catch(() => {})
     }
-    return Promise.resolve()
+
+    // 5. Converge to 'cancelled'. If the task already completed (e.g. a
+    //    workflow raced ahead and finished), TASK_COMPLETED is a no-op
+    //    because guardAcceptsEvent refuses to overwrite a previous completion.
+    try {
+      this.store.apply({
+        type: 'TASK_COMPLETED',
+        status: 'cancelled',
+        reason,
+      })
+    } catch {
+      // TaskAlreadyCompletedError — the task finished before cancel landed.
+      // Acceptable: completion status reflects the race winner.
+    }
   }
 
   async dispose(): Promise<void> {
