@@ -342,6 +342,16 @@ export class CTFTaskOrchestrator {
               workflowRunId: id,
               reason: 'workflow cancelled via parent signal',
             })
+          } else if (r.status === 'partial') {
+            // §八.4 — partial means at least one step errored but the
+            // workflow continued. Map to WORKFLOW_COMPLETED with a
+            // summary that records the partial status so audits can
+            // distinguish "clean success" from "partial".
+            this.store.apply({
+              type: 'WORKFLOW_COMPLETED',
+              workflowRunId: id,
+              summary: `partial (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
+            })
           } else {
             this.store.apply({
               type: 'WORKFLOW_COMPLETED',

@@ -278,7 +278,7 @@ export async function runCtfCli(
         taskId: args.taskId,
         jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
       })
-      const unregisterSignals = installSignalHandlers(deps, runtime)
+      unregisterSignals = installSignalHandlers(deps, runtime)
       const reg = runtime.mainHarness.workflowRegistry
       const wf = reg.get(args.runWorkflow)
       if (!wf) {
@@ -334,7 +334,7 @@ export async function runCtfCli(
       modelConfig: { model, apiKey: apiKey ?? '', baseURL },
       mode: 'llm',
     })
-    const unregisterSignals = installSignalHandlers(deps, runtime)
+    unregisterSignals = installSignalHandlers(deps, runtime)
     const r = await runtime.orchestrator.runMainAgent(args.task)
     stdout.write(`\n${GREEN}run status:${RESET} ${r.status}\n`)
     if (r.summary) stdout.write(`  summary: ${r.summary}\n`)
