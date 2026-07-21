@@ -25,6 +25,7 @@ import type { Renderer } from '../ui/renderer.js'
 import type { EngineConfig, Tool } from './types.js'
 import type OpenAI from 'openai'
 import { EventLog } from './eventLog.js'
+import { composeSystemPrompt } from './specialistAgent.js'
 
 import { ToolRegistry } from './toolRegistry.js'
 import { TOOL_METADATA } from './toolMetadata.js'
@@ -93,11 +94,12 @@ export interface HarnessBundle {
   workflowEngine: WorkflowEngine
   taskWorkspace: TaskWorkspace
   toolFirstPolicy: ToolFirstPolicy
+  eventLog: EventLog
   /** Run a workflow; returns the engine's WorkflowRunResult. */
   runWorkflow(workflow: WorkflowDefinition, inputs?: Record<string, unknown>): Promise<WorkflowRunResult>
   /** Run a single iteration (turn) under the harness. The caller supplies the
    * prompt and a fresh `history`. */
-  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[]): Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }>
+  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string }): Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }>
   /** Switch the active profile — re-routes the broker. */
   switchProfile(next: string | Profile): void
   /** Approve a pending handoff and dispatch to the suggested agent. */
@@ -248,8 +250,23 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
 
   // The "runTurn" entry point is only useful with a real renderer/engine; we
   // expose it lazily so createHarness stays cheap in non-interactive contexts.
-  function runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[]): Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }> {
+  // `systemPromptAddon` lets callers (especially dispatchNext) inject inherited
+  // context — Findings/Artifacts from a parent harness — so the child does not
+  // re-analyse the original input.
+  function runTurn(
+    userMessage: string,
+    history: import('./types.js').OpenAIMessage[],
+    options: { systemPromptAddon?: string } = {},
+  ): Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
+    const baseSystemPrompt = composeSystemPrompt({
+      cwd: input.cwd,
+      taskWorkspaceDir: taskWorkspace.paths.workspaceDir,
+      profile,
+    })
+    const systemPrompt = options.systemPromptAddon
+      ? `${baseSystemPrompt}\n\n${options.systemPromptAddon}`
+      : baseSystemPrompt
     const engineConfig: EngineConfig = {
       client: input.client,
       cwd: input.cwd,
@@ -263,6 +280,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       taskId,
       agentId: profile.id,
       eventLog: undefined,
+      systemPrompt,
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
     return engine.runTurn(userMessage, history) as unknown as Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }>
@@ -285,6 +303,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     workflowEngine,
     taskWorkspace,
     toolFirstPolicy,
+    eventLog: new EventLog(taskWorkspace.paths.root),
     runWorkflow,
     runTurn,
     switchProfile,

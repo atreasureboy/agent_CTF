@@ -76,12 +76,12 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
 
     // 2. Audit trail (grep-able)
     const evts = readEvents(h.taskWorkspace.paths.root)
-    const perm = findEvent(evts, (e) => e.type === 'permission' && e.tags?.includes('nmap'))
+    const perm = findEvent(evts, (e) => e.type === 'permission' && (e.tags?.includes('nmap') ?? false))
     expect(perm).toBeDefined()
     expect(perm?.source).toBe('broker')
     expect((perm?.detail as { decision: string }).decision).toBe('deny')
     expect((perm?.detail as { reason: string }).reason).toContain('image-stego')
-    expect(perm?.tags).toContain('deny')
+    expect(perm?.tags?.includes('deny')).toBe(true)
   })
 
   it('Bash command policy: refused at first-token AND records structured event', async () => {
@@ -116,8 +116,8 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
     expect(perm).toBeDefined()
     expect((perm?.detail as { decision: string }).decision).toBe('deny')
     expect((perm?.detail as { profile: string }).profile).toBe('image-stego')
-    expect(perm?.tags).toContain('bash-policy')
-    expect(perm?.tags).toContain('deny')
+    expect(perm?.tags?.includes('bash-policy')).toBe(true)
+    expect(perm?.tags?.includes('deny')).toBe(true)
   })
 
   it('Scope violation: file outside allowedFilesRoot → throws structured ScopeViolationError', () => {
@@ -214,8 +214,8 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
     const resultEvt = findEvent(evts, (e) => e.type === 'tool_result')
     expect(callEvt).toBeDefined()
     expect(resultEvt).toBeDefined()
-    expect(callEvt?.tags).toContain('TodoWrite')
-    expect(resultEvt?.tags).toContain('TodoWrite')
+    expect(callEvt?.tags?.includes('TodoWrite')).toBe(true)
+    expect(resultEvt?.tags?.includes('TodoWrite')).toBe(true)
   })
 })
 

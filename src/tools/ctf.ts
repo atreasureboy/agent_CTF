@@ -453,6 +453,151 @@ export function createCTFTools(): Tool[] {
     },
   }))
 
+  // ─── Crypto 补充工具 ───────────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'hashcat',
+    description: 'hashcat 哈希破解 — 字典/规则/掩码。',
+    binary: 'hashcat',
+    requiredBinaries: ['hashcat'],
+    domains: ['crypto'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const hash = typeof input.target === 'string' ? input.target : ''
+      const mode = typeof input.command === 'string' ? input.command : '--help | head -n 30'
+      return `hashcat ${mode} ${JSON.stringify(hash)} 2>&1 | head -n 60`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'john',
+    description: 'John the Ripper — 多算法哈希破解。',
+    binary: 'john',
+    requiredBinaries: ['john'],
+    domains: ['crypto'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const hash = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '--show'
+      return `john ${flags} ${JSON.stringify(hash)} 2>&1 | head -n 40`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'sage',
+    description: 'SageMath 数学计算系统 — 用于密码学代数攻击。',
+    binary: 'sage',
+    requiredBinaries: ['sage'],
+    domains: ['crypto'],
+    riskLevel: 'low',
+    buildCommand: (input) => {
+      const expr = typeof input.command === 'string' ? input.command : 'print("sage ok")'
+      return `echo ${JSON.stringify(expr)} | sage 2>&1 | head -n 40 || echo "sage unavailable"`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'cyberchef',
+    description: 'CyberChef CLI 等价能力 — 多操作符链式编解码。',
+    binary: 'cyberchef',
+    requiredBinaries: ['node'],
+    domains: ['crypto'],
+    riskLevel: 'low',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const recipe = typeof input.command === 'string' ? input.command : 'From_Base64'
+      // CyberChef 通常通过 node 调用 CLI;若不可用,fallback 到 node 脚本
+      return `(which cyberchef && cyberchef -r ${JSON.stringify(recipe)} -i ${JSON.stringify(target)} 2>&1 | head -n 30) || (node -e 'const d=Buffer.from(process.argv[1],"base64");console.log(d.toString("utf8"));process.exit(0);' ${JSON.stringify(target)} 2>&1 | head -n 5) || echo "cyberchef unavailable"`
+    },
+  }))
+
+  // ─── Image 补充工具 ───────────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'qr_decode',
+    description: '二维码识别 (zbarimg)。ImageStego 默认在 png_stego_sweep 后调用。',
+    binary: 'zbarimg',
+    requiredBinaries: ['zbarimg'],
+    domains: ['image'],
+    riskLevel: 'low',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      return `zbarimg --quiet --raw ${JSON.stringify(target)} 2>&1 | head -n 20 || echo "zbarimg unavailable"`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'channel_analyze',
+    description: '色彩通道分析 (PIL / numpy)。拆 R/G/B/A 通道输出统计信息。',
+    binary: 'python3',
+    requiredBinaries: ['python3'],
+    domains: ['image'],
+    riskLevel: 'low',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      return `python3 -c "from PIL import Image;import sys;im=Image.open(sys.argv[1]);print('size',im.size,'mode',im.mode);[print(f'ch{i} mean',sum(c)/len(c)) for i,c in enumerate(im.split())]" ${JSON.stringify(target)} 2>&1 | head -n 20 || echo "PIL not installed"`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'jpeginfo',
+    description: 'jpeginfo JPEG 文件结构检查 / 压缩历史分析。',
+    binary: 'jpeginfo',
+    requiredBinaries: ['jpeginfo'],
+    domains: ['image'],
+    riskLevel: 'low',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '-c'
+      return `jpeginfo ${flags} ${JSON.stringify(target)} 2>&1 | head -n 30 || echo "jpeginfo unavailable"`
+    },
+  }))
+
+  // ─── Web 补充工具 ────────────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'httpx',
+    description: 'httpx HTTP 探测 — 标题/状态码/技术栈指纹。',
+    binary: 'httpx',
+    requiredBinaries: ['httpx'],
+    domains: ['web'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '-status-code -title -tech-detect -silent'
+      return `echo ${JSON.stringify(target)} | httpx ${flags} 2>&1 | head -n 30 || echo "httpx unavailable"`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'fingerprint',
+    description: 'Web 指纹识别 (whatweb)。CMS / 框架 / 库。',
+    binary: 'whatweb',
+    requiredBinaries: ['whatweb'],
+    domains: ['web'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '--no-errors -a 3'
+      return `whatweb ${flags} ${JSON.stringify(target)} 2>&1 | head -n 30 || echo "whatweb unavailable"`
+    },
+  }))
+
+  // ─── Network 补充工具 ──────────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'tcpflow',
+    description: 'tcpflow TCP 流重组 — 直接抽出 HTTP body / 应用层 payload。',
+    binary: 'tcpflow',
+    requiredBinaries: ['tcpflow'],
+    domains: ['network'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      return `tcpflow -r ${JSON.stringify(target)} -C -e http 2>&1 | head -n 100 || echo "tcpflow unavailable"`
+    },
+  }))
+
   return tools
 }
 

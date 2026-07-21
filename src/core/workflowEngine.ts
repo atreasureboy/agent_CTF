@@ -70,29 +70,62 @@ export class WorkflowEngine {
 
     let cancelledEarly = false
 
-    for (const step of workflow.steps) {
-      if (outerSignal?.aborted) {
-        cancelledEarly = true
-        break
+    // executionMode dispatch:
+    //   - 'sequential' (default): top-level steps run one after another
+    //   - 'parallel' / 'dag'    : all top-level steps run concurrently via
+    //                             Promise.allSettled (independent steps, no
+    //                             explicit dependencies declared; future
+    //                             versions may add a `dependsOn` field)
+    if (workflow.executionMode === 'parallel' || workflow.executionMode === 'dag') {
+      const results = await Promise.allSettled(
+        workflow.steps.map((step) =>
+          this.dispatch(step, ctx, policy, outerSignal, outcomes, artifactIds, clock)
+            .then((status) => {
+              if (status === 'cancelled') cancelledEarly = true
+              return status
+            })
+            .catch((err: Error) => {
+              outcomes.push({
+                stepId: step.id,
+                status: 'failed',
+                durationMs: 0,
+                error: err.message,
+              })
+              if (policy === 'abort') return 'aborted'
+              return 'ok'
+            })
+        ),
+      )
+      // count findings
+      for (const step of workflow.steps) {
+        if (step.kind === 'emit_finding') emittedFindings++
       }
-      const start = clock()
-      try {
-        const nested = await this.dispatch(step, ctx, policy, outerSignal, outcomes, artifactIds, clock)
-        if (nested === 'cancelled') {
+      void results
+    } else {
+      for (const step of workflow.steps) {
+        if (outerSignal?.aborted) {
           cancelledEarly = true
           break
         }
-        if (nested === 'aborted') break
-      } catch (err) {
-        outcomes.push({
-          stepId: step.id,
-          status: 'failed',
-          durationMs: clock() - start,
-          error: (err as Error).message,
-        })
-        if (policy === 'abort') break
+        const start = clock()
+        try {
+          const nested = await this.dispatch(step, ctx, policy, outerSignal, outcomes, artifactIds, clock)
+          if (nested === 'cancelled') {
+            cancelledEarly = true
+            break
+          }
+          if (nested === 'aborted') break
+        } catch (err) {
+          outcomes.push({
+            stepId: step.id,
+            status: 'failed',
+            durationMs: clock() - start,
+            error: (err as Error).message,
+          })
+          if (policy === 'abort') break
+        }
+        if (step.kind === 'emit_finding') emittedFindings++
       }
-      if (step.kind === 'emit_finding') emittedFindings++
     }
 
     // Evaluate any stopConditions purely descriptively — the engine treats them

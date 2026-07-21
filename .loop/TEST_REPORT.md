@@ -1,64 +1,79 @@
-# TEST_REPORT — 测试命令、结果与最终结论
+# TEST_REPORT.md
+
+测试命令、结果、失败原因和最终结论。
 
 ## 测试命令
 
-```sh
-pnpm install                 # 安装依赖
-pnpm run build               # tsc 编译（zero errors）
-pnpm test                    # vitest run（190 tests）
-pnpm run lint                # eslint（剩余告警来自既有测试样板，非新增代码）
+```bash
+pnpm test                # 全部
+pnpm test <pattern>      # 单独文件
+pnpm run build           # tsc strict 类型检查
 ```
 
-## 测试结果
+## 测试矩阵(25 文件 / 252 测试)
 
-| 项目 | 数值 | 备注 |
-|------|------|------|
-| Test Files | **18 passed (18)** | +8 新文件 |
-| Tests | **190 passed (190)** | +63 新增 |
-| 编译 | **tsc — 0 error** | strict 模式 + ES2022 + NodeNext |
-| 既有测试回归 | **127 passed** | baseline 全部保留 |
-| 新增测试覆盖 | **63 passed** | 见下表 |
+| 文件 | 测试数 | 类型 | 覆盖维度 |
+|------|--------|------|---------|
+| `tests/capabilityProfile.test.ts` | 14 | unit | schema / deny precedence / overlap / parse |
+| `tests/toolRegistry.test.ts` | 8 | unit | register / resolveFor / availability / metadata |
+| `tests/toolFirstPolicy.test.ts` | 6 | unit | 7 规则 / override audit |
+| `tests/toolBroker.test.ts` | 12 | integration | profile deny / artifact convert / job spawn / event audit |
+| `tests/commandPolicy.test.ts` | 11 | unit | 4 层 bash 防御 / first-executable |
+| `tests/backgroundJobs.test.ts` | 9 | unit | spawn / wait / cancel / task cancel / timeout |
+| `tests/artifactFindingHandoff.test.ts` | 12 | integration | store / 持久化 / 跨 agent 引用 |
+| `tests/workflow.test.ts` | 18 | integration | 8 workflow / dag / partial failure / sequence / parallel / if |
+| `tests/e2eHarness.test.ts` | 14 | e2e | broker→workflow→meta tools 全链路 |
+| `tests/e2eEngine.test.ts` | 4 | e2e | 真实 Engine.runTurn + mock LLM |
+| `tests/acceptance.test.ts` | 7 | acceptance | §十五 7 验收场景 |
+| `tests/codeReview.test.ts` | 11 | acceptance | §十六 代码审查视角 |
+| `tests/contestConfig.test.ts` | 13 | integration | .ovogo/contest.json 自动加载 + merge |
+| `tests/handoffInheritance.test.ts` | 5 | acceptance | 子 Agent 真注入继承 |
+| `tests/workflowDag.test.ts` | 4 | unit | executionMode='dag' 真并发 |
+| `tests/eventLog.test.ts` | 4 | unit | append / readAll / 防丢 |
+| `tests/specialistAgent.test.ts` | 6 | unit | composeSystemPrompt / prompt modules |
+| `tests/findingStore.test.ts` | 5 | unit | append / list / formatForPrompt |
+| `tests/artifactStore.test.ts` | 4 | unit | writeSync / sha256 / summary |
+| `tests/handoffStore.test.ts` | 5 | unit | submit / decide / list / pending |
+| `tests/orchestratorDispatch.test.ts` | 4 | unit | inspect / decide / 优先级 |
+| 其他 | ~ 75 | misc | engine / renderer / 工具 impl / taskWorkspace |
 
-## 新增测试矩阵（与 goal.md 验收一一对应）
+## 测试结果(2026-07-21)
 
-| goal.md 验收场景 | 对应测试 | 状态 |
-|-----------------|----------|------|
-| 场景 1 — 图片专业化 | `tests/acceptance.test.ts > 场景 1` | ✅ 3/3 |
-| 场景 2 — 跨领域接力 | `tests/acceptance.test.ts > 场景 2` | ✅ 2/2 |
-| 场景 3 — 工具优先策略 | `tests/acceptance.test.ts > 场景 3` | ✅ 3/3 |
-| 场景 4 — 工具禁用 | `tests/acceptance.test.ts > 场景 4` | ✅ 2/2 |
-| 场景 5 — Bash 绕过 | `tests/acceptance.test.ts > 场景 5` | ✅ 3/3 |
-| 场景 6 — 合理手工脚本 | `tests/acceptance.test.ts > 场景 6` | ✅ 2/2 |
-| 场景 7 — 后台任务取消 | `tests/acceptance.test.ts > 场景 7` | ✅ 2/2 |
-| 集成 — HandoffRequest 与 Orchestrator | `tests/acceptance.test.ts > 集成` | ✅ 1/1 |
-| 单元 — CapabilityProfile | `tests/capabilityProfile.test.ts` | ✅ 9/9 |
-| 单元 — ToolRegistry | `tests/toolRegistry.test.ts` | ✅ 6/6 |
-| 单元 — ToolFirstPolicy | `tests/toolFirstPolicy.test.ts` | ✅ 5/5 |
-| 单元 — Workflow Engine + Registry | `tests/workflow.test.ts` | ✅ 7/7 |
-| 单元 — Artifact / Finding / Handoff | `tests/artifactFindingHandoff.test.ts` | ✅ 4/4 |
-| 单元 — BackgroundJobManager | `tests/backgroundJobs.test.ts` | ✅ 5/5 |
-| 单元 — ToolBroker | `tests/toolBroker.test.ts` | ✅ 4/4 |
-| 单元 — SpecialistAgentFactory | `tests/acceptance.test.ts` (集成段) | ✅ 1/1 |
-| 单元 — TaskWorkspace | `tests/acceptance.test.ts` (集成段) | ✅ 1/1 |
-| 集成 — Workflow Run | `tests/acceptance.test.ts` (集成段) | ✅ 1/1 |
-
-总新增：**63 tests**
-
-## 失败 / 修复轨迹
-
-1. `RegisteredTool` 导出 — `toolBroker.ts` 从 `toolDefinition.ts` 而非 `toolRegistry.ts` 导入。
-2. `policy_advisory` 不在 EventType — 加入新事件类型 (`policy_advisory`, `artifact_created`, `finding_emitted`, `handoff_requested`, `job_state`, `workflow_run`)。
-3. 自引用 schema — `workflowStepSchema` 改为 `z.lazy()` + 顶层手写 `WorkflowStep` 类型。
-4. CapabilityProfile schema — 去掉 allowedTools/deniedTools 重叠检查（deny 优先是合法的运行时语义）。
-5. WorkflowRegistry.register 抛重名错误 — 提供 `upsert()`，让 `ensureWorkflowsRegistered` 幂等可重入。
-6. `BackgroundJobManager` 同步 — 写入类操作全部 `mkdirSync(dirname, { recursive: true })`。
-7. workflowEngine status 算法 — 修正 `only-skipped` 视为 success。
-8. `ConcurrencyLimitError` 文案 — 测试分别验证 `maxPerAgent` / `maxPerTask` 两条路径。
-
-## 命令复现
-
-```sh
-pnpm install
-pnpm run build && pnpm test
-# expected: 18 files / 190 tests / 0 failures
 ```
+$ pnpm test
+Test Files  25 passed (25)
+Tests       252 passed (252)
+Duration    1.02s
+
+$ pnpm run build
+> ovogogogo@0.1.0 build /project/agent_CTF/ovolv999_pro
+> tsc
+(0 errors)
+```
+
+## 失败历史(已修)
+
+| # | 失败原因 | 修复 |
+|---|---------|------|
+| 1 | `commandPolicy` 正则不识别 `-i VAR=` 形式 | 加 `env -i VAR=...` 跳过 |
+| 2 | `BackgroundJobManager.spawn` 并发上限在 task cancel 后未恢复 | cleanup hook |
+| 3 | `ToolFirstPolicy.image-stego` 触发条件太宽,误报 | 收紧正则,加 image ext 检测 |
+| 4 | `WorkflowRegistry.register` 重复注册抛错而非 upsert | 改为 upsert + 测试适配 |
+| 5 | `mockOpenAIClient` `finish_reason='stop'` 含 tool_calls | 强制覆盖 |
+| 6 | `mockOpenAIClient` tool_call 全部 index:0 | 递增 ordinal |
+| 7 | `contestScope.splitHostPort` 贪婪匹配 | 排除 `:` |
+| 8 | `codeReview.test.ts` 多个 `tags?.includes` 类型 | 加 `?? false` |
+| 9 | `orchestratorDispatch` 没真注入继承 | buildInheritedContextAddon |
+| 10 | `workflowEngine` 'dag' mode 实际是 sequential | 顶层 Promise.allSettled |
+
+## 已知未修
+
+详见 `.loop/AUDIT.md` 的 P2 表(P2-01 ~ P2-10)。
+
+## 结论
+
+- **测试通过率**: 252 / 252 = 100%
+- **类型检查**: tsc strict 0 error
+- **核心路径覆盖**: §十五 7 验收场景全部用真路径测试
+- **代码审查视角**: §十六 11 case 覆盖每条拒绝路径
+- **真实 LLM**: 未在生产 endpoint 验证(P2-08),但 Engine→Broker→Tools→Findings 链路已通过 mock LLM 跑通
