@@ -5,6 +5,7 @@ import type { SemanticMemory } from './semanticMemory.js'
 import type { EpisodicMemory } from './episodicMemory.js'
 import type { AgentConfig } from './agentPresets.js'
 import type { PermissionChecker } from './permission.js'
+import type { ToolBroker } from './toolBroker.js'
 import type { PricingConfig } from '../config/agentConfig.js'
 import type OpenAI from 'openai'
 
@@ -164,6 +165,17 @@ export interface EngineConfig {
    * changes. Replaces the hardcoded `tsc`. Configured per-project via agent.json.
    */
   verifyCommands?: string[]
+  /**
+   * Tool Broker — when supplied, the engine routes tool calls through this
+   * broker instead of `tool.execute` directly. The broker enforces the CTF
+   * CapabilityProfile, ContestScope, ToolFirstPolicy, and Artifact conversion.
+   * Optional: callers without a broker fall back to the legacy direct path.
+   */
+  broker?: ToolBroker
+  /** Stable taskId for the current run. Used to attribute artifacts / findings. */
+  taskId?: string
+  /** Stable agentId for the current run. */
+  agentId?: string
 }
 
 /** Cumulative token usage across one or more turns, for cost observability. */

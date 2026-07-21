@@ -25,6 +25,12 @@ export type EventType =
   | 'error'
   | 'user_input'
   | 'user_interrupt'
+  | 'policy_advisory'
+  | 'artifact_created'
+  | 'finding_emitted'
+  | 'handoff_requested'
+  | 'job_state'
+  | 'workflow_run'
 
 export interface EventLogEntry {
   id: string

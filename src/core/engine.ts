@@ -469,6 +469,26 @@ export class ExecutionEngine {
       }
     }
 
+    // ── CTF Broker path ─────────────────────────────────────
+    // When a broker is supplied (typical for specialist Agent runs), route the
+    // call through it. The broker enforces CapabilityProfile, ContestScope,
+    // ToolFirstPolicy, Artifact conversion, and background-job spawning.
+    if (this.config.broker) {
+      const brokerResult = await this.config.broker.execute(toolName, input, {
+        cwd: this.config.cwd,
+        sessionDir: context.sessionDir ?? this.config.sessionDir,
+        signal: context.signal,
+        apiConfig: context.apiConfig,
+        taskId: this.config.taskId ?? 'session',
+        agentId: this.config.agentId ?? 'main',
+      })
+      const out: ToolResult = brokerResult.result
+      for (const module of this.modules) {
+        module.onToolCall?.(toolName, input, out, turnNumber)
+      }
+      return out
+    }
+
     const tool = findTool(this.allTools, toolName)
     if (!tool) {
       return { content: `Unknown tool: ${toolName}`, isError: true }
