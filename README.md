@@ -124,6 +124,41 @@ ovolv999 是一个**纯 Agent 基座框架**，仿 Claude Code，核心设计参
 ╚══════════════════════════════════════════════════════════════════════════════╝
 ```
 
+## CTF Runtime 架构 (Phase 1.6)
+
+CTF CLI (`bin/ovogogogo-ctf.ts`) 通过唯一的 `createCTFTaskRuntime` 入口装配运行时——单一控制路径，无双轨实现。
+
+```
+CLI  (runCtfCli + process.once SIGINT/SIGTERM)
+  → createCTFTaskRuntime (单入口)
+    → ProfileStore           — 唯一的活跃 Profile 持有者
+    → LinkedAbortController  — 父 ↔ 子 取消链
+    → main Harness           — CTFTaskOrchestrator 持有
+    → CTFTaskStateStore       — 唯一权威 TaskState
+    → BackgroundJobManager.subscribe() → projector.projectJobEvent
+    → TaskStateProjector     — Main / Workflow / Specialist 产物投影
+  → orchestrator.runWorkflow / runMainAgent / approveHandoff / cancel
+      → HandoffCoordinator
+          → SpecialistHarnessFactory  ← 唯一的 Specialist 创建入口
+              → child harness 共享 parent 的 artifactStore + findingStore
+              → parent 的 projector 观察 writes
+          → projector.projectDiff → emits FINDING_ADDED / ARTIFACT_ADDED
+      → AGENT_RUN_COMPLETED + AGENT_RUN_OUTPUT_RECORDED
+      → TASK_COMPLETED (terminal guard freezes the task)
+```
+
+### 关键不变量
+
+- **单入口**：CLI / REPL / 测试都必须通过 `createCTFTaskRuntime`，不可直接调 `createHarness`。
+- **唯一 Specialist 路径**：`Orchestrator.approveHandoff → HandoffCoordinator → SpecialistHarnessFactory`。`dispatchNext` 在没有 orchestrator 时直接抛错，不再走 fallback。
+- **AbortSignal 真实贯穿**：父任务取消 → Main / Workflow / Specialist / Tool / Job 全部 abort；子 Specialist abort 不影响父。
+- **Job 事件**：`BackgroundJobManager.subscribe(listener)` 是唯一监听入口；late events 在 TASK_COMPLETED 后被丢弃。
+- **Profile 单一来源**：`CTFProfileStore` 是权威；`broker.setProfile()` 是公开切换入口；私有字段改写已删除。
+- **State 事件**：HYPOTHESIS_ADDED / ATTEMPT_RECORDED / JOB_RECORDED 携带完整对象；reducer 真正更新数组；ID 不重复、状态不倒退。
+- **产物投影 + 谱系**：`TaskStateProjector` 通过 `before/after` 快照差把 Findings + Artifacts 投影到父 TaskState；Specialist 的 artifact 通过 `.lineage.jsonl` sidecar 保留 originalArtifactId / handoffId / producerAgentId。
+
+详细审计与阶段报告见 `docs/architecture/phase-1.6-report.md` 和 `docs/architecture/phase-1.6-rubric.md`。
+
 ## 核心概念
 
 ### Module System — 模块化能力

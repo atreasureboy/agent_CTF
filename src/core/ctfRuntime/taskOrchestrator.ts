@@ -20,10 +20,13 @@
 
 import { randomBytes } from 'crypto'
 
+import type { TaskStateListener } from './taskEvents.js'
+
 import type { CapabilityProfile } from '../capabilityProfile.js'
 import type { ContestScope } from '../contestScope.js'
 import type { ContestConfig } from '../contestConfig.js'
 import { createDefaultContestConfig } from '../contestConfig.js'
+import type { OpenAIMessage } from '../types.js'
 import type { Finding } from '../findings.js'
 import type { ArtifactMeta } from '../artifacts.js'
 import type { WorkflowRunResult } from '../workflowDefinition.js'
@@ -107,12 +110,16 @@ export class CTFTaskOrchestrator {
     this.projector = new TaskStateProjector({
       findingStore: harness.findingStore,
       artifactStore: harness.artifactStore,
+      parentArtifactStore: harness.artifactStore,
+      parentArtifactRoot: harness.taskWorkspace.paths.root,
     })
     this.handoffCoordinator = new HandoffCoordinator({
       store,
       parentContext: harness.context,
       parentDependencies: dependencies,
       parentToolRegistry: harness.registry,
+      parentArtifactStore: harness.artifactStore,
+      parentFindingStore: harness.findingStore,
       cwd: harness.context.metadata?.['projectRoot'] as string | undefined ?? harness.context.workspaceDir,
       sessionsRoot: harness.context.metadata?.['sessionsRoot'] as string | undefined,
       parentTaskId: harness.context.taskId,
@@ -131,14 +138,14 @@ export class CTFTaskOrchestrator {
    * this method exists so tests can construct an Orchestrator without
    * setting up the full Runtime.
    */
-  static async assemble(args: {
+  static assemble(args: {
     harness: HarnessBundle
     profileStore: CTFProfileStore
     abort: LinkedAbortController
     dependencies: AgentRuntimeDependencies
     challenge?: CreateCTFTaskInput['challenge']
     environment?: Record<string, string>
-  }): Promise<CTFTaskOrchestrator> {
+  }): CTFTaskOrchestrator {
     const { harness, profileStore, abort, dependencies } = args
 
     const now = Date.now()
@@ -203,8 +210,8 @@ export class CTFTaskOrchestrator {
     const abort = createLinkedAbortController(undefined)
 
     const dependencies: AgentRuntimeDependencies = {
-      client: input.client ?? (harness.broker as unknown as { client?: OpenAI }).client ?? ({} as OpenAI),
-      renderer: input.renderer ?? (harness as unknown as { renderer?: Renderer }).renderer ?? (new Renderer() as unknown as Renderer),
+      client: input.client ?? ({} as OpenAI),
+      renderer: input.renderer ?? new Renderer(),
       modelConfig: {
         model: input.model ?? process.env['OVOGO_MODEL'] ?? 'gpt-4o',
         apiKey: input.apiKey ?? process.env['OPENAI_API_KEY'] ?? 'test-key',
@@ -392,7 +399,7 @@ export class CTFTaskOrchestrator {
   // ── Main Agent ───────────────────────────────────────────────────────
   async runMainAgent(
     userMessage: string,
-    history: import('../types.js').OpenAIMessage[] = [],
+    history: OpenAIMessage[] = [],
   ): Promise<AgentRunResult> {
     const agentRunId = `run_${randomBytes(6).toString('hex')}`
     const profileId = this.profileStore.getCurrent().id
@@ -414,7 +421,13 @@ export class CTFTaskOrchestrator {
       const r = await this.mainHarness.runTurn(userMessage, history)
       const projection = this.projector.projectDiff(before, { producerProfileId: profileId })
       for (const ev of projection.events) this.store.apply(ev)
-      const summary = `main agent turn finished: ${r.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
+      this.store.apply({
+        type: 'AGENT_RUN_OUTPUT_RECORDED',
+        agentRunId,
+        producedFindingIds: projection.newFindingIds,
+        producedArtifactIds: projection.newArtifactIds,
+      })
+      const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
       this.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
       return {
         agentRunId,
@@ -478,19 +491,20 @@ export class CTFTaskOrchestrator {
   }
 
   // ── Cancel / dispose ─────────────────────────────────────────────────
-  async cancel(reason: string): Promise<void> {
-    if (this.disposed) return
+  cancel(reason: string): Promise<void> {
+    if (this.disposed) return Promise.resolve()
     this.abort.controller.abort(reason)
     this.mainHarness.cancelAllJobs(reason)
     for (const [, runP] of this.inFlightWorkflows) {
       void runP.catch(() => {})
     }
+    return Promise.resolve()
   }
 
   async dispose(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
-    this.cancel('dispose')
+    await this.cancel('dispose')
     this.abort.unlink()
     await this.handoffCoordinator.disposeAll()
     await Promise.allSettled([...this.inFlightWorkflows.values()])
@@ -498,7 +512,7 @@ export class CTFTaskOrchestrator {
 
 
   // ── Subscribe shortcut ───────────────────────────────────────────────
-  subscribe(listener: import('./taskEvents.js').TaskStateListener): () => void {
+  subscribe(listener: TaskStateListener): () => void {
     return this.store.subscribe(listener)
   }
 

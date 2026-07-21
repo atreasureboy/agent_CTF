@@ -33,7 +33,7 @@ import { TOOL_METADATA } from './toolMetadata.js'
 import { createTools } from '../tools/index.js'
 import { BashTool } from '../tools/bash.js'
 
-import { CapabilityProfile, parseCapabilityProfile } from './capabilityProfile.js'
+import { parseCapabilityProfile } from './capabilityProfile.js'
 import { ContestScopeChecker, type ContestScope } from './contestScope.js'
 import { ToolBroker } from './toolBroker.js'
 import { ToolFirstPolicy } from './toolFirstPolicy.js'
@@ -79,6 +79,16 @@ export interface CreateHarnessInput {
   inlineMaxBytes?: number
   /** Pre-built tools (e.g. MCP tools). */
   extraTools?: Tool[]
+  /**
+   * Override the artifact store used by this harness. Used by the
+   * SpecialistHarnessFactory to make a specialist share the parent's
+   * artifact directory so the projector can observe its writes.
+   */
+  artifactStore?: ArtifactStore
+  /**
+   * Override the finding store used by this harness.
+   */
+  findingStore?: FindingStore
 }
 
 export interface HarnessBundle {
@@ -101,7 +111,7 @@ export interface HarnessBundle {
   runWorkflow(workflow: WorkflowDefinition, inputs?: Record<string, unknown>): Promise<WorkflowRunResult>
   /** Run a single iteration (turn) under the harness. The caller supplies the
    * prompt and a fresh `history`. */
-  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string }): Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }>
+  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string }): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }>
   /** Switch the active profile — re-routes the broker. */
   switchProfile(next: string | Profile): void
   /** Approve a pending handoff and dispatch to the suggested agent. */
@@ -142,8 +152,8 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   })
 
   // Store layer
-  const artifactStore = taskWorkspace.artifactStore
-  const findingStore = taskWorkspace.findingStore
+  const artifactStore = input.artifactStore ?? taskWorkspace.artifactStore
+  const findingStore = input.findingStore ?? taskWorkspace.findingStore
   const handoffStore = taskWorkspace.handoffStore
 
   // Tool layer
@@ -282,7 +292,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     userMessage: string,
     history: import('./types.js').OpenAIMessage[],
     options: { systemPromptAddon?: string } = {},
-  ): Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }> {
+  ): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
     const baseSystemPrompt = composeSystemPrompt({
       cwd: input.cwd,
@@ -308,7 +318,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       systemPrompt,
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
-    return engine.runTurn(userMessage, history) as unknown as Promise<import('./types.js').TurnResult & { newHistory: import('./types.js').OpenAIMessage[] }>
+    return engine.runTurn(userMessage, history)
   }
 
   // Silence unused (BashTool ref used by reference above)
@@ -351,7 +361,7 @@ function resolveProfile(input: string | Profile | (string | Profile)[]): Profile
     if (found) return found
     throw new Error(`No builtin profile named "${input}". Known: ${Object.keys(PROFILES).join(', ')}`)
   }
-  return parseCapabilityProfile(input as unknown as CapabilityProfile) as Profile
+  return parseCapabilityProfile(input as unknown as Profile) as Profile
 }
 
 /** Convenience: list available built-in profiles. */

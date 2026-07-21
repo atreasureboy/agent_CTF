@@ -37,15 +37,18 @@ import {
 } from '../src/core/ctfRuntime/taskStateStore.js'
 import type { CTFTaskState } from '../src/core/ctfRuntime/taskState.js'
 import { BackgroundJobManager } from '../src/core/backgroundJobs.js'
-import { CTFProfileStore } from '../src/core/ctfRuntime/profileStore.js'
 import { TaskStateProjector } from '../src/core/ctfRuntime/taskStateProjector.js'
 import { createLinkedAbortController } from '../src/core/ctfRuntime/linkedAbortController.js'
 import {
   SpecialistHarnessFactory,
 } from '../src/core/ctfRuntime/specialistHarnessFactory.js'
 import type { AgentRuntimeDependencies } from '../src/core/ctfRuntime/agentRuntimeDependencies.js'
+import type { HarnessBundle } from '../src/core/harness.js'
+import type OpenAI from 'openai'
+type OpenAIClient = OpenAI
 import { parseContestScope } from '../src/core/contestScope.js'
 import { createDefaultContestConfig } from '../src/core/contestConfig.js'
+import type { Renderer } from '../src/ui/renderer.js'
 import { getBuiltinProfile } from '../src/capabilityProfiles/index.js'
 
 let root: string
@@ -88,7 +91,7 @@ describe('§1 — CLI', () => {
     const stdout = makeCollector([])
     const stderr = makeCollector([])
     let runtimeCalls = 0
-    const fakeRuntime = (async (input: Parameters<typeof createCTFTaskRuntime>[0]) => {
+    const fakeRuntime: typeof createCTFTaskRuntime = async (input) => {
       runtimeCalls++
       return createCTFTaskRuntime({
         ...input,
@@ -96,7 +99,7 @@ describe('§1 — CLI', () => {
         client: input.client ?? makeFakeClient(),
         renderer: input.renderer ?? makeFakeRenderer(),
       })
-    }) as unknown as typeof createCTFTaskRuntime
+    }
     const code = await runCtfCli(
       ['node', 'ovogogogo-ctf', '--profile', 'triage', '--run-workflow', 'unknown_file_triage'],
       {
@@ -124,7 +127,7 @@ describe('§1 — CLI', () => {
 
   it('runCtfCli disposes runtime in finally (no skipped cleanup)', async () => {
     let disposed = 0
-    const fakeRuntime = (async (input: Parameters<typeof createCTFTaskRuntime>[0]) => {
+    const fakeRuntime: typeof createCTFTaskRuntime = async (input) => {
       const r = await createCTFTaskRuntime({
         ...input,
         profileId: input.profileId ?? 'triage',
@@ -137,7 +140,7 @@ describe('§1 — CLI', () => {
         await baseDispose()
       }
       return r
-    }) as unknown as typeof createCTFTaskRuntime
+    }
     const code = await runCtfCli(
       ['node', 'ovogogogo-ctf', '--profile', 'triage', '--run-workflow', 'unknown_file_triage'],
       {
@@ -150,7 +153,7 @@ describe('§1 — CLI', () => {
     expect(disposed).toBe(1)
   })
 
-  it('CLI does NOT touch broker.opts or create a Harness directly', async () => {
+  it('CLI does NOT touch broker.opts or create a Harness directly', () => {
     // Static check — the CLI source must not import createHarness or
     // mutate broker private fields.
     const cliPath = join(root, '..', '..', 'project', 'agent_CTF', 'ovolv999_pro', 'bin', 'ovogogogo-ctf.ts')
@@ -184,7 +187,7 @@ describe('§2 — dispatchNext', () => {
     ).rejects.toThrow(/dispatchNext requires an attached CTFTaskOrchestrator/)
   })
 
-  it('dispatchNext does not import createHarness', async () => {
+  it('dispatchNext does not import createHarness', () => {
     const src = readFileSync('src/core/orchestratorDispatch.ts', 'utf8')
     expect(src).not.toMatch(/import .*createHarness/)
     expect(src).not.toMatch(/createHarness\(/)
@@ -226,6 +229,8 @@ describe('§3 — SpecialistHarnessFactory', () => {
         subtaskScope: orch.getState().context.contestScope,
         subtaskId: `${orch.getState().taskId}/spec`,
         cwd: root,
+        parentArtifactStore: orch.mainHarness.artifactStore,
+        parentFindingStore: orch.mainHarness.findingStore,
       })
       expect(handle.harness).toBeDefined()
       expect(handle.context.profileId).toBe('triage')
@@ -264,6 +269,8 @@ describe('§3 — SpecialistHarnessFactory', () => {
           subtaskScope: orch.getState().context.contestScope,
           subtaskId: 'spec',
           cwd: root,
+          parentArtifactStore: orch.mainHarness.artifactStore,
+          parentFindingStore: orch.mainHarness.findingStore,
         }),
       ).rejects.toThrow(/OpenAI client/)
     } finally {
@@ -380,7 +387,7 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       const seen: string[] = []
       const jm = new BackgroundJobManager(
         { taskWorkspaceDir: dir, maxPerAgent: 4, maxPerTask: 4 },
-        async () => ({ summary: 'ok' }),
+        () => Promise.resolve({ summary: 'ok' }),
       )
       const unsub = jm.subscribe((ev) => seen.push(ev.type))
       const job = await jm.spawn({
@@ -401,7 +408,7 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       const seen: string[] = []
       const jm = new BackgroundJobManager(
         { taskWorkspaceDir: dir, maxPerAgent: 4, maxPerTask: 4 },
-        async () => ({ summary: 'ok' }),
+        () => Promise.resolve({ summary: 'ok' }),
       )
       const unsub = jm.subscribe((ev) => seen.push(ev.type))
       const j1 = await jm.spawn({
@@ -779,7 +786,7 @@ function makeCollector(buffer: string[]): NodeJS.WritableStream {
   } as unknown as NodeJS.WritableStream
 }
 
-function makeFakeClient(): import('openai').default {
+function makeFakeClient(): OpenAIClient {
   return {
     chat: {
       completions: {
@@ -788,10 +795,10 @@ function makeFakeClient(): import('openai').default {
         }) as never,
       },
     },
-  } as unknown as import('openai').default
+  } as unknown as OpenAIClient
 }
 
-function makeFakeRenderer(): import('../src/ui/renderer.js').Renderer {
+function makeFakeRenderer(): Renderer {
   return {
     info: () => {},
     warn: () => {},
@@ -806,12 +813,12 @@ function makeFakeRenderer(): import('../src/ui/renderer.js').Renderer {
     userMessage: () => Promise.resolve(''),
     confirm: () => Promise.resolve(false),
     pickOption: () => Promise.resolve(null),
-  } as unknown as import('../src/ui/renderer.js').Renderer
+  } as unknown as Renderer
 }
 
 interface FakeRuntime {
   orchestrator: CTFTaskOrchestrator
-  mainHarness: import('../src/core/harness.js').HarnessBundle
+  mainHarness: HarnessBundle
   dependencies: AgentRuntimeDependencies
   abort: ReturnType<typeof createLinkedAbortController>
   getState(): CTFTaskState

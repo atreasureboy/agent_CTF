@@ -12,7 +12,6 @@
  */
 
 import type { Finding } from '../findings.js'
-import type { ArtifactMeta } from '../artifacts.js'
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 
 export type CTFTaskPhase =

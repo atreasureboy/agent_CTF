@@ -89,7 +89,7 @@ describe('§四 — CLI main path uses CTFTaskOrchestrator', () => {
     const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'triage' })
     try {
       expect(orch.abort.signal.aborted).toBe(false)
-      orch.cancel('sigint-test')
+      await orch.cancel('sigint-test')
       expect(orch.abort.signal.aborted).toBe(true)
     } finally {
       await orch.dispose()
@@ -423,7 +423,7 @@ describe('§十一 — BackgroundJobManager.subscribe is the only mechanism', ()
       const seen: string[] = []
       const jm = new BackgroundJobManager(
         { taskWorkspaceDir: dir, maxPerAgent: 4, maxPerTask: 4 },
-        async () => ({ summary: 'ok' }),
+        () => Promise.resolve({ summary: 'ok' }),
       )
       const unsub = jm.subscribe((ev) => seen.push(ev.type))
       const job = await jm.spawn({
@@ -447,7 +447,7 @@ describe('§十一 — BackgroundJobManager.subscribe is the only mechanism', ()
     try {
       const jm = new BackgroundJobManager(
         { taskWorkspaceDir: dir, maxPerAgent: 4, maxPerTask: 4 },
-        async () => ({ summary: 'ok' }),
+        () => Promise.resolve({ summary: 'ok' }),
       )
       jm.subscribe(() => {
         throw new Error('listener boom')
@@ -471,7 +471,7 @@ describe('§十一 — BackgroundJobManager.subscribe is the only mechanism', ()
       const seen: string[] = []
       const jm = new BackgroundJobManager(
         { taskWorkspaceDir: dir, maxPerAgent: 4, maxPerTask: 4 },
-        async () => ({ summary: 'ok' }),
+        () => Promise.resolve({ summary: 'ok' }),
       )
       const unsub = jm.subscribe((ev) => seen.push(ev.type))
       const job = await jm.spawn({

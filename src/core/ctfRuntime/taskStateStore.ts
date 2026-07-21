@@ -18,7 +18,6 @@
  */
 
 import {
-  ALLOWED_PHASE_TRANSITIONS,
   canTransitionPhase,
   isActiveAgentRun,
   isActiveJob,
@@ -205,7 +204,7 @@ function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): 
 function freezeState<T>(s: T): T {
   // We expose the state as readonly via the type; a deep-freeze would be
   // expensive. Shallow freeze is enough to catch casual misuse in dev.
-  return Object.freeze(s) as T
+  return Object.freeze(s)
 }
 
 function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
@@ -324,6 +323,19 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         agentRuns,
         activeAgentRunIds: agentRuns.filter(isActiveAgentRun).map((r) => r.id),
       }
+    }
+
+    case 'AGENT_RUN_OUTPUT_RECORDED': {
+      const agentRuns = state.agentRuns.map((r) =>
+        r.id === event.agentRunId
+          ? {
+              ...r,
+              producedFindingIds: [...new Set([...r.producedFindingIds, ...event.producedFindingIds])],
+              producedArtifactIds: [...new Set([...r.producedArtifactIds, ...event.producedArtifactIds])],
+            }
+          : r,
+      )
+      return { ...state, agentRuns }
     }
 
     case 'FINDING_ADDED':

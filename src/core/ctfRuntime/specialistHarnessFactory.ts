@@ -16,13 +16,12 @@
  * Anywhere else that does so is a regression of §八 / §十二.
  */
 
-import type OpenAI from 'openai'
-
 import type { CapabilityProfile } from '../capabilityProfile.js'
 import { createHarness, type HarnessBundle } from '../harness.js'
-import type { Renderer } from '../../ui/renderer.js'
 import type { ContestScope } from '../contestScope.js'
 import { parseContestScope } from '../contestScope.js'
+import type { ArtifactStore } from '../artifacts.js'
+import type { FindingStore } from '../findings.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { deriveSubtaskContext } from './taskExecutionContext.js'
@@ -50,6 +49,10 @@ export interface CreateSpecialistHarnessInput {
   artifactDir?: string
   /** Workspace root. */
   cwd: string
+  /** Parent's artifact store — shared so the projector observes writes. */
+  parentArtifactStore: ArtifactStore
+  /** Parent's finding store — shared so the projector observes writes. */
+  parentFindingStore: FindingStore
 }
 
 export interface SpecialistHarnessHandle {
@@ -62,20 +65,25 @@ export interface SpecialistHarnessHandle {
 
 export class SpecialistHarnessFactory {
   /**
-   * Build a complete Specialist Harness bundle. Throws when shared deps are
-   * missing (the factory refuses to spawn a half-wired harness).
+   * Build a complete Specialist Harness bundle. Returns a rejected Promise
+   * when shared deps are missing (the factory refuses to spawn a half-wired
+   * harness).
    */
-  async create(input: CreateSpecialistHarnessInput): Promise<SpecialistHarnessHandle> {
+  create(input: CreateSpecialistHarnessInput): Promise<SpecialistHarnessHandle> {
     if (!input.dependencies.client) {
-      throw new Error(
-        'createSpecialistHarness: parent must provide a real OpenAI client; ' +
-          'specialists cannot run without one.',
+      return Promise.reject(
+        new Error(
+          'createSpecialistHarness: parent must provide a real OpenAI client; ' +
+            'specialists cannot run without one.',
+        ),
       )
     }
     if (!input.dependencies.renderer) {
-      throw new Error(
-        'createSpecialistHarness: parent must provide a Renderer; ' +
-          'specialists cannot run without one.',
+      return Promise.reject(
+        new Error(
+          'createSpecialistHarness: parent must provide a Renderer; ' +
+            'specialists cannot run without one.',
+        ),
       )
     }
 
@@ -107,16 +115,23 @@ export class SpecialistHarnessFactory {
       sessionsRoot: input.sessionsRoot,
       client: input.dependencies.client,
       renderer: input.dependencies.renderer,
+      // Share the parent's stores so the orchestrator's projector observes
+      // every write the specialist makes — this is what enables the
+      // Handoff → Specialist → Parent-state → .lineage.jsonl end-to-end
+      // path that forth_goal §十三 requires.
+      artifactStore: input.parentArtifactStore,
+      findingStore: input.parentFindingStore,
     })
     ;(harness as unknown as { context: TaskExecutionContext }).context = linkedContext
 
-    return {
+    return Promise.resolve({
       harness,
       context: linkedContext,
       abort: input.abort,
-      async dispose(): Promise<void> {
+      dispose(): Promise<void> {
         input.abort.unlink()
+        return Promise.resolve()
       },
-    }
+    })
   }
 }

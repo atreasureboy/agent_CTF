@@ -23,6 +23,8 @@ import { resolve, join, dirname } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import OpenAI from 'openai'
+import type { Renderer } from '../src/ui/renderer.js'
+import type { createCTFTaskRuntime, CTFTaskRuntime } from '../src/core/ctfRuntime/createCTFTaskRuntime.js'
 
 // ── .env auto-loader (mirrors the main CLI's)
 {
@@ -48,7 +50,6 @@ import OpenAI from 'openai'
 
 // ── ANSI helpers
 const RESET = '\x1b[0m'
-const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const CYAN = '\x1b[36m'
 const YELLOW = '\x1b[33m'
@@ -112,25 +113,26 @@ function parseArgs(argv: string[]): CtfArgs {
   let cwd = process.env.OVOGO_CWD ?? process.cwd()
   const positional: string[] = []
 
-  const takesValue = (i: number) => {
-    if (i + 1 >= args.length) throw new Error(`flag ${args[i]} requires a value`)
-    return args[++i]
+  const takesValue = (idx: number) => {
+    if (idx + 1 >= args.length) throw new Error(`flag ${args[idx]} requires a value`)
+    const next = args[idx + 1]
+    if (next === undefined) throw new Error(`flag ${args[idx]} requires a value`)
+    return next
   }
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
+  for (const arg of args) {
     switch (arg) {
       case '-h': case '--help': help = true; break
       case '-v': case '-V': case '--version': version = true; break
-      case '--profile': profile = takesValue(i); break
-      case '--contest': contest = takesValue(i); break
-      case '--task-id': taskId = takesValue(i); break
+      case '--profile': profile = takesValue(args.indexOf(arg)); break
+      case '--contest': contest = takesValue(args.indexOf(arg)); break
+      case '--task-id': taskId = takesValue(args.indexOf(arg)); break
       case '--allow-public-network': allowPublicNetwork = true; break
-      case '--allow-host': allowHosts.push(takesValue(i)); break
-      case '--run-workflow': runWorkflow = takesValue(i); break
-      case '--input': input = takesValue(i); break
-      case '--text': text = takesValue(i); break
-      case '--cwd': cwd = takesValue(i); break
+      case '--allow-host': allowHosts.push(takesValue(args.indexOf(arg))); break
+      case '--run-workflow': runWorkflow = takesValue(args.indexOf(arg)); break
+      case '--input': input = takesValue(args.indexOf(arg)); break
+      case '--text': text = takesValue(args.indexOf(arg)); break
+      case '--cwd': cwd = takesValue(args.indexOf(arg)); break
       default:
         if (arg.startsWith('-')) {
           // unknown flag ignored silently to preserve CLI behavior
@@ -150,9 +152,9 @@ export interface CtfCliDependencies {
   /** Build an OpenAI client (or return undefined to skip LLM mode). */
   createClient?: (apiKey: string, baseURL?: string) => OpenAI
   /** Build a Renderer; defaults to a noop renderer. */
-  createRenderer?: () => import('../src/ui/renderer.js').Renderer
+  createRenderer?: () => Renderer
   /** Construct the runtime. Defaults to `createCTFTaskRuntime`. */
-  createRuntime?: typeof import('../src/core/ctfRuntime/createCTFTaskRuntime.js').createCTFTaskRuntime
+  createRuntime?: typeof createCTFTaskRuntime
   /** Register signal handlers. Defaults to process.once(SIGINT/SIGTERM). */
   registerSignals?: (handler: (sig: string) => void) => () => void
   /** Resolve env vars / config. Defaults to process.env. */
@@ -297,7 +299,7 @@ export async function runCtfCli(
 
 function installSignalHandlers(
   deps: Partial<CtfCliDependencies>,
-  runtime: Awaited<ReturnType<typeof import('../src/core/ctfRuntime/createCTFTaskRuntime.js').createCTFTaskRuntime>>,
+  runtime: CTFTaskRuntime,
 ): void {
   const register = deps.registerSignals ?? ((h) => {
     process.once('SIGINT', () => h('SIGINT'))
@@ -307,8 +309,8 @@ function installSignalHandlers(
       process.removeAllListeners('SIGTERM')
     }
   })
-  register(async (sig: string) => {
-    await runtime.cancel(`cli_${sig.toLowerCase()}`)
+  register((sig: string) => {
+    void runtime.cancel(`cli_${sig.toLowerCase()}`)
   })
 }
 

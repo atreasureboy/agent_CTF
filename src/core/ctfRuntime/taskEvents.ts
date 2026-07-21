@@ -46,6 +46,7 @@ export type CTFTaskEvent =
   | { type: 'AGENT_RUN_COMPLETED'; agentRunId: string; summary?: string }
   | { type: 'AGENT_RUN_FAILED'; agentRunId: string; error: string }
   | { type: 'AGENT_RUN_CANCELLED'; agentRunId: string; reason: string }
+  | { type: 'AGENT_RUN_OUTPUT_RECORDED'; agentRunId: string; producedFindingIds: string[]; producedArtifactIds: string[] }
   | { type: 'FINDING_ADDED'; finding: Finding }
   | { type: 'ARTIFACT_ADDED'; artifactId: string }
   | { type: 'FLAG_CANDIDATE_ADDED'; candidate: FlagCandidate }

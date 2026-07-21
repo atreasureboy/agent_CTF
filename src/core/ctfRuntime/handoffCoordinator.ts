@@ -15,8 +15,6 @@
 import { randomBytes } from 'crypto'
 
 import type { CapabilityProfile } from '../capabilityProfile.js'
-import type { Renderer } from '../../ui/renderer.js'
-import type OpenAI from 'openai'
 
 import type { CTFTaskStateStore } from './taskStateStore.js'
 import type {
@@ -32,10 +30,13 @@ import {
   SpecialistHarnessFactory,
   type SpecialistHarnessHandle,
 } from './specialistHarnessFactory.js'
-import { TaskStateProjector } from './taskStateProjector.js'
+import type { TaskStateProjector } from './taskStateProjector.js'
 import type { LinkedAbortController } from './linkedAbortController.js'
 import type { TaskExecutionContext } from './taskExecutionContext.js'
-import type { TaskStateProjector as TProj } from './taskStateProjector.js'
+import type { ToolRegistry } from '../toolRegistry.js'
+import type { TurnResult, OpenAIMessage } from '../types.js'
+import type { ArtifactStore } from '../artifacts.js'
+import type { FindingStore } from '../findings.js'
 
 export interface RequestHandoffInput {
   fromAgentRunId: string
@@ -54,7 +55,12 @@ export interface HandoffCoordinatorDeps {
   /** Parent context — used to derive the specialist's narrower context. */
   parentContext: TaskExecutionContext
   parentDependencies: AgentRuntimeDependencies
-  parentToolRegistry: import('../toolRegistry.js').ToolRegistry
+  parentToolRegistry: ToolRegistry
+  /** Parent artifact store — shared with the specialist so its writes are
+   *  visible to the projector. */
+  parentArtifactStore: ArtifactStore
+  /** Parent finding store — shared with the specialist. */
+  parentFindingStore: FindingStore
   /** Workspace root for child harness creation. */
   cwd: string
   sessionsRoot?: string
@@ -259,12 +265,10 @@ export class HandoffCoordinator {
       return failedResult(agentId, err)
     }
 
-    const handoffRec = this.deps.store.getState().handoffs.find((h) => h.id === handoffId)!
-
     const handle = await this.specialistFactory.create({
       parentContext: this.deps.parentContext,
       parentTaskId: this.deps.parentTaskId,
-      handoff: handoffRec,
+      handoff: this.deps.store.getState().handoffs.find((h) => h.id === handoffId)!,
       profile,
       dependencies: this.deps.parentDependencies,
       abort: this.deps.abort,
@@ -272,9 +276,11 @@ export class HandoffCoordinator {
       subtaskId: `${this.deps.parentTaskId}/spec_${handoffId.slice(-6)}`,
       cwd: this.deps.cwd,
       sessionsRoot: this.deps.sessionsRoot,
+      parentArtifactStore: this.deps.parentArtifactStore,
+      parentFindingStore: this.deps.parentFindingStore,
     })
     this.specialized.set(handoffId, handle)
-    const handoff = this.deps.store.getState().handoffs.find((h) => h.id === handoffId)!
+    const handoffRec = this.deps.store.getState().handoffs.find((h) => h.id === handoffId)!
 
     const agentRunId = `run_${randomBytes(6).toString('hex')}`
     const agentRun: AgentRunRecord = {
@@ -300,13 +306,11 @@ export class HandoffCoordinator {
     let failureError: Error | undefined
     try {
       const before = this.deps.projector.captureSnapshot()
-      let result:
-        | (import('../types.js').TurnResult & {
-            newHistory: import('../types.js').OpenAIMessage[]
-          })
+      let engineOut:
+        | { result: TurnResult; newHistory: OpenAIMessage[] }
         | undefined
       try {
-        result = await handle.harness.runTurn(
+        engineOut = await handle.harness.runTurn(
           `Continue from handoff ${handoffId}: ${handoffRec.objective}`,
           [],
         )
@@ -316,18 +320,27 @@ export class HandoffCoordinator {
         throw wrapped
       }
 
-      if (!result.stopped) {
+      if (!engineOut || !engineOut.result.stopped) {
         this.cancelAgentRun(agentRunId, handoffId, 'specialist interrupted')
-        return failedResult(profile.id, result.error ?? 'specialist interrupted')
+        return failedResult(profile.id, engineOut?.result.error ?? 'specialist interrupted')
       }
 
-      // Project the diff into TaskState.
+      // Project the diff into TaskState. The handoffId is forwarded so
+      // artifacts produced by the specialist are physically copied into the
+      // parent's artifact store with a lineage sidecar entry.
       const projection = this.deps.projector.projectDiff(before, {
         producerProfileId: profile.id,
+        handoffId,
       })
       for (const ev of projection.events) this.deps.store.apply(ev)
       const summary = `inherited ${handoffRec.findingIds.length} findings, ${handoffRec.artifactIds.length} artifacts; produced ${projection.newFindingIds.length} findings + ${projection.newArtifactIds.length} artifacts; turn finished`
       this.deps.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
+      this.deps.store.apply({
+        type: 'AGENT_RUN_OUTPUT_RECORDED',
+        agentRunId,
+        producedFindingIds: projection.newFindingIds,
+        producedArtifactIds: projection.newArtifactIds,
+      })
       this.deps.store.apply({
         type: 'SPECIALIST_COMPLETED',
         handoffId,

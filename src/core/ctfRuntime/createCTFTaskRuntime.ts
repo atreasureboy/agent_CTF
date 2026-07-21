@@ -26,13 +26,12 @@ import { createHarness, type HarnessBundle } from '../harness.js'
 import type { Renderer } from '../../ui/renderer.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
-import { CTFTaskStateStore } from './taskStateStore.js'
 import { CTFProfileStore } from './profileStore.js'
-import { TaskStateProjector } from './taskStateProjector.js'
 import { createLinkedAbortController, type LinkedAbortController } from './linkedAbortController.js'
 import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
 import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
+import type { CTFTaskState } from './taskState.js'
 
 export interface CreateCTFTaskRuntimeInput {
   cwd: string
@@ -70,7 +69,7 @@ export interface CTFTaskRuntime {
   dependencies: AgentRuntimeDependencies
   abort: LinkedAbortController
   mainHarness: HarnessBundle
-  getState(): Readonly<import('./taskState.js').CTFTaskState>
+  getState(): Readonly<CTFTaskState>
   cancel(reason: string): Promise<void>
   dispose(): Promise<void>
 }
@@ -139,7 +138,7 @@ export async function createCTFTaskRuntime(
   ensureWorkflowsRegistered(harness.workflowRegistry)
 
   // ── Build StateStore + Orchestrator (single private ctor path).
-  const orchestrator = await CTFTaskOrchestrator.assemble({
+  const orchestrator = CTFTaskOrchestrator.assemble({
     harness,
     profileStore,
     abort,
