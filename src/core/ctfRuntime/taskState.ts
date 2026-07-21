@@ -176,6 +176,16 @@ export interface TaskCompletion {
   decidedAt: number
 }
 
+export interface AgentRunResult {
+  agentRunId: string
+  profileId: string
+  status: 'completed' | 'failed' | 'cancelled'
+  summary?: string
+  error?: string
+  producedFindingIds: string[]
+  producedArtifactIds: string[]
+}
+
 export interface CTFTaskState {
   taskId: string
   phase: CTFTaskPhase
@@ -197,9 +207,16 @@ export interface CTFTaskState {
 
   handoffs: HandoffRecord[]
 
-  activeAgentRuns: AgentRunRecord[]
-  activeWorkflowRuns: WorkflowRunRecord[]
-  activeJobs: JobRecord[]
+  /** §九 — these fields are HISTORICAL records, not "active sets". A caller
+   *  that wants only the currently-running subset can filter by `status`. */
+  agentRuns: AgentRunRecord[]
+  workflowRuns: WorkflowRunRecord[]
+  jobs: JobRecord[]
+  /** Convenience: the ids of runs that are currently `running`. Derived
+   *  from `agentRuns` / `workflowRuns` / `jobs`. */
+  activeAgentRunIds: string[]
+  activeWorkflowRunIds: string[]
+  activeJobIds: string[]
 
   flagCandidates: FlagCandidate[]
 
@@ -207,6 +224,17 @@ export interface CTFTaskState {
 
   createdAt: number
   updatedAt: number
+}
+
+/** Predicate: an AgentRunRecord is "active" iff status === 'running'. */
+export function isActiveAgentRun(r: AgentRunRecord): boolean {
+  return r.status === 'running'
+}
+export function isActiveWorkflowRun(r: WorkflowRunRecord): boolean {
+  return r.status === 'running'
+}
+export function isActiveJob(j: JobRecord): boolean {
+  return j.status === 'pending' || j.status === 'running'
 }
 
 /**

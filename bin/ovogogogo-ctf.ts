@@ -1,31 +1,28 @@
 #!/usr/bin/env node
 /**
- * ovogogogo-ctf — CTF-harness entry point for the unified Agent Harness.
+ * ovogogogo-ctf — CTF-harness entry point.
  *
- * Build on top of the existing ovogogogo engine by injecting a CTF-aware
- * ToolBroker. CLI flags:
+ * Architecture (forth_goal.md §四 + §五):
+ *   CLI (runCtfCli) → createCTFTaskRuntime → CTFTaskOrchestrator →
+ *     Main Agent / Workflow / Specialist
  *
- *   --profile <id>            Built-in Profile id (orchestrator | triage |
- *                             image-stego | crypto | file-forensics) —
- *                             default: orchestrator
- *   --contest <id>            Contest id (defaults to basename of cwd)
- *   --task-id <id>            Task id (defaults to a randomly generated id)
- *   --allow-public-network    Disable scope.allowPublicNetwork=false default
- *   --allow-host <host>       Add host to ContestScope.allowedHosts (repeatable)
- *   --run-workflow <id>       Run a workflow by id then exit (no LLM call)
- *   --input <path>            FILE_INPUT passed into the workflow
- *   --text <str>              TEXT_INPUT passed into the workflow
+ * The CLI is intentionally thin. It only:
+ *   1. Parses flags.
+ *   2. Resolves ContestConfig + ContestScope.
+ *   3. Builds an OpenAI client + Renderer when an API key is supplied.
+ *   4. Calls `createCTFTaskRuntime(...)` to wire the entire runtime.
+ *   5. Routes workflow + chat modes through the orchestrator.
+ *   6. Installs `process.once` SIGINT/SIGTERM → `runtime.cancel`.
+ *   7. Always disposes in `finally` (no `process.exit` skip).
  *
- * Examples:
- *   ovogogogo-ctf --profile image-stego --run-workflow image_quick_scan --input a.png
- *   ovogogogo-ctf --profile crypto --run-workflow rsa_common_attacks --text "n=12345 e=65537"
- *   ovogogogo-ctf --profile orchestrator "decide how to solve this puzzle"
+ * It does NOT create a Harness directly. It does NOT touch ToolBroker.opts.
+ * It does NOT use the legacy fallback path in `dispatchNext`.
  */
 
 import { resolve, join, dirname } from 'path'
 import { existsSync, readFileSync } from 'fs'
-import { homedir } from 'os'
 import { fileURLToPath } from 'url'
+import OpenAI from 'openai'
 
 // ── .env auto-loader (mirrors the main CLI's)
 {
@@ -75,8 +72,8 @@ interface CtfArgs {
 
 const VERSION = '0.1.0'
 
-function printHelp(): void {
-  process.stdout.write(`USAGE
+function printHelp(out: NodeJS.WritableStream = process.stdout): void {
+  out.write(`USAGE
   ovogogogo-ctf [options] [task]
 
 OPTIONS
@@ -136,7 +133,7 @@ function parseArgs(argv: string[]): CtfArgs {
       case '--cwd': cwd = takesValue(i); break
       default:
         if (arg.startsWith('-')) {
-          process.stderr.write(`${YELLOW}warning: unknown flag ${arg} (ignored)${RESET}\n`)
+          // unknown flag ignored silently to preserve CLI behavior
         } else {
           positional.push(arg)
         }
@@ -146,101 +143,193 @@ function parseArgs(argv: string[]): CtfArgs {
   return { profile, contest, taskId, allowPublicNetwork, allowHosts, runWorkflow, input, text, task, help, version, cwd }
 }
 
-// ── main ────────────────────────────────────────────────────────────────
+/** Dependency seams — every IO is injectable so tests can swap them out. */
+export interface CtfCliDependencies {
+  stdout: NodeJS.WritableStream
+  stderr: NodeJS.WritableStream
+  /** Build an OpenAI client (or return undefined to skip LLM mode). */
+  createClient?: (apiKey: string, baseURL?: string) => OpenAI
+  /** Build a Renderer; defaults to a noop renderer. */
+  createRenderer?: () => import('../src/ui/renderer.js').Renderer
+  /** Construct the runtime. Defaults to `createCTFTaskRuntime`. */
+  createRuntime?: typeof import('../src/core/ctfRuntime/createCTFTaskRuntime.js').createCTFTaskRuntime
+  /** Register signal handlers. Defaults to process.once(SIGINT/SIGTERM). */
+  registerSignals?: (handler: (sig: string) => void) => () => void
+  /** Resolve env vars / config. Defaults to process.env. */
+  env?: NodeJS.ProcessEnv
+  /** Wall clock — used to compute task timestamps. */
+  now?: () => number
+}
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv)
-  const cwd = resolve(args.cwd)
+/** Public entry — fully testable. */
+export async function runCtfCli(
+  argv: string[],
+  deps: Partial<CtfCliDependencies> = {},
+): Promise<number> {
+  const stdout = deps.stdout ?? process.stdout
+  const stderr = deps.stderr ?? process.stderr
+  const env = deps.env ?? process.env
+  const now = deps.now ?? Date.now
+
+  const args = parseArgs(argv)
 
   if (args.help) {
-    printHelp()
-    process.exit(0)
+    printHelp(stdout)
+    return 0
   }
-
   if (args.version) {
-    process.stdout.write(`${VERSION} (ovogogogo-ctf)\n`)
-    process.exit(0)
+    stdout.write(`${VERSION} (ovogogogo-ctf)\n`)
+    return 0
   }
 
-  process.stdout.write(`${CYAN}${BOLD}ovogogogo-ctf ${VERSION}${RESET}\n`)
-  process.stdout.write(`cwd: ${cwd}\n`)
-  process.stdout.write(`profile: ${BOLD}${args.profile}${RESET}\n`)
+  stdout.write(`${CYAN}${BOLD}ovogogogo-ctf ${VERSION}${RESET}\n`)
+  stdout.write(`cwd: ${args.cwd}\n`)
+  stdout.write(`profile: ${BOLD}${args.profile}${RESET}\n`)
 
-  // Lazy import to keep startup fast.
-  const { createHarness } = await import('../src/core/harness.js')
+  // Lazy imports — keep CLI startup snappy.
   const { ensureProfilesRegistered } = await import('../src/capabilityProfiles/index.js')
-  const { ensureWorkflowsRegistered, __resetWorkflowRegistrationForTests } = await import('../src/workflows/index.js')
-  ensureProfilesRegistered()
-  __resetWorkflowRegistrationForTests()
-
-  // ContestScope — load .ovogo/contest.json first, merge with CLI overrides.
   const { resolveContestConfig } = await import('../src/core/contestConfig.js')
-  const { ContestScopeChecker } = await import('../src/core/contestScope.js')
+  const { createCTFTaskRuntime } = await import(
+    '../src/core/ctfRuntime/createCTFTaskRuntime.js'
+  )
+  ensureProfilesRegistered()
+
   const { scope: mergedScope, sourcePath: contestCfgPath } = resolveContestConfig({
-    cwd,
+    cwd: resolve(args.cwd),
     cliOverride: {
       allowedHosts: args.allowHosts.length > 0 ? args.allowHosts : undefined,
       allowPublicNetwork: args.allowPublicNetwork ? true : undefined,
     },
   })
-  const scope = new ContestScopeChecker(mergedScope)
   if (contestCfgPath) {
-    process.stdout.write(`contest config: ${CYAN}${contestCfgPath}${RESET}\n`)
+    stdout.write(`contest config: ${CYAN}${contestCfgPath}${RESET}\n`)
   }
 
-  const harness = createHarness({
-    cwd,
-    profile: args.profile,
-    contestId: args.contest,
-    taskId: args.taskId,
-    contestScope: mergedScope,
-    inlineMaxBytes: 1024,
-    jobLimits: { maxPerAgent: 0, maxPerTask: 0 }, // CLI mode forces inline
-  })
-  // Re-bind the broker's scope to the constructed checker.
-  ;(harness.broker as unknown as { opts: { contestScope?: unknown } }).opts.contestScope = scope
+  // ── Build client + renderer for LLM mode (chat). Workflow-only can skip.
+  const apiKey = env['OPENAI_API_KEY']
+  const baseURL = env['OPENAI_BASE_URL']
+  const model = env['OVOGO_MODEL'] ?? 'gpt-4o'
 
-  // Register the same workflows so runWorkflow can find them.
-  ensureWorkflowsRegistered(harness.workflowRegistry)
+  let runtime: Awaited<ReturnType<typeof createCTFTaskRuntime>> | undefined
 
-  process.stdout.write(`task workspace: ${harness.taskWorkspace.paths.workspaceDir}\n`)
-  process.stdout.write(`events:        ${harness.taskWorkspace.paths.eventsFile}\n`)
+  const createRuntime = deps.createRuntime ?? createCTFTaskRuntime
 
-  // ── Workflow-only mode ────────────────────────────────────────────────
-  if (args.runWorkflow) {
-    const wf = harness.workflowRegistry.get(args.runWorkflow)
-    if (!wf) {
-      const known = harness.workflowRegistry.list().map((w) => w.id).join(', ')
-      process.stderr.write(`${RED}Unknown workflow: ${args.runWorkflow}${RESET}\n  Known: ${known}\n`)
-      process.exit(1)
-    }
-    const inputs: Record<string, unknown> = {}
-    if (args.input) inputs.FILE_INPUT = args.input
-    if (args.text) inputs.TEXT_INPUT = args.text
-    process.stdout.write(`running workflow: ${BOLD}${args.runWorkflow}${RESET}\n`)
-    const result = await harness.runWorkflow(wf, inputs)
-    process.stdout.write(`\n${GREEN}workflow status:${RESET} ${result.status}\n`)
-    process.stdout.write(`  steps: ${result.stepOutcomes.length}, artifacts: ${result.emittedArtifactCount}, findings: ${result.emittedFindingCount}\n`)
-    if (result.stepOutcomes.length > 0) {
-      process.stdout.write(`  per-step outcomes:\n`)
-      for (const s of result.stepOutcomes) {
-        process.stdout.write(`    - [${s.status}] ${s.stepId}${s.error ? `: ${s.error.slice(0, 80)}` : ''}\n`)
+  try {
+    // ── Workflow-only mode — no client / renderer required.
+    if (args.runWorkflow) {
+      runtime = await createRuntime({
+        cwd: resolve(args.cwd),
+        profileId: args.profile,
+        contestScope: mergedScope,
+        contestId: args.contest,
+        taskId: args.taskId,
+        jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
+      })
+      installSignalHandlers(deps, runtime)
+      const reg = runtime.mainHarness.workflowRegistry
+      const wf = reg.get(args.runWorkflow)
+      if (!wf) {
+        const known = reg.list().map((w) => w.id).join(', ')
+        stderr.write(`${RED}Unknown workflow: ${args.runWorkflow}${RESET}\n  Known: ${known}\n`)
+        return 1
       }
+      const inputs: Record<string, unknown> = {}
+      if (args.input) inputs['FILE_INPUT'] = args.input
+      if (args.text) inputs['TEXT_INPUT'] = args.text
+      stdout.write(`running workflow: ${BOLD}${args.runWorkflow}${RESET}\n`)
+      const result = await runtime.orchestrator.runWorkflow(args.runWorkflow, inputs)
+      stdout.write(`\n${GREEN}workflow status:${RESET} ${result.status}\n`)
+      stdout.write(`  steps: ${result.stepOutcomes.length}, artifacts: ${result.emittedArtifactCount}, findings: ${result.emittedFindingCount}\n`)
+      if (result.stepOutcomes.length > 0) {
+        stdout.write(`  per-step outcomes:\n`)
+        for (const s of result.stepOutcomes) {
+          stdout.write(`    - [${s.status}] ${s.stepId}${s.error ? `: ${s.error.slice(0, 80)}` : ''}\n`)
+        }
+      }
+      void now
+      return result.status === 'cancelled' ? 1 : 0
     }
-    process.exit(result.status === 'cancelled' ? 1 : 0)
-  }
 
-  // ── No task → bail ──────────────────────────────────────────────────
-  if (!args.task) {
-    process.stderr.write(`${YELLOW}No task or --run-workflow supplied. Use --help.${RESET}\n`)
-    process.exit(2)
-  }
+    // ── Chat mode — requires a real LLM client.
+    if (!args.task) {
+      stderr.write(`${YELLOW}No task or --run-workflow supplied. Use --help.${RESET}\n`)
+      return 2
+    }
+    if (!apiKey && !deps.createClient) {
+      stderr.write(
+        `${RED}error: LLM mode requires an OPENAI_API_KEY environment variable.${RESET}\n` +
+          `${YELLOW}For headless verification, run with --run-workflow instead.${RESET}\n`,
+      )
+      return 3
+    }
+    const client = deps.createClient
+      ? deps.createClient(apiKey ?? '', baseURL)
+      : new OpenAI({ apiKey: apiKey ?? '', baseURL, timeout: 120_000, maxRetries: 5 })
 
-  process.stdout.write(`${DIM}LLM-backed turn is reserved for clients with a real API key.${RESET}\n`)
-  process.stdout.write(`${DIM}For headless verification of the harness, run with --run-workflow.${RESET}\n`)
+    const renderer = deps.createRenderer
+      ? deps.createRenderer()
+      : new (await import('../src/ui/renderer.js')).Renderer()
+
+    runtime = await createRuntime({
+      cwd: resolve(args.cwd),
+      profileId: args.profile,
+      contestScope: mergedScope,
+      contestId: args.contest,
+      taskId: args.taskId,
+      client,
+      renderer,
+      modelConfig: { model, apiKey: apiKey ?? '', baseURL },
+    })
+    installSignalHandlers(deps, runtime)
+    const r = await runtime.orchestrator.runMainAgent(args.task)
+    stdout.write(`\n${GREEN}run status:${RESET} ${r.status}\n`)
+    if (r.summary) stdout.write(`  summary: ${r.summary}\n`)
+    return r.status === 'completed' ? 0 : 1
+  } catch (err) {
+    stderr.write(`${RED}fatal:${RESET} ${(err as Error).message}\n`)
+    return 1
+  } finally {
+    if (runtime) {
+      await runtime.dispose()
+    }
+  }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`${RED}fatal:${RESET} ${(err as Error).message}\n`)
-  process.exit(1)
-})
+function installSignalHandlers(
+  deps: Partial<CtfCliDependencies>,
+  runtime: Awaited<ReturnType<typeof import('../src/core/ctfRuntime/createCTFTaskRuntime.js').createCTFTaskRuntime>>,
+): void {
+  const register = deps.registerSignals ?? ((h) => {
+    process.once('SIGINT', () => h('SIGINT'))
+    process.once('SIGTERM', () => h('SIGTERM'))
+    return () => {
+      process.removeAllListeners('SIGINT')
+      process.removeAllListeners('SIGTERM')
+    }
+  })
+  register(async (sig: string) => {
+    await runtime.cancel(`cli_${sig.toLowerCase()}`)
+  })
+}
+
+// ── Module entry — only invoked when the script is run directly.
+const invokedDirectly = (() => {
+  try {
+    const arg = process.argv[1]
+    if (!arg) return false
+    return resolve(arg) === resolve(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+})()
+
+if (invokedDirectly) {
+  runCtfCli(process.argv)
+    .then((code) => {
+      process.exitCode = code
+    })
+    .catch((err: unknown) => {
+      process.stderr.write(`${RED}fatal:${RESET} ${(err as Error).message}\n`)
+      process.exitCode = 1
+    })
+}

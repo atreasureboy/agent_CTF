@@ -20,6 +20,9 @@
 import {
   ALLOWED_PHASE_TRANSITIONS,
   canTransitionPhase,
+  isActiveAgentRun,
+  isActiveJob,
+  isActiveWorkflowRun,
   isTerminalPhase,
   type CTFTaskPhase,
   type CTFTaskState,
@@ -38,6 +41,14 @@ export class IllegalPhaseTransitionError extends TaskStateStoreError {}
 export class TaskAlreadyCompletedError extends TaskStateStoreError {}
 export class DuplicateHandoffTransitionError extends TaskStateStoreError {}
 export class UnknownHandoffError extends TaskStateStoreError {}
+export class DuplicateHypothesisError extends TaskStateStoreError {}
+export class UnknownHypothesisError extends TaskStateStoreError {}
+export class DuplicateAttemptError extends TaskStateStoreError {}
+export class UnknownAttemptError extends TaskStateStoreError {}
+export class IllegalAttemptTransitionError extends TaskStateStoreError {}
+export class DuplicateJobError extends TaskStateStoreError {}
+export class UnknownJobError extends TaskStateStoreError {}
+export class IllegalJobTransitionError extends TaskStateStoreError {}
 
 export class CTFTaskStateStore {
   private state: CTFTaskState
@@ -224,15 +235,18 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'CONTEXT_REPLACED':
       return { ...state, context: event.context }
 
-    case 'WORKFLOW_STARTED':
+    case 'WORKFLOW_STARTED': {
+      const workflowRuns = [...state.workflowRuns, event.workflowRun]
       return {
         ...state,
-        activeWorkflowRuns: [...state.activeWorkflowRuns, event.workflowRun],
+        workflowRuns,
+        activeWorkflowRunIds: workflowRuns.filter(isActiveWorkflowRun).map((r) => r.id),
       }
+    }
 
     case 'WORKFLOW_COMPLETED':
     case 'WORKFLOW_FAILED': {
-      const runs = state.activeWorkflowRuns.map((r) =>
+      const workflowRuns = state.workflowRuns.map((r) =>
         r.id === event.workflowRunId
           ? {
               ...r,
@@ -243,7 +257,11 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
             }
           : r,
       )
-      return { ...state, activeWorkflowRuns: runs }
+      return {
+        ...state,
+        workflowRuns,
+        activeWorkflowRunIds: workflowRuns.filter(isActiveWorkflowRun).map((r) => r.id),
+      }
     }
 
     case 'HANDOFF_REQUESTED':
@@ -263,16 +281,19 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         ),
       }
 
-    case 'AGENT_RUN_STARTED':
+    case 'AGENT_RUN_STARTED': {
+      const agentRuns = [...state.agentRuns, event.agentRun]
       return {
         ...state,
-        activeAgentRuns: [...state.activeAgentRuns, event.agentRun],
+        agentRuns,
+        activeAgentRunIds: agentRuns.filter(isActiveAgentRun).map((r) => r.id),
       }
+    }
 
     case 'AGENT_RUN_COMPLETED':
     case 'AGENT_RUN_FAILED':
     case 'AGENT_RUN_CANCELLED': {
-      const runs = state.activeAgentRuns.map((r) =>
+      const agentRuns = state.agentRuns.map((r) =>
         r.id === event.agentRunId
           ? {
               ...r,
@@ -298,7 +319,11 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
             }
           : r,
       )
-      return { ...state, activeAgentRuns: runs }
+      return {
+        ...state,
+        agentRuns,
+        activeAgentRunIds: agentRuns.filter(isActiveAgentRun).map((r) => r.id),
+      }
     }
 
     case 'FINDING_ADDED':
@@ -314,19 +339,97 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'FLAG_CANDIDATE_ADDED':
       return { ...state, flagCandidates: [...state.flagCandidates, event.candidate] }
 
-    case 'HYPOTHESIS_ADDED':
-      // The hypothesis is added in the orchestrator and the index returned;
-      // we don't need to mutate state here — placeholder for the future.
-      return state
+    case 'HYPOTHESIS_ADDED': {
+      // §九 — refuse duplicate IDs so the reducer is the single source of
+      // truth. Each hypothesis is stored verbatim; update via HYPOTHESIS_UPDATED.
+      if (state.hypotheses.some((h) => h.id === event.hypothesis.id)) {
+        throw new DuplicateHypothesisError(
+          `Hypothesis ${event.hypothesis.id} already exists`,
+        )
+      }
+      return { ...state, hypotheses: [...state.hypotheses, event.hypothesis] }
+    }
 
-    case 'ATTEMPT_RECORDED':
-      return state
+    case 'HYPOTHESIS_UPDATED': {
+      const next = state.hypotheses.map((h) =>
+        h.id === event.hypothesisId ? { ...h, ...event.patch, updatedAt: Date.now() } : h,
+      )
+      if (next.every((h, i) => h === state.hypotheses[i])) {
+        throw new UnknownHypothesisError(`Hypothesis ${event.hypothesisId} not found`)
+      }
+      return { ...state, hypotheses: next }
+    }
 
-    case 'JOB_RECORDED':
-      return state
+    case 'ATTEMPT_RECORDED': {
+      // §九 — refuse duplicates and rejected status transitions.
+      if (state.attempts.some((a) => a.id === event.attempt.id)) {
+        throw new DuplicateAttemptError(`Attempt ${event.attempt.id} already exists`)
+      }
+      return { ...state, attempts: [...state.attempts, event.attempt] }
+    }
 
-    case 'ACTIVE_JOBS_REPLACED':
-      return { ...state, activeJobs: event.jobs }
+    case 'ATTEMPT_UPDATED': {
+      const next = state.attempts.map((a) => {
+        if (a.id !== event.attemptId) return a
+        // §九 — completed attempts cannot return to running/pending.
+        if (
+          (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled') &&
+          event.patch.status &&
+          (event.patch.status === 'running' || event.patch.status === 'pending')
+        ) {
+          throw new IllegalAttemptTransitionError(
+            `Attempt ${a.id} cannot move from ${a.status} to ${event.patch.status}`,
+          )
+        }
+        return { ...a, ...event.patch }
+      })
+      if (next.every((a, i) => a === state.attempts[i])) {
+        throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
+      }
+      return { ...state, attempts: next }
+    }
+
+    case 'JOB_RECORDED': {
+      if (state.jobs.some((j) => j.id === event.job.id)) {
+        throw new DuplicateJobError(`Job ${event.job.id} already recorded`)
+      }
+      const jobs = [...state.jobs, event.job]
+      return {
+        ...state,
+        jobs,
+        activeJobIds: jobs.filter(isActiveJob).map((j) => j.id),
+      }
+    }
+
+    case 'JOB_UPDATED': {
+      const idx = state.jobs.findIndex((j) => j.id === event.jobId)
+      if (idx < 0) {
+        throw new UnknownJobError(`Job ${event.jobId} not found`)
+      }
+      const prev = state.jobs[idx]
+      // §十一 — terminal jobs (success/failed/cancelled) cannot return to
+      // pending/running.
+      const prevTerminal =
+        prev.status === 'success' || prev.status === 'failed' || prev.status === 'cancelled'
+      const patchStatus = event.patch.status
+      if (
+        prevTerminal &&
+        patchStatus &&
+        (patchStatus === 'pending' || patchStatus === 'running')
+      ) {
+        throw new IllegalJobTransitionError(
+          `Job ${prev.id} is ${prev.status}; cannot transition to ${patchStatus}`,
+        )
+      }
+      const jobs = state.jobs.map((j, i) =>
+        i === idx ? { ...j, ...event.patch } : j,
+      )
+      return {
+        ...state,
+        jobs,
+        activeJobIds: jobs.filter(isActiveJob).map((j) => j.id),
+      }
+    }
 
     case 'TASK_COMPLETED':
       return {

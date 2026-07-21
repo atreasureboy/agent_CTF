@@ -56,6 +56,20 @@ export type JobRunner = (spec: JobSpec, signal: AbortSignal) => Promise<{
   error?: string
 }>
 
+/** Lifecycle events emitted by `BackgroundJobManager`. Listeners receive
+ *  every transition; the orchestrator mirrors them into CTFTaskState.jobs.
+ *  No polling, no monkey-patching of methods — just an EventEmitter-style
+ *  subscribe. */
+export type BackgroundJobEvent =
+  | { type: 'JOB_STARTED'; job: BackgroundJob }
+  | { type: 'JOB_UPDATED'; job: BackgroundJob }
+  | { type: 'JOB_COMPLETED'; job: BackgroundJob }
+  | { type: 'JOB_FAILED'; job: BackgroundJob }
+  | { type: 'JOB_CANCELLED'; job: BackgroundJob }
+
+export type JobEventListener = (event: BackgroundJobEvent) => void
+export type JobUnsubscribe = () => void
+
 export interface BackgroundJobManagerOptions {
   taskWorkspaceDir: string
   maxPerAgent?: number
@@ -73,6 +87,7 @@ export class BackgroundJobManager {
   private readonly pendingWaiters = new Map<string, Array<() => void>>()
   private readonly taskIndexPaths = new Map<string, string>()
   private readonly taskDirs = new Map<string, string>()
+  private readonly listeners = new Set<JobEventListener>()
   private readonly maxPerAgent: number
   private readonly maxPerTask: number
   private readonly globalTimeoutMs: number
@@ -85,6 +100,31 @@ export class BackgroundJobManager {
     this.maxPerTask = opts.maxPerTask ?? 16
     this.globalTimeoutMs = opts.globalTimeoutMs ?? 3_600_000  // 1h
     mkdirSync(opts.taskWorkspaceDir, { recursive: true })
+  }
+
+  /**
+   * Subscribe to job lifecycle events. The listener is invoked synchronously
+   * after the manager mutates state — no polling. Returns an unsubscribe.
+   *
+   * Errors thrown by listeners are swallowed so a buggy listener cannot break
+   * the manager.
+   */
+  subscribe(listener: JobEventListener): JobUnsubscribe {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  /** Internal — broadcast a lifecycle event to every subscriber. */
+  private emit(event: BackgroundJobEvent): void {
+    for (const l of this.listeners) {
+      try {
+        l(event)
+      } catch {
+        /* best-effort — listeners must not break the manager */
+      }
+    }
   }
 
   /**
@@ -160,6 +200,7 @@ export class BackgroundJobManager {
     this.jobs.set(id, job)
     this.abortControllers.set(id, controller)
     this.persist(job)
+    this.emit({ type: 'JOB_STARTED', job: { ...job } })
 
     // Fire-and-await execution in next tick so the caller can observe status.
     queueMicrotask(() => this.execute(job, spec, controller.signal))
@@ -170,6 +211,7 @@ export class BackgroundJobManager {
   private async execute(job: BackgroundJob, spec: JobSpec, signal: AbortSignal): Promise<void> {
     job.status = 'running'
     this.persist(job)
+    this.emit({ type: 'JOB_UPDATED', job: { ...job } })
 
     // Apply timeout via a side AbortController
     const timeoutCtrl = new AbortController()
@@ -211,6 +253,16 @@ export class BackgroundJobManager {
     } finally {
       clearTimeout(timer)
       this.persist(job)
+      // Emit the terminal lifecycle event — orchestrator mirrors these into
+      // CTFTaskState.jobs. Subscribers that only care about terminal events
+      // can filter on `event.type`.
+      if (job.status === 'success') {
+        this.emit({ type: 'JOB_COMPLETED', job: { ...job } })
+      } else if (job.status === 'failed') {
+        this.emit({ type: 'JOB_FAILED', job: { ...job } })
+      } else if (job.status === 'cancelled') {
+        this.emit({ type: 'JOB_CANCELLED', job: { ...job } })
+      }
       const waiters = this.pendingWaiters.get(job.id) ?? []
       this.pendingWaiters.delete(job.id)
       for (const fn of waiters) fn()

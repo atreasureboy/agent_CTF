@@ -75,6 +75,14 @@ export interface ToolBrokerOptions {
   /** When true, Broker forces execution inline regardless of executionMode.
    * Used by tests + as a fail-safe when JobManager refuses. */
   forceInline?: boolean
+  /**
+   * §七 — when provided, the broker reads/writes its active profile via this
+   * store. This is the single source of truth shared with the Orchestrator
+   * and Harness. Direct setProfile() / private-field mutation remains as a
+   * fallback for tests; production code should pass a ProfileStore and call
+   * `store.switchTo()` instead.
+   */
+  profileStore?: import('./ctfRuntime/profileStore.js').ProfileStore
 }
 
 /**
@@ -105,7 +113,7 @@ export class ToolBroker {
   }
 
   getProfile(): CapabilityProfile {
-    return this.opts.profile
+    return this.opts.profileStore?.getCurrent() ?? this.opts.profile
   }
 
   /**
@@ -121,8 +129,14 @@ export class ToolBroker {
     if (!next || !next.id) {
       throw new Error('setProfile: profile must be a valid CapabilityProfile')
     }
-    // Re-create the options object so any cached references (none today,
-    // but possible in future) update consistently.
+    if (this.opts.profileStore) {
+      // Delegate to the shared store so every reader (broker, harness, etc.)
+      // sees the same atomic switch.
+      this.opts.profileStore.switchTo(next)
+      return
+    }
+    // Legacy path — no ProfileStore wired. Re-create the options object so
+    // any cached references (none today, but possible in future) update.
     ;(this as unknown as { opts: ToolBrokerOptions }).opts = { ...this.opts, profile: next }
   }
 

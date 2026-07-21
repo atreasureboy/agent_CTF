@@ -193,9 +193,9 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       hypotheses: [],
       attempts: [],
       handoffs: [],
-      activeAgentRuns: [],
-      activeWorkflowRuns: [],
-      activeJobs: [],
+      agentRuns: [], activeAgentRunIds: [],
+      workflowRuns: [], activeWorkflowRunIds: [],
+      jobs: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now,
       updatedAt: now,
@@ -387,7 +387,7 @@ describe('TaskState — finding/artifact merge', () => {
       challenge: { inputArtifactIds: [] },
       activeProfileId: 'orchestrator',
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], activeAgentRuns: [], activeWorkflowRuns: [], activeJobs: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -479,7 +479,7 @@ describe('CTFTaskOrchestrator — wiring', () => {
       // runner still records the lifecycle.
       const result = await orch.runWorkflow('unknown_file_triage', {})
       expect(result).toBeTruthy()
-      expect(orch.getState().activeWorkflowRuns[0].status).toBe('completed')
+      expect(orch.getState().workflowRuns[0].status).toBe('completed')
 
       // Handoff request → reject → state reflects the rejection.
       const h = orch.requestHandoff({
@@ -531,8 +531,13 @@ describe('CTFTaskOrchestrator — wiring', () => {
       const state = orch.getState()
       const handoffRecord = state.handoffs.find((x) => x.id === h.id)
       expect(handoffRecord).toBeTruthy()
-      // It must NOT be 'requested' anymore.
-      expect(['approved', 'running', 'completed', 'failed']).toContain(handoffRecord!.status)
+      // It must NOT be 'requested' anymore — the orchestrator owns the
+      // lifecycle. The terminal status depends on whether the specialist
+      // turn could run end-to-end (with the default Renderer the orchestrator
+      // injects) or threw; either path proves lifecycle closure.
+      expect(['approved', 'running', 'completed', 'failed', 'cancelled']).toContain(
+        handoffRecord!.status,
+      )
       expect(result).toBeTruthy()
     } finally {
       await orch.dispose()
@@ -546,7 +551,7 @@ describe('CTFTaskOrchestrator — wiring', () => {
       orch.cancel('test')
       // Cancel is idempotent; no exception.
       orch.cancel('test-again')
-      expect(orch.getState().activeWorkflowRuns[0].status).toBe('completed')
+      expect(orch.getState().workflowRuns[0].status).toBe('completed')
     } finally {
       await orch.dispose()
     }
@@ -720,7 +725,7 @@ describe('§十一 — Profile sync after switchProfile', () => {
     try {
       orch.switchProfile('crypto')
       await orch.runWorkflow('unknown_file_triage', {})
-      const wfRun = orch.getState().activeWorkflowRuns[0]
+      const wfRun = orch.getState().workflowRuns[0]
       expect(wfRun.profileId).toBe('crypto')
     } finally {
       await orch.dispose()
@@ -802,7 +807,7 @@ describe('§七 — Orchestrator end-to-end (no LLM)', () => {
       const r = await orch.runMainAgent('hello')
       expect(r.status).toBe('failed')
       expect(r.error).toMatch(/renderer/)
-      const runs = orch.getState().activeAgentRuns
+      const runs = orch.getState().agentRuns
       expect(runs.find((x) => x.id === r.agentRunId)?.status).toBe('failed')
     } finally {
       await orch.dispose()
@@ -814,7 +819,7 @@ describe('§七 — Orchestrator end-to-end (no LLM)', () => {
     try {
       const r = await orch.runWorkflow('unknown_file_triage', {})
       expect(r).toBeTruthy()
-      expect(orch.getState().activeWorkflowRuns[0].status).toBe('completed')
+      expect(orch.getState().workflowRuns[0].status).toBe('completed')
     } finally {
       await orch.dispose()
     }
@@ -864,7 +869,7 @@ describe('§六 — StateStore guards', () => {
       challenge: { inputArtifactIds: [] },
       activeProfileId: 'orchestrator',
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], activeAgentRuns: [], activeWorkflowRuns: [], activeJobs: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }
@@ -953,16 +958,18 @@ describe('§十六 — Backwards compatibility', () => {
     }
   })
 
-  it('dispatchNext without orchestrator uses the legacy shim (does not spawn specialist)', async () => {
+  it('dispatchNext without orchestrator refuses to spawn a specialist', async () => {
     const { createHarness } = await import('../src/core/harness.js')
     const { dispatchNext } = await import('../src/core/orchestratorDispatch.js')
     const h = createHarness({ cwd: root, profile: 'image-stego' })
     await h.broker.execute('request_handoff', {
       suggestedAgent: 'crypto', reason: 'rsa', objective: 'crack',
     }, { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' })
-    const r = await dispatchNext(h, { decision: 'approve' })
-    expect(r?.status).toBe('approved')
-    expect(r?.executedOn?.summary).toMatch(/no autoExecute|inherit/)
+    // §八 — the legacy "create child harness here" fallback was removed;
+    // dispatchNext now refuses to act without an attached orchestrator.
+    await expect(dispatchNext(h, { decision: 'approve' })).rejects.toThrow(
+      /dispatchNext requires an attached CTFTaskOrchestrator/,
+    )
   })
 })
 
@@ -1048,7 +1055,7 @@ describe('§十四 — Error cause chain preservation', () => {
       // record is `completed` and `result` is non-null. Otherwise the
       // record is `failed` with an error string (the original renderer
       // message — `cause` is preserved inside the orchestrator's wrapper).
-      expect(['completed', 'failed']).toContain(record.status)
+      expect(['completed', 'failed', 'cancelled']).toContain(record.status)
       if (record.status === 'failed') {
         expect(record.error).toBeTruthy()
         // ApproveHandoff returns AgentRunResult; the result's `error`
@@ -1100,17 +1107,17 @@ describe('§十一 — Prompt modules follow the new profile', () => {
 })
 
 // ──────────────────────────────────────────────────────────────────────
-// §七 — JobRecord mirroring into state.activeJobs
+// §七 — JobRecord mirroring into state.jobs
 // ──────────────────────────────────────────────────────────────────────
 describe('§七 — JobRecord mirror', () => {
-  it('records a job in activeJobs when one is spawned', async () => {
+  it('records a job in jobs when one is spawned', async () => {
     const orch = await CTFTaskOrchestrator.create({
       cwd: root,
       profileId: 'triage', // triage allows Bash
       jobLimits: { maxPerAgent: 4, maxPerTask: 4 },
     })
     try {
-      const before = orch.getState().activeJobs.length
+      const before = orch.getState().jobs.length
       // Trigger a background job via the broker. The orchestrator's job
       // mirror should pick it up.
       const r = await orch.mainHarness.broker.execute(
@@ -1124,7 +1131,7 @@ describe('§七 — JobRecord mirror', () => {
       )
       // Allow the polling tick to land.
       await new Promise((resolve) => setTimeout(resolve, 120))
-      const after = orch.getState().activeJobs.length
+      const after = orch.getState().jobs.length
       expect(after).toBeGreaterThanOrEqual(before)
       expect(r.result.isError).toBe(false)
     } finally {

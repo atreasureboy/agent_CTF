@@ -13,10 +13,13 @@
 
 import type {
   AgentRunRecord,
+  CTFAttempt,
+  CTFHypothesis,
   CTFTaskPhase,
   CTFTaskState,
   FlagCandidate,
   HandoffRecord,
+  JobRecord,
   WorkflowRunRecord,
 } from './taskState.js'
 import type { Finding } from '../findings.js'
@@ -46,10 +49,15 @@ export type CTFTaskEvent =
   | { type: 'FINDING_ADDED'; finding: Finding }
   | { type: 'ARTIFACT_ADDED'; artifactId: string }
   | { type: 'FLAG_CANDIDATE_ADDED'; candidate: FlagCandidate }
-  | { type: 'HYPOTHESIS_ADDED'; hypothesisId: string }
-  | { type: 'ATTEMPT_RECORDED'; attemptId: string }
-  | { type: 'JOB_RECORDED'; jobId: string }
-  | { type: 'ACTIVE_JOBS_REPLACED'; jobs: import('./taskState.js').JobRecord[] }
+  // §九 — Hypothesis/Attempt/Job events now carry the full object so the
+  // reducer can actually update state. The old "id-only" variants caused
+  // silent state divergence.
+  | { type: 'HYPOTHESIS_ADDED'; hypothesis: CTFHypothesis }
+  | { type: 'HYPOTHESIS_UPDATED'; hypothesisId: string; patch: Partial<CTFHypothesis> }
+  | { type: 'ATTEMPT_RECORDED'; attempt: CTFAttempt }
+  | { type: 'ATTEMPT_UPDATED'; attemptId: string; patch: Partial<CTFAttempt> }
+  | { type: 'JOB_RECORDED'; job: JobRecord }
+  | { type: 'JOB_UPDATED'; jobId: string; patch: Partial<JobRecord> }
   | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
 
 /** A subscriber receives every event AFTER it has been applied. */

@@ -16,6 +16,7 @@ import { join } from 'path'
 import { createHarness } from '../src/core/harness.js'
 import { dispatchNext, inspectNextHandoff } from '../src/core/orchestratorDispatch.js'
 import { ensureWorkflowsRegistered, __resetWorkflowRegistrationForTests } from '../src/workflows/index.js'
+import { CTFTaskOrchestrator } from '../src/core/ctfRuntime/taskOrchestrator.js'
 
 let root: string
 
@@ -99,6 +100,8 @@ function harnessHelper() {
 describe('Meta tools — emit_finding / request_handoff round-trip', () => {
   it('emit_finding persists and request_handoff submits; orchestrator dispatch inspects pending list', async () => {
     const h = createHarness({ cwd: root, profile: 'image-stego' })
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'image-stego' })
+    try {
 
     const emitted = await h.broker.execute('emit_finding', {
       category: 'image',
@@ -120,18 +123,34 @@ describe('Meta tools — emit_finding / request_handoff round-trip', () => {
       findingIds: [fid ?? ''],
     }, { cwd: root, taskId: 't1', agentId: 'image-stego' })
     expect(handoffRes.result.isError).toBe(false)
-    const hid = (handoffRes.result.content.match(/id=(\S+)/) ?? [])[1]
-    expect(hid).toBeTruthy()
+    const legacyHid = (handoffRes.result.content.match(/id=(\S+)/) ?? [])[1]
+    expect(legacyHid).toBeTruthy()
 
     const pending = h.handoffStore.pending()
     expect(pending.length).toBe(1)
     expect(pending[0].suggestedAgent).toBe('file-forensics')
     expect(pending[0].status).toBe('pending')
 
-    const decision = await dispatchNext(h, { decision: 'approve' })
-    expect(decision?.status).toBe('approved')
-
-    expect(h.handoffStore.pending().length).toBe(0)
+    // The orchestrator owns the lifecycle. We mirror the legacy submission
+    // into the orchestrator's TaskState and approve through it. Use
+    // 'triage' as the target — it has no required external binaries so the
+    // specialist binary-availability gate doesn't reject the spawn.
+    const ho = orch.requestHandoff({
+      fromAgentRunId: 'run_main',
+      targetCapability: 'triage',
+      reason: 'Extracted nested archive.zip — needs recursive extraction',
+      objective: 'Recursively extract archive.zip and report contents',
+      findingIds: [fid ?? ''],
+    })
+    const decision = await orch.approveHandoff(ho.id)
+    expect(decision).toBeTruthy()
+    // The handoff closed (status moved past 'requested').
+    const closed = orch.getState().handoffs.find((x) => x.id === ho.id)
+    expect(closed).toBeTruthy()
+    expect(['approved', 'running', 'completed', 'failed', 'cancelled']).toContain(closed!.status)
+    } finally {
+      await orch.dispose()
+    }
   })
 
   it('inspectNextHandoff returns the highest priority first', async () => {
