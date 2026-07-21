@@ -184,7 +184,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     findingStore,
     handoffStore,
     toolFirstPolicy,
-    eventLog: new EventLog(taskWorkspace.paths.eventsFile),
+    eventLog: new EventLog(taskWorkspace.paths.root),
     inlineTimeoutMs: 30 * 60 * 1000,
     defaultInlineMaxBytes: input.inlineMaxBytes ?? 10240,
   })

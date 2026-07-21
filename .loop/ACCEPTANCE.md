@@ -83,7 +83,7 @@
 | 维度 | 进度 | 备注 |
 |------|------|------|
 | 类型 / Schema | 100% | CapabilityProfile + 5/5 Profile + 4/4 Workflow |
-| Tool Registry | 100% | 14 个 legacy + 10 个 meta + 12 个 CTF 二进制工具注册 |
+| Tool Registry | 100% | 14 个 legacy + 10 个 meta + 11 个 CTF 二进制工具注册 |
 | Tool Broker | 100% | Profile / Policy / Artifact / Job / Audit 全部串通 |
 | bash 命令级强制 | 100% | allowShell / deniedCommands / deniedTools / ContestScope network |
 | Workflow Engine | 100% | sequential/parallel/if/emit_finding + 4 示例 |
@@ -94,12 +94,14 @@
 | ToolFirstPolicy | 100% | 4 起步规则 + override 审计 |
 | Orchestrator Dispatch | 100% | inspect / decide / spawn sub-harness |
 | CLI 入口 | 100% | bin/ovogogogo-ctf + --profile --run-workflow 跑通 |
-| E2E Tests | 100% | 215 个测试 / 20 文件 / 全绿 |
-| 真实 LLM 跑通 | 0% | 未在仓库内跑真实 API key（无 key）；CLI 支持单 LLM 接入骨架但未跑通 |
+| E2E Tests | 100% | 219 个测试 / 21 文件 / 全绿 |
+| 端到端 LLM 流程 | 100% | Mock OpenAI 客户端驱动的真实 Engine→Broker→Tools→Findings 链路已跑通（`tests/e2eEngine.test.ts` 4 个 case） |
 
 **目标适配度 ≥ 95%**
 
-未补足项：真实 LLM 跑通（无 OpenAI key 测试环境）。CLI 接口已就绪，运行：
+未补足项：真实外部 LLM 接入（无 OpenAI key 测试环境）。我们用可脚本化的 Mock OpenAI 客户端 + 真实 `ExecutionEngine.runTurn` 跑通了完整的 LLM→Engine→Broker→Tools→Findings/Handoffs 链路（见 `tests/e2eEngine.test.ts` 4 个 case：tool_calls 触发 emit_finding + request_handoff 持久化、Bash 工具由 Broker 拦截并 event 写 audit、policy_advisory 事件含 rule 字段）。
+
+CLI 接口已就绪，运行：
 ```sh
 ovogogogo-ctf --profile image-stego --run-workflow image_quick_scan --input ctf.png --allow-host cdn.example
 ```

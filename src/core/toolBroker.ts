@@ -160,6 +160,7 @@ export class ToolBroker {
           tool: toolId,
           advice: policyVerdict.advice,
           severity: policyVerdict.severity,
+          rule: policyVerdict.rule,
           agent: ctx.agentId,
         }, ['broker', toolId, 'policy'])
       }

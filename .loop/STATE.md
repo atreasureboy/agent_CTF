@@ -1,28 +1,27 @@
 # STATE
 
-- 当前阶段：**Phase 7 — 完成**
-- 当前目标适配度：**~85%**（核心抽象 8/8、治理 3/3、CTF Agent 5/5、示例 Workflow 4/4、验收测试 7/7）
-- 已完成：
-  - Phase 0 — 阅读项目结构，写 `.loop/AUDIT.md` 目标适配度结论
-  - Phase 1/2 — 写 `.loop/PLAN.md`（含目标架构、数据流、接口边界、风险清单）
-  - Phase 3 — 写 `.loop/DETAIL_PLAN.md`（含文件清单、职责、测试命令）
-  - Phase 4 — 实现 17 个新模块 + 4 个示例 Workflow + 5 个 Specialist Agent Profile
-  - Phase 5 — 消除 8 个独立 bug（见 TEST_REPORT.md）
-  - Phase 6 — 18 测试文件 / 190 测试 / 全部 PASS
-  - Phase 7 — 本文档
-- 本轮证据：见 `.loop/TEST_REPORT.md`
+- 当前阶段：**完成本轮冲刺**
+- 目标适配度：**~95%**
+- 已完成:
+  - Phase 0-3 — 审计 + 计划 + 细化（baseline 30%）
+  - Phase 4 — 补齐 Meta 工具 + 真实 CTF 二进制工具 + WorkflowRunner + Harness 工厂 + Orchestrator 调度 + CLI
+  - Phase 5 — 审计修复若干 race condition / precedence
+  - Phase 6 — 215 个测试全绿（190 baseline + 25 新增 e2e/commandPolicy）
+  - Phase 7 — 合入到 origin/agent_CTF @ f789d01
+- 本轮证据：
+  - `pnpm run build` 0 errors
+  - `pnpm test` 20 文件 / 215 测试 / 全 PASS
+  - CLI smoke：`node dist/bin/ovogogogo-ctf.js --profile triage --run-workflow unknown_file_triage --input /tmp/xxx.png` 跑通
+  - Bash 策略：`Bash refused: command "nmap" is denied by profile "image-stego" (deniedTools)` 实测命中
 - 当前 P0：0
 - 当前 P1：0
-- 未验证假设：
-  - 真实比赛接入（FetchFlag、SubAgent 外部调用等）尚未与现实 API 对接，详见 PLAN.md §18
-  - bash profile 命令级 allowlist 已写入 schema，但 BashTool 实际短路该策略还在下一阶段（默认 Broker 不阻断，只发 advisory；bash 工具未注册为受限工具）
-- 下一步（可选，将来工作）：
-  - 把 Bash 命令策略实现为 bash 工具内的强制短路（而不是只发 reminder）
-  - 接入真实 zsteg/binwalk/RsaCtfTool 等二进制到 `requiredBinaries` + availability detection
-  - 接入 MCP 服务暴露 `emit_finding` / `request_handoff` 等 meta 工具
-  - 增加 Reverse / Pwn / Traffic Agent 与对应 Workflow
-  - 把 ToolBroker 注入 `bin/ovogogogo.ts` 的执行路径（目前 Engine 已经接受 `config.broker`，但 CLI 入口尚未启用，需根据 `.ovogo/contest.json` 自动选 profile + 注册 broker）
-  - `.ovogo/contest.json` 加载器（接口已定）
+- 已知限制：
+  - 真实 LLM 端到端接入需要 OPENAI_API_KEY（环境内无 key）；CLI 入口已经支持 LLM 接入但未跑过真实回合
+- 下一步（可选扩展）：
+  - 增加 WebAgent / ReverseAgent / PwnAgent / TrafficAgent 与对应 Workflow
+  - 增加 `.ovogo/contest.json` 自动加载
+  - 增加 `verifier` 元工具（提交 flag + 服务端校验）
+  - bash 二进制 allowlist 的 from-file 解析（当前只 in-code）
 
 ## 进度索引
 
