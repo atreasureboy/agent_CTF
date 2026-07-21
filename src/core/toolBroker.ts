@@ -108,6 +108,24 @@ export class ToolBroker {
     return this.opts.profile
   }
 
+  /**
+   * Atomically replace the active profile. This is the ONLY public way to
+   * change the broker's profile — direct mutation of private fields is
+   * forbidden and tests/audits should fail when they observe it.
+   *
+   * Tool exposure is recomputed lazily on the next call; the broker keeps
+   * the new profile object reference so callers can immediately observe it
+   * via getProfile().
+   */
+  setProfile(next: CapabilityProfile): void {
+    if (!next || !next.id) {
+      throw new Error('setProfile: profile must be a valid CapabilityProfile')
+    }
+    // Re-create the options object so any cached references (none today,
+    // but possible in future) update consistently.
+    ;(this as unknown as { opts: ToolBrokerOptions }).opts = { ...this.opts, profile: next }
+  }
+
   /** Quick boolean predicate for the engine to use before scheduling. */
   isAllowed(toolId: string): boolean {
     const reg = this.opts.registry.get(toolId)

@@ -1,0 +1,53 @@
+/**
+ * CTFTaskEvent — the union of all state-changing events for a CTF task.
+ *
+ * Every mutation of `CTFTaskState` flows through `CTFTaskStateStore.apply()`,
+ * which dispatches on `event.type` and emits derived events to subscribers.
+ *
+ * This event system is intentionally minimal:
+ *   - In-process (no EventBus, no Redis, no DB)
+ *   - Discriminated union (TypeScript guarantees exhaustiveness)
+ *   - Reducer-style: each event produces a NEW state object
+ *   - Subscribers see only `Readonly<CTFTaskState>` snapshots
+ */
+
+import type {
+  AgentRunRecord,
+  CTFTaskPhase,
+  CTFTaskState,
+  FlagCandidate,
+  HandoffRecord,
+  WorkflowRunRecord,
+} from './taskState.js'
+import type { Finding } from '../findings.js'
+
+export type CTFTaskEvent =
+  | { type: 'TASK_CREATED'; taskId: string; initial: CTFTaskState }
+  | { type: 'PHASE_CHANGED'; from: CTFTaskPhase; to: CTFTaskPhase; reason?: string }
+  | { type: 'PROFILE_CHANGED'; previousProfileId: string; profileId: string }
+  | { type: 'CONTEXT_REPLACED'; context: CTFTaskState['context'] }
+  | { type: 'WORKFLOW_STARTED'; workflowRun: WorkflowRunRecord }
+  | { type: 'WORKFLOW_COMPLETED'; workflowRunId: string; summary?: string }
+  | { type: 'WORKFLOW_FAILED'; workflowRunId: string; error: string }
+  | { type: 'HANDOFF_REQUESTED'; handoff: HandoffRecord }
+  | { type: 'HANDOFF_APPROVED'; handoffId: string; selectedAgentId: string }
+  | { type: 'HANDOFF_REJECTED'; handoffId: string; reason: string }
+  | { type: 'HANDOFF_STARTED'; handoffId: string; agentRunId: string }
+  | { type: 'HANDOFF_COMPLETED'; handoffId: string; agentRunId: string; summary?: string }
+  | { type: 'HANDOFF_FAILED'; handoffId: string; agentRunId: string; error: string }
+  | { type: 'HANDOFF_CANCELLED'; handoffId: string; reason: string }
+  | { type: 'AGENT_RUN_STARTED'; agentRun: AgentRunRecord }
+  | { type: 'AGENT_RUN_COMPLETED'; agentRunId: string; summary?: string }
+  | { type: 'AGENT_RUN_FAILED'; agentRunId: string; error: string }
+  | { type: 'AGENT_RUN_CANCELLED'; agentRunId: string; reason: string }
+  | { type: 'FINDING_ADDED'; finding: Finding }
+  | { type: 'ARTIFACT_ADDED'; artifactId: string }
+  | { type: 'FLAG_CANDIDATE_ADDED'; candidate: FlagCandidate }
+  | { type: 'HYPOTHESIS_ADDED'; hypothesisId: string }
+  | { type: 'ATTEMPT_RECORDED'; attemptId: string }
+  | { type: 'JOB_RECORDED'; jobId: string }
+  | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
+
+/** A subscriber receives every event AFTER it has been applied. */
+export type TaskStateListener = (event: CTFTaskEvent, state: Readonly<CTFTaskState>) => void
+export type Unsubscribe = () => void

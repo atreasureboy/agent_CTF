@@ -10,6 +10,10 @@
  * The runner keeps a capturedOutputs map and a Map<stepId, artifactIds> so
  * the workflow's `if` conditions and downstream steps can reason about prior
  * outputs.
+ *
+ * Important: this runner is constructed with an explicit
+ * `TaskExecutionContext`. Workflow steps therefore run inside the task
+ * workspace — never in `process.cwd()` and never with `sessionDir: undefined`.
  */
 
 import type {
@@ -18,17 +22,30 @@ import type {
 } from './workflowEngine.js'
 import type { WorkflowStep } from './workflowDefinition.js'
 import type { ToolBroker } from './toolBroker.js'
+import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
 
 export interface WorkflowRunnerOptions {
   taskId: string
   defaultAgentId: string
+  /** Authoritative execution context — replaces any process.cwd / undefined
+   *  defaults. The runner MUST receive this from the Orchestrator. */
+  context: TaskExecutionContext
 }
 
 export class WorkflowBrokerRunner implements WorkflowRunner {
   constructor(
     private readonly broker: ToolBroker,
     private readonly opts: WorkflowRunnerOptions,
-  ) {}
+  ) {
+    if (!opts.context) {
+      throw new Error('WorkflowBrokerRunner requires a TaskExecutionContext')
+    }
+  }
+
+  /** Read-only access to the context for diagnostics + the engine. */
+  getContext(): TaskExecutionContext {
+    return this.opts.context
+  }
 
   async runStep(
     step: Extract<WorkflowStep, { kind: 'tool' | 'shell' }>,
@@ -51,10 +68,12 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
       input = { command, description: `${step.id} (workflow step)` }
     }
     const r = await this.broker.execute(toolId, input, {
-      cwd: process.cwd(),
-      sessionDir: undefined,
+      cwd: this.opts.context.workspaceDir,
+      sessionDir: this.opts.context.sessionDir,
       taskId: ctx.taskId || this.opts.taskId,
       agentId: this.opts.defaultAgentId,
+      apiConfig: undefined,
+      signal: this.opts.context.abortSignal,
     })
     return {
       content: r.result.content,
@@ -67,12 +86,6 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
     step: Extract<WorkflowStep, { kind: 'emit_finding' }>,
     ctx: RunContext,
   ): Promise<void> {
-    // Resolve the broker's findingStore via meta-tool execution would be
-    // heavy-handed; here we directly call the store if accessible. Since the
-    // broker doesn't expose the store, we use the runtime by issuing a
-    // shell trick: write the finding JSON to findings.jsonl. ToolBroker
-    // already has a findingStore reference, but only via internal opts.
-    // Easiest: use the ToolBroker's meta-tool through a hand-crafted input.
     await this.broker.execute(
       'emit_finding',
       {
@@ -85,10 +98,12 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
         suggestedAgent: step.suggestedAgent,
       },
       {
-        cwd: process.cwd(),
-        sessionDir: undefined,
+        cwd: this.opts.context.workspaceDir,
+        sessionDir: this.opts.context.sessionDir,
         taskId: ctx.taskId || this.opts.taskId,
         agentId: this.opts.defaultAgentId,
+        apiConfig: undefined,
+        signal: this.opts.context.abortSignal,
       },
     )
   }

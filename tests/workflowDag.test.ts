@@ -169,4 +169,4 @@ describe('WorkflowEngine — executionMode "dag" runs top-level steps concurrent
 })
 
 // Ensure unused import not flagged.
-void {} as WorkflowStep
+void undefined as unknown as WorkflowStep

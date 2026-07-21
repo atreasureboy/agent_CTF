@@ -89,10 +89,7 @@ export function loadContestConfig(
   if (!candidate) {
     return {
       sourcePath: null,
-      config: parseContestScope({
-        allowedFilesRoot: cwd,
-        allowPublicNetwork: false,
-      }) as ContestConfig,
+      config: createDefaultContestConfig({ cwd }),
       loaded: false,
     }
   }
@@ -146,4 +143,23 @@ export function resolveContestConfig(
   const result = loadContestConfig({ cwd: opts.cwd, explicitPath: opts.explicitPath })
   const merged = mergeContestConfig(result.config, opts.cliOverride)
   return { scope: merged, config: merged, sourcePath: result.sourcePath }
+}
+
+/**
+ * The single authoritative default ContestConfig. ALL entry points
+ * (CLI, Harness, Orchestrator, tests) must call this when no config was
+ * supplied. The defaults are conservative:
+ *
+ *   - allowPublicNetwork = false   (no egress unless explicitly granted)
+ *   - allowedFilesRoot  = cwd      (workspace-only reads/writes)
+ *
+ * Callers that need to broaden the scope must pass the broadened config to
+ * `mergeContestConfig()` rather than constructing a fresh `ContestConfig`
+ * literal — this guarantees one source of truth.
+ */
+export function createDefaultContestConfig(opts: { cwd: string }): ContestConfig {
+  return parseContestScope({
+    allowedFilesRoot: opts.cwd,
+    allowPublicNetwork: false,
+  }) as ContestConfig
 }

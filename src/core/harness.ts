@@ -26,6 +26,7 @@ import type { EngineConfig, Tool } from './types.js'
 import type OpenAI from 'openai'
 import { EventLog } from './eventLog.js'
 import { composeSystemPrompt } from './specialistAgent.js'
+import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
 
 import { ToolRegistry } from './toolRegistry.js'
 import { TOOL_METADATA } from './toolMetadata.js'
@@ -33,14 +34,14 @@ import { createTools } from '../tools/index.js'
 import { BashTool } from '../tools/bash.js'
 
 import { CapabilityProfile, parseCapabilityProfile } from './capabilityProfile.js'
-import { ContestScopeChecker, parseContestScope, type ContestScope } from './contestScope.js'
+import { ContestScopeChecker, type ContestScope } from './contestScope.js'
 import { ToolBroker } from './toolBroker.js'
 import { ToolFirstPolicy } from './toolFirstPolicy.js'
 import { BackgroundJobManager } from './backgroundJobs.js'
 import { ArtifactStore } from './artifacts.js'
 import { FindingStore } from './findings.js'
 import { HandoffStore } from './handoff.js'
-import { loadContestConfig, mergeContestConfig } from './contestConfig.js'
+import { createDefaultContestConfig, loadContestConfig, mergeContestConfig } from './contestConfig.js'
 
 import { WorkflowRegistry } from './workflowRegistry.js'
 import { WorkflowEngine, type RunContext, type WorkflowRunner } from './workflowEngine.js'
@@ -82,6 +83,7 @@ export interface CreateHarnessInput {
 
 export interface HarnessBundle {
   profile: Profile
+  context: TaskExecutionContext
   contestScope: ContestScopeChecker
   registry: ToolRegistry
   workflowRegistry: WorkflowRegistry
@@ -115,12 +117,12 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   // ── Resolve ContestScope ──────────────────────────────────────────
   // Priority: explicit input.contestScope > .ovogo/contest.json > safe default.
   // The auto-loaded file is merged with input.contestScope so callers can
-  // override individual fields without replacing the whole object.
+  // override individual fields without replacing the whole object. The default
+  // factory is the single source of truth for "what if no file is supplied".
   const fileResult = loadContestConfig({ cwd: input.cwd })
-  const baseConfig = fileResult.loaded ? fileResult.config : parseContestScope({
-    allowedFilesRoot: input.cwd,
-    allowPublicNetwork: true,
-  })
+  const baseConfig = fileResult.loaded
+    ? fileResult.config
+    : createDefaultContestConfig({ cwd: input.cwd })
   const mergedConfig = input.contestScope
     ? mergeContestConfig(
         baseConfig,
@@ -207,10 +209,24 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   })
   brokerRef.current = broker
 
-  // Workflow runner bridges workflow steps to Broker
+  // Workflow runner bridges workflow steps to Broker — receives an explicit
+  // TaskExecutionContext so steps never read process.cwd().
+  const taskExecutionContext: TaskExecutionContext = {
+    taskId,
+    workspaceDir: taskWorkspace.paths.workspaceDir,
+    sessionDir: taskWorkspace.paths.workspaceDir,
+    artifactDir: taskWorkspace.paths.artifactsDir,
+    inputDir: taskWorkspace.paths.inputDir,
+    eventsFile: taskWorkspace.paths.eventsFile,
+    profileId: profile.id,
+    contestScope: mergedConfig,
+    contestConfig: mergedConfig,
+    metadata: { projectRoot: input.cwd },
+  }
   const workflowRunner = new WorkflowBrokerRunner(broker, {
     taskId,
     defaultAgentId: profile.id,
+    context: taskExecutionContext,
   })
   const workflowEngine = new WorkflowEngine(workflowRunner)
 
@@ -229,19 +245,28 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     })
   }
 
-  // Approve a pending HandoffRequest and apply a TODO no-op (real dispatch
-  // would re-instantiate a sub-engine). For now: stamp approved status; the
-  // orchestrator-issued engine reads the status separately.
+  // Approve a pending HandoffRequest. The Harness's approveHandoff is a
+  // LEGACY shim that exists for backwards compatibility; the only
+  // authoritative flow is `CTFTaskOrchestrator.approveHandoff`. The harness
+  // marks the record as approved but does NOT spawn a specialist — callers
+  // should prefer `orchestrator.approveHandoff` so the Handoff lifecycle is
+  // driven through the StateStore.
   function approveHandoff(handoffId: string): { handoff: HandoffRequest; approved: true } {
     const req = handoffStore.list().find((h) => h.id === handoffId)
     if (!req) throw new Error(`HandoffRequest not found: ${handoffId}`)
-    handoffStore.decide(handoffId, 'approved', 'orchestrator approved')
+    if (req.status !== 'pending') {
+      throw new Error(`HandoffRequest ${handoffId} is not pending (status=${req.status}); refuse to re-approve.`)
+    }
+    handoffStore.decide(handoffId, 'approved', 'harness approveHandoff shim')
     return { handoff: { ...req, status: 'approved' }, approved: true }
   }
 
   function switchProfile(next: string | Profile): void {
     const p = resolveProfile(next)
-    broker['opts'].profile = p as Profile
+    // Use the broker's public setter — direct private-field writes are
+    // forbidden. The Orchestrator coordinates atomic profile changes across
+    // TaskState + Broker + tool exposure.
+    broker.setProfile(p as Profile)
   }
 
   function cancelAllJobs(reason: string): number {
@@ -291,6 +316,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
 
   return {
     profile,
+    context: taskExecutionContext,
     contestScope,
     registry,
     workflowRegistry,

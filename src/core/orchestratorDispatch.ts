@@ -1,21 +1,24 @@
 /**
- * Orchestrator dispatch — read pending Handoffs and decide next actions.
+ * Orchestrator dispatch — legacy entry point that delegates to
+ * `CTFTaskOrchestrator.approveHandoff` when an orchestrator is supplied.
  *
- * In the full LLM-driven harness, the Orchestrator Agent's last turn scans
- * `handoffStore.pending()` and outputs a decision. This module provides a
- * non-LLM fallback that:
- *   - resolves each pending Handoff via the same `approve_handoff` contract
- *   - instantiates a new specialist sub-engine (HarnessBundle) with the
- *     suggested Agent's Profile + a fresh runTurn seeded by inherited
- *     Findings/Artifacts.
+ * The previous version of this file created a child `HarnessBundle` ad-hoc
+ * to run the specialist turn. That created two parallel execution paths
+ * (here AND in the orchestrator). After the refactor there is ONE flow:
  *
- * CLI / tests call dispatchNext() in a loop until no more pending handoffs.
+ *   `dispatchNext(parent, { orchestrator })` → orchestrator.approveHandoff
+ *
+ * When called without an orchestrator, this function still works for
+ * backwards compatibility but performs a simpler "mark approved + return
+ * summary" operation (no specialist run). Tests / CLI that previously relied
+ * on the autoExecute path should migrate to the orchestrator.
  */
 
 import type { HandoffRequest } from './handoff.js'
 import type { HarnessBundle } from './harness.js'
 import { createHarness } from './harness.js'
 import { getBuiltinProfile, PROFILES } from '../capabilityProfiles/index.js'
+import type { CTFTaskOrchestrator } from './ctfRuntime/taskOrchestrator.js'
 
 export interface DispatchResult {
   handoff: HandoffRequest
@@ -37,10 +40,16 @@ export function inspectNextHandoff(bundle: HarnessBundle): HandoffRequest | null
 }
 
 /**
- * Approve / reject a single pending handoff. Returns a structured decision.
- * `autoExecute=true` spawns a child harness and runs a single turn that seeds
- * the new agent with inherited findings+artifacts; otherwise the caller
- * decides when to dispatch.
+ * Approve / reject a single pending handoff.
+ *
+ * When `options.orchestrator` is provided, this is a thin delegate — the
+ * orchestrator's single approval path runs the Specialist. Otherwise this is
+ * the legacy compatibility shim: it marks the handoff as approved without
+ * starting a specialist, and (when `autoExecute` and a renderer are both
+ * present) creates a one-shot sub-harness to execute the inherited turn.
+ *
+ * New code MUST supply an orchestrator; the standalone path is preserved
+ * only for tests that do not exercise the full lifecycle.
  */
 export async function dispatchNext(
   parent: HarnessBundle,
@@ -55,20 +64,73 @@ export async function dispatchNext(
     renderer?: import('../ui/renderer.js').Renderer
     userMessage?: string
     history?: import('./types.js').OpenAIMessage[]
+    /** When supplied, all Handoff execution routes through this orchestrator. */
+    orchestrator?: CTFTaskOrchestrator
   } = {},
 ): Promise<DispatchResult | null> {
   const next = inspectNextHandoff(parent)
   if (!next) return null
   const decision = options.decision ?? 'approve'
 
+  // ── Preferred path: orchestrator owns the lifecycle. ────────────────
+  if (options.orchestrator) {
+    if (decision === 'reject') {
+      options.orchestrator.rejectHandoff(next.id, 'orchestrator rejected')
+      const after = options.orchestrator.getState().handoffs.find((h) => h.id === next.id)!
+      return {
+        handoff: { ...next, status: 'rejected' },
+        status: 'rejected',
+        reason: 'orchestrator rejected',
+      }
+    }
+    const fromAgentRunId =
+      options.orchestrator.getState().activeAgentRuns.find(
+        (r) => r.profileId === next.fromAgent,
+      )?.id ?? `legacy_${next.fromAgent}`
+    // Translate the legacy HandoffRequest (status=pending) into the
+    // orchestrator's Record-shaped flow.
+    const record = options.orchestrator.requestHandoff({
+      fromAgentRunId,
+      targetCapability: next.suggestedAgent,
+      targetAgentId: next.suggestedAgent,
+      reason: next.reason,
+      objective: next.objective,
+      artifactIds: next.artifactIds,
+      findingIds: next.findingIds,
+      constraints: next.constraints,
+      priority: next.priority,
+    })
+    const result = await options.orchestrator.approveHandoff(record.id)
+    parent.eventLog.append('handoff_requested', 'orchestrator-dispatch', {
+      handoffId: record.id,
+      fromAgent: next.fromAgent,
+      suggestedAgent: next.suggestedAgent,
+      inheritedFindingCount: next.findingIds.length,
+      inheritedArtifactCount: next.artifactIds.length,
+      autoExecute: Boolean(options.autoExecute),
+    }, ['orchestrator', 'handoff', 'dispatch'])
+    return {
+      handoff: { ...next, status: 'approved' },
+      status: 'approved',
+      reason: 'orchestrator approved and dispatched',
+      executedOn: {
+        profile: next.suggestedAgent,
+        summary: result?.summary ?? `inherited ${next.findingIds.length} findings, ${next.artifactIds.length} artifacts`,
+      },
+    }
+  }
+
+  // ── Legacy shim path (no orchestrator) ───────────────────────────────
   if (decision === 'reject') {
     parent.handoffStore.decide(next.id, 'rejected', 'orchestrator rejected')
     return { handoff: next, status: 'rejected', reason: 'orchestrator rejected' }
   }
 
-  parent.handoffStore.decide(next.id, 'approved', 'orchestrator approved')
+  if (next.status !== 'pending') {
+    throw new Error(`Handoff ${next.id} already ${next.status}; dispatchNext will not re-approve.`)
+  }
+  parent.handoffStore.decide(next.id, 'approved', 'orchestrator approved (legacy shim)')
 
-  // Inherit Findings + Artifacts referenced by the handoff.
   const inheritedFindings = parent.findingStore.list()
     .filter((f) => next.findingIds.includes(f.id))
     .map((f) => ({ id: f.id, summary: f.summary, confidence: f.confidence, category: f.category, title: f.title }))
@@ -89,7 +151,7 @@ export async function dispatchNext(
     return {
       handoff: { ...next, status: 'approved' },
       status: 'approved',
-      reason: 'orchestrator approved',
+      reason: 'orchestrator approved (no autoExecute)',
       executedOn: {
         profile: next.suggestedAgent,
         summary: `inherit ${inheritedFindings.length} findings, ${inheritedArtifacts.length} artifacts (no autoExecute)`,
@@ -106,13 +168,8 @@ export async function dispatchNext(
     inlineMaxBytes: 1024,
   })
 
-  // Build the system-prompt addon. This is the critical bit: the receiving
-  // agent sees the inherited context as part of its system prompt and is
-  // explicitly told NOT to re-analyse the original input from scratch.
   const addon = buildInheritedContextAddon(next, inheritedFindings, inheritedArtifacts)
 
-  // Without a renderer we cannot actually run the LLM turn; return the
-  // inheritance summary so the caller can dispatch with their own UI later.
   if (!options.renderer) {
     return {
       handoff: { ...next, status: 'approved' },
@@ -131,7 +188,7 @@ export async function dispatchNext(
   return {
     handoff: { ...next, status: 'approved' },
     status: 'approved',
-    reason: 'dispatched to sub-harness with inherited context',
+    reason: 'dispatched to sub-harness with inherited context (legacy shim)',
     executedOn: {
       profile: next.suggestedAgent,
       summary: `inherited ${inheritedFindings.length} findings, ${inheritedArtifacts.length} artifacts; turn finished: ${result.stopped}`,
