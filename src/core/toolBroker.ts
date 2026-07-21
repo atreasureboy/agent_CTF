@@ -113,7 +113,11 @@ export class ToolBroker {
   }
 
   getProfile(): CapabilityProfile {
-    return this.opts.profileStore?.getCurrent() ?? this.opts.profile
+    // §十五 Phase 1.7 — ProfileStore is the single dynamic source. The
+    // broker always reads from it. `opts.profile` exists only for backward
+    // compat in unit tests that build a broker without a store.
+    if (this.opts.profileStore) return this.opts.profileStore.getCurrent()
+    return this.opts.profile
   }
 
   /**
@@ -130,13 +134,15 @@ export class ToolBroker {
       throw new Error('setProfile: profile must be a valid CapabilityProfile')
     }
     if (this.opts.profileStore) {
-      // Delegate to the shared store so every reader (broker, harness, etc.)
-      // sees the same atomic switch.
       this.opts.profileStore.switchTo(next)
+      // Also keep opts.profile current so legacy tests / readers that peek
+      // at broker.opts.profile see the new value.
+      ;(this as unknown as { opts: ToolBrokerOptions }).opts = { ...this.opts, profile: next }
       return
     }
-    // Legacy path — no ProfileStore wired. Re-create the options object so
-    // any cached references (none today, but possible in future) update.
+    // No ProfileStore wired — keep the legacy profile path for non-CTF
+    // tests. We mutate via a single typed helper that re-allocates opts so
+    // any future cached references update too.
     ;(this as unknown as { opts: ToolBrokerOptions }).opts = { ...this.opts, profile: next }
   }
 
@@ -144,7 +150,7 @@ export class ToolBroker {
   isAllowed(toolId: string): boolean {
     const reg = this.opts.registry.get(toolId)
     if (!reg) return false
-    return !profileToolDenialReason(this.opts.profile, toolId)
+    return !profileToolDenialReason(this.getProfile(), toolId)
   }
 
   /**
@@ -158,9 +164,10 @@ export class ToolBroker {
     ctx: BrokerToolContext,
   ): Promise<BrokerExecutionResult> {
     const startedAt = new Date().toISOString()
+    const profile = this.getProfile()
 
     // ── Step 1: Profile gate ─────────────────────────────────
-    const denyReason = profileToolDenialReason(this.opts.profile, toolId)
+    const denyReason = profileToolDenialReason(profile, toolId)
     if (denyReason) {
       this.opts.eventLog?.append('permission', 'broker', {
         decision: 'deny',
@@ -186,7 +193,7 @@ export class ToolBroker {
     // ── Step 2: ToolFirstPolicy advisory ─────────────────────
     let policyVerdict: PolicyVerdict | undefined
     if (this.opts.toolFirstPolicy) {
-      policyVerdict = this.opts.toolFirstPolicy.advise(toolId, input, this.opts.profile)
+      policyVerdict = this.opts.toolFirstPolicy.advise(toolId, input, profile)
       if (policyVerdict.advice) {
         this.opts.eventLog?.append('policy_advisory', 'broker', {
           tool: toolId,
@@ -260,7 +267,7 @@ export class ToolBroker {
         __ctf: {
           taskId: ctx.taskId,
           agentId: ctx.agentId,
-          profile: this.opts.profile,
+          profile,
           contestScope: this.opts.contestScope,
           eventLog: this.opts.eventLog,
           artifactStore: this.opts.artifactStore,

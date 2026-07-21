@@ -112,34 +112,84 @@ function parseArgs(argv: string[]): CtfArgs {
   let version = false
   let cwd = process.env.OVOGO_CWD ?? process.cwd()
   const positional: string[] = []
+  let afterDoubleDash = false
 
-  const takesValue = (idx: number) => {
-    if (idx + 1 >= args.length) throw new Error(`flag ${args[idx]} requires a value`)
-    const next = args[idx + 1]
-    if (next === undefined) throw new Error(`flag ${args[idx]} requires a value`)
-    return next
-  }
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-h': case '--help': help = true; break
-      case '-v': case '-V': case '--version': version = true; break
-      case '--profile': profile = takesValue(args.indexOf(arg)); break
-      case '--contest': contest = takesValue(args.indexOf(arg)); break
-      case '--task-id': taskId = takesValue(args.indexOf(arg)); break
-      case '--allow-public-network': allowPublicNetwork = true; break
-      case '--allow-host': allowHosts.push(takesValue(args.indexOf(arg))); break
-      case '--run-workflow': runWorkflow = takesValue(args.indexOf(arg)); break
-      case '--input': input = takesValue(args.indexOf(arg)); break
-      case '--text': text = takesValue(args.indexOf(arg)); break
-      case '--cwd': cwd = takesValue(args.indexOf(arg)); break
-      default:
-        if (arg.startsWith('-')) {
-          // unknown flag ignored silently to preserve CLI behavior
-        } else {
-          positional.push(arg)
-        }
+  /**
+   * Phase 1.7 — index-based parser. Walks argv with `i++` so it consumes
+   * the value of a flag at `i+1` reliably, supports `--flag=value` form,
+   * terminates flag parsing at `--`, refuses missing values, refuses
+   * unknown flags, and treats repeated flags as "last wins" for scalars /
+   * append for list flags.
+   */
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === undefined) continue
+    if (afterDoubleDash) {
+      positional.push(arg)
+      continue
     }
+    if (arg === '--') {
+      afterDoubleDash = true
+      continue
+    }
+    if (arg === '-h' || arg === '--help') {
+      help = true
+      continue
+    }
+    if (arg === '-v' || arg === '-V' || arg === '--version') {
+      version = true
+      continue
+    }
+    if (arg === '--allow-public-network') {
+      allowPublicNetwork = true
+      continue
+    }
+    // Flags that take a value, possibly as `--flag=value`.
+    const takeValue = (flag: string): string => {
+      const eqIdx = flag.indexOf('=')
+      if (eqIdx >= 0) return flag.slice(eqIdx + 1)
+      const next = args[i + 1]
+      if (next === undefined) throw new Error(`flag ${flag} requires a value`)
+      i += 1
+      return next
+    }
+    if (arg === '--profile' || arg.startsWith('--profile=')) {
+      profile = takeValue(arg)
+      continue
+    }
+    if (arg === '--contest' || arg.startsWith('--contest=')) {
+      contest = takeValue(arg)
+      continue
+    }
+    if (arg === '--task-id' || arg.startsWith('--task-id=')) {
+      taskId = takeValue(arg)
+      continue
+    }
+    if (arg === '--allow-host' || arg.startsWith('--allow-host=')) {
+      allowHosts.push(takeValue(arg))
+      continue
+    }
+    if (arg === '--run-workflow' || arg.startsWith('--run-workflow=')) {
+      runWorkflow = takeValue(arg)
+      continue
+    }
+    if (arg === '--input' || arg.startsWith('--input=')) {
+      input = takeValue(arg)
+      continue
+    }
+    if (arg === '--text' || arg.startsWith('--text=')) {
+      text = takeValue(arg)
+      continue
+    }
+    if (arg === '--cwd' || arg.startsWith('--cwd=')) {
+      cwd = takeValue(arg)
+      continue
+    }
+    if (arg.startsWith('-')) {
+      // Phase 1.7 — surface unknown flags as a real error.
+      throw new Error(`unknown flag: ${arg}`)
+    }
+    positional.push(arg)
   }
   const task = positional.length > 0 ? positional.join(' ') : undefined
   return { profile, contest, taskId, allowPublicNetwork, allowHosts, runWorkflow, input, text, task, help, version, cwd }
@@ -213,6 +263,7 @@ export async function runCtfCli(
   const model = env['OVOGO_MODEL'] ?? 'gpt-4o'
 
   let runtime: Awaited<ReturnType<typeof createCTFTaskRuntime>> | undefined
+  let unregisterSignals: (() => void) | undefined
 
   const createRuntime = deps.createRuntime ?? createCTFTaskRuntime
 
@@ -227,7 +278,7 @@ export async function runCtfCli(
         taskId: args.taskId,
         jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
       })
-      installSignalHandlers(deps, runtime)
+      const unregisterSignals = installSignalHandlers(deps, runtime)
       const reg = runtime.mainHarness.workflowRegistry
       const wf = reg.get(args.runWorkflow)
       if (!wf) {
@@ -281,8 +332,9 @@ export async function runCtfCli(
       client,
       renderer,
       modelConfig: { model, apiKey: apiKey ?? '', baseURL },
+      mode: 'llm',
     })
-    installSignalHandlers(deps, runtime)
+    const unregisterSignals = installSignalHandlers(deps, runtime)
     const r = await runtime.orchestrator.runMainAgent(args.task)
     stdout.write(`\n${GREEN}run status:${RESET} ${r.status}\n`)
     if (r.summary) stdout.write(`  summary: ${r.summary}\n`)
@@ -291,6 +343,7 @@ export async function runCtfCli(
     stderr.write(`${RED}fatal:${RESET} ${(err as Error).message}\n`)
     return 1
   } finally {
+    if (unregisterSignals) unregisterSignals()
     if (runtime) {
       await runtime.dispose()
     }
@@ -300,18 +353,34 @@ export async function runCtfCli(
 function installSignalHandlers(
   deps: Partial<CtfCliDependencies>,
   runtime: CTFTaskRuntime,
-): void {
-  const register = deps.registerSignals ?? ((h) => {
-    process.once('SIGINT', () => h('SIGINT'))
-    process.once('SIGTERM', () => h('SIGTERM'))
+): () => void {
+  /**
+   * Phase 1.7 — track the exact handler references so dispose can call
+   * `process.off(handler)` instead of `process.removeAllListeners(sig)`,
+   * which would clobber unrelated listeners installed by other modules.
+   *
+   * Also caches the in-flight shutdown promise so a second SIGINT does not
+   * trigger a second `runtime.cancel` / `runtime.dispose`.
+   */
+  let shutdownPromise: Promise<void> | undefined
+  const handler = (sig: NodeJS.Signals): void => {
+    shutdownPromise ??= shutdown(sig)
+  }
+  const register = deps.registerSignals ?? (() => {
+    process.on('SIGINT', handler)
+    process.on('SIGTERM', handler)
     return () => {
-      process.removeAllListeners('SIGINT')
-      process.removeAllListeners('SIGTERM')
+      process.off('SIGINT', handler)
+      process.off('SIGTERM', handler)
     }
   })
-  register((sig: string) => {
-    void runtime.cancel(`cli_${sig.toLowerCase()}`)
+  const unregister = register((sig: string) => {
+    shutdownPromise ??= shutdown(sig as NodeJS.Signals)
   })
+  async function shutdown(sig: NodeJS.Signals): Promise<void> {
+    await runtime.cancel(`cli_${sig.toLowerCase()}`)
+  }
+  return unregister
 }
 
 // ── Module entry — only invoked when the script is run directly.

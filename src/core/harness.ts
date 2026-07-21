@@ -26,7 +26,6 @@ import type { EngineConfig, Tool } from './types.js'
 import type OpenAI from 'openai'
 import { EventLog } from './eventLog.js'
 import { composeSystemPrompt } from './specialistAgent.js'
-import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
 
 import { ToolRegistry } from './toolRegistry.js'
 import { TOOL_METADATA } from './toolMetadata.js'
@@ -42,6 +41,8 @@ import { ArtifactStore } from './artifacts.js'
 import { FindingStore } from './findings.js'
 import { HandoffStore } from './handoff.js'
 import { createDefaultContestConfig, loadContestConfig, mergeContestConfig } from './contestConfig.js'
+import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
+import type { ProfileStore } from './ctfRuntime/profileStore.js'
 
 import { WorkflowRegistry } from './workflowRegistry.js'
 import { WorkflowEngine, type RunContext, type WorkflowRunner } from './workflowEngine.js'
@@ -60,6 +61,26 @@ export interface CreateHarnessInput {
   cwd: string
   /** Either a profile id ("image-stego") or a CapabilityProfile object. */
   profile: string | Profile | Profile[]
+  /**
+   * Phase 1.7 — TaskExecutionContext must be supplied by the caller BEFORE
+   * the Harness builds its internal closures. Passing it in guarantees that
+   * WorkflowRunner, WorkflowEngine, ToolBroker, ExecutionEngine and the
+   * Tool execution context all read the SAME object reference, not a
+   * post-hoc patched copy.
+   *
+   * When omitted (legacy single-Harness non-CTF callers) the Harness
+   * constructs a synthetic one — this path is allowed but the CTF Runtime
+   * never uses it.
+   */
+  context?: TaskExecutionContext
+  /**
+   * Phase 1.7 — ProfileStore is the single dynamic Profile source. The
+   * Harness, ToolBroker, WorkflowRunner and prompt builder all read from
+   * it via `profileStore.getCurrent()`. When omitted (legacy non-CTF
+   * callers) the Harness falls back to a synthetic store seeded with
+   * `profile`.
+   */
+  profileStore?: ProfileStore
   /** Optional override for the contest scope. If omitted, defaults to a
    * conservative `allowedFilesRoot: cwd`. */
   contestScope?: ContestScope
@@ -151,6 +172,20 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     taskId,
   })
 
+  // ── ProfileStore (single dynamic source). If the caller passed one in,
+  //    use it as-is. Otherwise build a synthetic store backed by the local
+  //    `profile` reference. Legacy non-CTF callers without a real
+  //    ProfileStore still get correct behaviour: switchProfile updates both
+  //    the broker and this synthetic store atomically.
+  let localProfile: Profile = profile
+  const profileStore: ProfileStore = input.profileStore ?? {
+    getCurrent: () => localProfile,
+    switchTo: (next) => {
+      localProfile = next as Profile
+    },
+    subscribe: () => () => {},
+  }
+
   // Store layer
   const artifactStore = input.artifactStore ?? taskWorkspace.artifactStore
   const findingStore = input.findingStore ?? taskWorkspace.findingStore
@@ -195,6 +230,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   const broker = new ToolBroker({
     registry,
     profile,
+    profileStore,
     contestScope,
     jobManager,
     jobRunner: async (spec, signal) => {
@@ -219,9 +255,12 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   })
   brokerRef.current = broker
 
-  // Workflow runner bridges workflow steps to Broker — receives an explicit
-  // TaskExecutionContext so steps never read process.cwd().
-  const taskExecutionContext: TaskExecutionContext = {
+  // Workflow runner bridges workflow steps to Broker. Phase 1.7 — the
+  // TaskExecutionContext must come from the caller (input.context) so the
+  // WorkflowRunner, WorkflowEngine, ToolBroker and ExecutionEngine all see
+  // the SAME reference. When the caller omits it (legacy non-CTF), we
+  // build a synthetic one — but the CTF Runtime always supplies one.
+  const taskExecutionContext: TaskExecutionContext = input.context ?? {
     taskId,
     workspaceDir: taskWorkspace.paths.workspaceDir,
     sessionDir: taskWorkspace.paths.workspaceDir,
@@ -235,7 +274,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   }
   const workflowRunner = new WorkflowBrokerRunner(broker, {
     taskId,
-    defaultAgentId: profile.id,
+    defaultAgentId: profileStore.getCurrent().id,
     context: taskExecutionContext,
   })
   const workflowEngine = new WorkflowEngine(workflowRunner)

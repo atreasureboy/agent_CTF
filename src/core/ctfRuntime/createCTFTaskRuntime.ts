@@ -2,18 +2,23 @@
  * createCTFTaskRuntime — single public entry that wires the full CTF Task
  * runtime. Every CTF CLI / REPL / test MUST go through this factory.
  *
- * Per forth_goal.md §四 — it:
- *   1. Is the only public entry point for creating a CTF Task.
- *   2. Builds the full TaskExecutionContext.
- *   3. Creates the Task-level AbortController.
- *   4. Creates the main Harness.
- *   5. Creates the StateStore.
- *   6. Creates the Orchestrator.
- *   7. Subscribes to Job lifecycle events.
- *   8. Registers Workflows.
- *   9. Does NOT run any task itself.
+ * Phase 1.7 — assembly order is:
  *
- * The CLI must call this — never `createHarness(...)` directly.
+ *   1. Resolve the Task-level AbortController.
+ *   2. Build the TaskExecutionContext — built ONCE with the real signal
+ *      already wired in. Every downstream component captures this same
+ *      reference; we never mutate it post-hoc.
+ *   3. Resolve the ProfileStore (single dynamic Profile source).
+ *   4. Resolve AgentRuntimeDependencies.
+ *   5. createHarness(context, profileStore, ...) — Harness binds the same
+ *      Context to its WorkflowRunner, WorkflowEngine, ToolBroker and
+ *      ExecutionEngine.
+ *   6. Build StateStore + Orchestrator.
+ *   7. Wire Job lifecycle events.
+ *
+ * No `(harness as unknown as { context }).context = ...` exists in the
+ * production path. CTFTaskRuntimeMode ('workflow-only' | 'llm') is derived
+ * from the supplied deps and gates `runMainAgent` accordingly.
  */
 
 import type OpenAI from 'openai'
@@ -24,14 +29,23 @@ import type { ContestConfig } from '../contestConfig.js'
 import { createDefaultContestConfig } from '../contestConfig.js'
 import { createHarness, type HarnessBundle } from '../harness.js'
 import type { Renderer } from '../../ui/renderer.js'
+import { TaskWorkspace } from '../../modules/taskWorkspace.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { CTFProfileStore } from './profileStore.js'
 import { createLinkedAbortController, type LinkedAbortController } from './linkedAbortController.js'
 import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
+import { assertLlmDependencies } from './agentRuntimeDependencies.js'
 import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
 import type { CTFTaskState } from './taskState.js'
+
+/**
+ * Phase 1.7 — explicit runtime mode. `workflow-only` runs only Workflow /
+ * CLI without LLM; `llm` runs Main Agent + Specialists with a real OpenAI
+ * client + renderer + modelConfig.
+ */
+export type CTFTaskRuntimeMode = 'workflow-only' | 'llm'
 
 export interface CreateCTFTaskRuntimeInput {
   cwd: string
@@ -50,8 +64,14 @@ export interface CreateCTFTaskRuntimeInput {
   client?: OpenAI
   /** Renderer for streaming. Required for LLM mode. */
   renderer?: Renderer
-  /** Model config. Defaults: model="gpt-4o", apiKey from env, baseURL from env. */
+  /** Model config. Required for LLM mode. */
   modelConfig?: ModelConfig
+
+  /**
+   * Phase 1.7 — explicit mode. Defaults to 'llm' if a client is supplied,
+   * 'workflow-only' otherwise. Mismatch with supplied deps throws.
+   */
+  mode?: CTFTaskRuntimeMode
 
   challenge?: {
     description?: string
@@ -69,6 +89,7 @@ export interface CTFTaskRuntime {
   dependencies: AgentRuntimeDependencies
   abort: LinkedAbortController
   mainHarness: HarnessBundle
+  mode: CTFTaskRuntimeMode
   getState(): Readonly<CTFTaskState>
   cancel(reason: string): Promise<void>
   dispose(): Promise<void>
@@ -91,53 +112,78 @@ export async function createCTFTaskRuntime(
   // ── ProfileStore (single source of truth for active profile).
   const profileStore = new CTFProfileStore(initialProfile)
 
-  // ── Task-level AbortController.
+  // ── Step 1 — Task-level AbortController.
   const abort = createLinkedAbortController(undefined)
 
-  // ── Dependencies — shared by main + every specialist.
-  const modelConfig: ModelConfig = input.modelConfig ?? {
-    model: process.env['OVOGO_MODEL'] ?? 'gpt-4o',
-    apiKey: process.env['OPENAI_API_KEY'] ?? 'test-key',
-    baseURL: process.env['OPENAI_BASE_URL'],
-  }
+  // ── Step 2 — Determine mode.
+  //            Default is 'workflow-only' unless the caller EXPLICITLY opts
+  //            into 'llm' (so test fixtures without a real client/renderer
+  //            don't trip the validation). Production CLI always passes
+  //            mode: 'llm' when invoking.
+  const mode: CTFTaskRuntimeMode = input.mode ?? 'workflow-only'
+
+  // ── Step 3 — Dependencies. No fake 'test-key' fallback in production;
+  //            LLM mode validates at construction time.
   const dependencies: AgentRuntimeDependencies = {
     client: input.client,
     renderer: input.renderer,
-    modelConfig,
+    modelConfig: input.modelConfig,
+  }
+  if (mode === 'llm') {
+    assertLlmDependencies(dependencies)
   }
 
-  // ── Main Harness — broker wired through the ProfileStore.
-  const harness = createHarness({
-    cwd,
-    profile: profileStore.getCurrent(),
-    contestScope,
-    contestId: input.contestId,
-    taskId: input.taskId,
-    sessionsRoot: input.sessionsRoot,
-    client: input.client,
-    renderer: input.renderer,
-    jobLimits: input.jobLimits,
-  })
-  harness.broker.setProfile(profileStore.getCurrent())
+  // ── Step 4 — Build TaskWorkspace BEFORE createHarness so we can mint
+  //            the TaskExecutionContext up-front (Phase 1.7 requirement).
+  const contestId = input.contestId ?? (cwd.split('/').pop() ?? 'project')
+  const taskId = input.taskId ?? `task_${Math.random().toString(36).slice(2, 10)}`
+  const sessionsRoot = input.sessionsRoot ?? `${cwd}/sessions`
 
-  // ── TaskExecutionContext — built once, abort signal already set.
+  const taskWorkspace = new TaskWorkspace({
+    sessionsRoot,
+    contestId,
+    taskId,
+  })
+
   const ctx: TaskExecutionContext = {
-    ...harness.context,
+    taskId,
+    workspaceDir: cwd,
+    sessionDir: taskWorkspace.paths.workspaceDir,
+    artifactDir: taskWorkspace.paths.artifactsDir,
+    inputDir: taskWorkspace.paths.inputDir,
+    eventsFile: taskWorkspace.paths.eventsFile,
+    profileId: initialProfile.id,
+    contestScope,
+    contestConfig,
+    environment: input.environment,
     abortSignal: abort.signal,
-    profileId: profileStore.getCurrent().id,
     metadata: {
-      ...(harness.context.metadata ?? {}),
       projectRoot: cwd,
       sessionsRoot: input.sessionsRoot,
     },
   }
-  ;(harness as unknown as { context: TaskExecutionContext }).context = ctx
 
-  // ── Workflows — register before exposing orchestrator.
+  // ── Step 5 — Create the Harness with the SAME context reference and the
+  //            SAME ProfileStore. No post-hoc mutation.
+  const harness = createHarness({
+    cwd,
+    context: ctx,
+    profileStore,
+    profile: initialProfile,
+    contestScope,
+    contestId,
+    taskId,
+    sessionsRoot,
+    client: input.client,
+    renderer: input.renderer,
+    jobLimits: input.jobLimits,
+  })
+
+  // ── Step 6 — Workflows — register before exposing orchestrator.
   const { ensureWorkflowsRegistered } = await import('../../workflows/index.js')
   ensureWorkflowsRegistered(harness.workflowRegistry)
 
-  // ── Build StateStore + Orchestrator (single private ctor path).
+  // ── Step 7 — Build StateStore + Orchestrator.
   const orchestrator = CTFTaskOrchestrator.assemble({
     harness,
     profileStore,
@@ -147,7 +193,7 @@ export async function createCTFTaskRuntime(
     environment: input.environment,
   })
 
-  // ── Wire Job lifecycle events into the TaskState projector.
+  // ── Step 8 — Wire Job lifecycle events into the TaskState projector.
   const projector = orchestrator.projector
   const jobUnsub = harness.jobManager?.subscribe((ev) => {
     projector.projectJobEvent(ev, orchestrator)
@@ -165,6 +211,7 @@ export async function createCTFTaskRuntime(
     dependencies,
     abort,
     mainHarness: harness,
+    mode,
     getState: () => orchestrator.getState(),
     async cancel(reason: string): Promise<void> {
       await orchestrator.cancel(reason)
@@ -178,3 +225,8 @@ function resolveProfileById(id: string): CapabilityProfile {
   if (!found) throw new Error(`Unknown profile: ${id}`)
   return found
 }
+
+// Keep ModelConfig exported for downstream consumers; the dependency alias
+// `import('./agentRuntimeDependencies.js').ModelConfig` is preferred but we
+// re-export here for convenience.
+export type { ModelConfig }

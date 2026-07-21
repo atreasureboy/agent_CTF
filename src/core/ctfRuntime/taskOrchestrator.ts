@@ -37,7 +37,7 @@ import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { CTFTaskStateStore } from './taskStateStore.js'
-import { CTFProfileStore } from './profileStore.js'
+import { CTFProfileStore, type ProfileStore } from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
