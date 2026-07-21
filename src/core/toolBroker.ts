@@ -25,6 +25,8 @@
 import type OpenAI from 'openai'
 import type { EventLog } from './eventLog.js'
 import type { ArtifactMeta, ArtifactStore } from './artifacts.js'
+import type { FindingStore } from './findings.js'
+import type { HandoffStore } from './handoff.js'
 import type {
   CapabilityProfile,
 } from './capabilityProfile.js'
@@ -55,6 +57,8 @@ export interface ToolBrokerOptions {
   jobManager?: BackgroundJobManager
   jobRunner?: JobRunner
   artifactStore?: ArtifactStore
+  findingStore?: FindingStore
+  handoffStore?: HandoffStore
   eventLog?: EventLog
   hookRunner?: {
     runPreToolCall(name: string, input: Record<string, unknown>): void
@@ -217,6 +221,20 @@ export class ToolBroker {
         permissionMode: this.opts.permissionChecker ? 'auto' : 'ask',
         signal: ctx.signal,
         sessionDir: ctx.sessionDir,
+        // Wired so meta tools (emit_finding / request_handoff / etc.) and the
+        // bash command policy (BashTool) can reach their stores through the
+        // legacy ToolContext.
+        __ctf: {
+          taskId: ctx.taskId,
+          agentId: ctx.agentId,
+          profile: this.opts.profile,
+          contestScope: this.opts.contestScope,
+          eventLog: this.opts.eventLog,
+          artifactStore: this.opts.artifactStore,
+          findingStore: this.opts.findingStore,
+          handoffStore: this.opts.handoffStore,
+          jobManager: this.opts.jobManager,
+        },
       }
       // PermissionChecker is applied before execution by the engine path. The
       // Broker only enforces it when the engine delegated the gate here.
@@ -324,6 +342,19 @@ interface ToolCtxAdapter {
   permissionMode: 'auto' | 'ask' | 'deny'
   signal?: AbortSignal
   sessionDir?: string
+  /** CTF services — meta tools read from here. Optional; tools that don't
+   * use it should ignore it. */
+  __ctf?: {
+    taskId: string
+    agentId: string
+    profile?: import('./capabilityProfile.js').CapabilityProfile
+    contestScope?: ContestScopeChecker
+    eventLog?: EventLog
+    artifactStore?: ArtifactStore
+    findingStore?: FindingStore
+    handoffStore?: HandoffStore
+    jobManager?: BackgroundJobManager
+  }
 }
 
 /** Registry-level availability check used by Workflows before running steps. */

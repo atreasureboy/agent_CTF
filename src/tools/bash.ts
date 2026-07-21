@@ -12,6 +12,7 @@ import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../core/type
 import { BASH_DESCRIPTION } from '../prompts/tools.js'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
+import { evaluateCommandPolicy, readPolicyFromContext } from './commandPolicy.js'
 
 const MAX_OUTPUT_LENGTH = 30_000
 const DEFAULT_TIMEOUT_MS = 1_800_000  // 30 min — long-running commands default
@@ -85,6 +86,30 @@ export class BashTool implements Tool {
 
     if (!command || typeof command !== 'string') {
       return { content: 'Error: command is required and must be a string', isError: true }
+    }
+
+    // ── CapabilityProfile + ContestScope short-circuit ─────────────────
+    // The CTF Harness injects `__ctf` into ToolContext via the ToolBroker.
+    // When present, the command is checked against profile.allowedShell /
+    // deniedCommands / allowedCommands and the contest network scope, BEFORE
+    // any process is spawned. Violations return a structured refusal;
+    // the audit trail records the decision.
+    {
+      const policy = readPolicyFromContext(context)
+      if (policy.profile) {
+        const verdict = evaluateCommandPolicy({
+          command,
+          profile: policy.profile,
+          contestScope: policy.contestScope,
+          eventLog: policy.eventLog,
+        })
+        if (!verdict.allowed) {
+          return {
+            content: `Bash refused: ${verdict.reason}\nIf this command is required for your task, return a HandoffRequest to an agent whose profile permits it.`,
+            isError: true,
+          }
+        }
+      }
     }
 
     const timeoutMs = Math.min(

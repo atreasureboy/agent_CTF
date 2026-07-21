@@ -14,6 +14,8 @@ import { WebFetchTool } from './webFetch.js'
 import { WebSearchTool } from './webSearch.js'
 import { AgentTool } from './agent.js'
 import { TmuxSessionTool } from './tmuxSession.js'
+import { makeAllMetaTools } from './meta.js'
+import { createCTFTools } from './ctf.js'
 
 export function createTools(extraTools: Tool[] = []): Tool[] {
   return [
@@ -28,6 +30,8 @@ export function createTools(extraTools: Tool[] = []): Tool[] {
     new WebSearchTool(),
     new AgentTool(),
     new TmuxSessionTool(),
+    ...makeAllMetaTools(),
+    ...createCTFTools(),
     ...extraTools,
   ]
 }

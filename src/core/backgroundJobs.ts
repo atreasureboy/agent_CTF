@@ -181,20 +181,33 @@ export class BackgroundJobManager {
       job.endedAt = new Date().toISOString()
       job.artifactId = out.artifactId
       job.summary = out.summary
-      if (out.error) {
+      // Precedence: cancelled > failed > success. When the user cancels,
+      // the runner may still surface an error message (e.g. "Command
+      // cancelled.") so we honour the abort signal as the source of truth.
+      if (signal.aborted) {
+        job.status = 'cancelled'
+        job.cancelReason = (signal.reason as string) ?? 'cancelled'
+      } else if (timeoutCtrl.signal.aborted) {
+        job.status = 'cancelled'
+        job.cancelReason = (timeoutCtrl.signal.reason as string) ?? 'timeout'
+      } else if (out.error) {
         job.status = 'failed'
         job.error = out.error
-      } else if (signal.aborted || timeoutCtrl.signal.aborted) {
-        job.status = 'cancelled'
-        job.cancelReason = (signal.reason ?? timeoutCtrl.signal.reason) as string
       } else {
         job.status = 'success'
       }
     } catch (err) {
       job.endedAt = new Date().toISOString()
       job.error = (err as Error).message
-      job.status = signal.aborted ? 'cancelled' : 'failed'
-      if (signal.aborted) job.cancelReason = signal.reason as string
+      if (signal.aborted) {
+        job.status = 'cancelled'
+        job.cancelReason = signal.reason as string
+      } else if (timeoutCtrl.signal.aborted) {
+        job.status = 'cancelled'
+        job.cancelReason = timeoutCtrl.signal.reason as string
+      } else {
+        job.status = 'failed'
+      }
     } finally {
       clearTimeout(timer)
       this.persist(job)
