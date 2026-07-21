@@ -312,6 +312,147 @@ export function createCTFTools(): Tool[] {
     },
   }))
 
+  // ─── Reverse Engineering tools ─────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'gdb',
+    description: 'gdb 调试器 — 断点/寄存器/内存读写。建议 -batch -ex 模式。',
+    binary: 'gdb',
+    requiredBinaries: ['gdb'],
+    domains: ['reverse', 'pwn'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const script = typeof input.command === 'string' ? input.command : 'info functions'
+      return `gdb -batch -ex ${JSON.stringify(script)} ${JSON.stringify(target)} 2>&1 | head -n 200`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'objdump',
+    description: 'objdump 反汇编 — 用于静态分析函数入口/段表。',
+    binary: 'objdump',
+    requiredBinaries: ['objdump'],
+    domains: ['reverse'],
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '-d -M intel'
+      return `objdump ${flags} ${JSON.stringify(target)} 2>&1 | head -n 300`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'strings',
+    description: 'strings 提取可读字符串 — CTF 速查。',
+    binary: 'strings',
+    requiredBinaries: ['strings'],
+    domains: ['reverse', 'forensics'],
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const minLen = typeof input.command === 'string' ? input.command : '-n 6'
+      return `strings ${minLen} ${JSON.stringify(target)} 2>&1 | head -n 200`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'file',
+    description: 'file 魔数识别 — CTF 第一步。',
+    binary: 'file',
+    requiredBinaries: ['file'],
+    domains: ['forensics', 'reverse'],
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      return `file ${JSON.stringify(target)}`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'nm',
+    description: 'nm 符号表 — 找关键函数/变量。',
+    binary: 'nm',
+    requiredBinaries: ['nm'],
+    domains: ['reverse'],
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '-C'
+      return `nm ${flags} ${JSON.stringify(target)} 2>&1 | head -n 200`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'radare2',
+    description: 'r2 反汇编 / 反编译 / 图分析。',
+    binary: 'r2',
+    requiredBinaries: ['r2'],
+    domains: ['reverse'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const script = typeof input.command === 'string' ? input.command : 'aaa;afl'
+      return `r2 -q -c ${JSON.stringify(script)} ${JSON.stringify(target)} 2>&1 | head -n 200`
+    },
+  }))
+
+  // ─── Web tools (补充) ─────────────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'curl',
+    description: 'curl HTTP 客户端 — 重定向/方法/头控制。',
+    binary: 'curl',
+    requiredBinaries: ['curl'],
+    domains: ['web'],
+    riskLevel: 'low',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '-i -L -s'
+      return `curl ${flags} ${JSON.stringify(target)} 2>&1 | head -n 100`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'gobuster',
+    description: 'gobuster 目录/子域暴力枚举。',
+    binary: 'gobuster',
+    requiredBinaries: ['gobuster'],
+    domains: ['web'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const wordlist = typeof input.command === 'string' ? input.command : '/usr/share/wordlists/dirb/common.txt'
+      return `gobuster dir -u ${JSON.stringify(target)} -w ${JSON.stringify(wordlist)} -t 30 -q 2>&1 | head -n 200`
+    },
+  }))
+
+  // ─── Network Traffic tools ────────────────────────────────────────────
+
+  tools.push(new BinaryTool({
+    name: 'tshark',
+    description: 'tshark 数据包分析 — 协议/过滤/导出。',
+    binary: 'tshark',
+    requiredBinaries: ['tshark'],
+    domains: ['network'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const flags = typeof input.command === 'string' ? input.command : '-r'
+      return `tshark ${flags} ${JSON.stringify(target)} 2>&1 | head -n 200`
+    },
+  }))
+
+  tools.push(new BinaryTool({
+    name: 'tcpdump',
+    description: 'tcpdump 抓包/过滤 (需 root 能力)。',
+    binary: 'tcpdump',
+    requiredBinaries: ['tcpdump'],
+    domains: ['network'],
+    riskLevel: 'medium',
+    buildCommand: (input) => {
+      const target = typeof input.target === 'string' ? input.target : ''
+      const filter = typeof input.command === 'string' ? input.command : ''
+      return `tcpdump -nn -r ${JSON.stringify(target)} ${filter} 2>&1 | head -n 200`
+    },
+  }))
+
   return tools
 }
 

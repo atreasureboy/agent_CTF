@@ -39,6 +39,7 @@ import { BackgroundJobManager } from './backgroundJobs.js'
 import { ArtifactStore } from './artifacts.js'
 import { FindingStore } from './findings.js'
 import { HandoffStore } from './handoff.js'
+import { loadContestConfig, mergeContestConfig } from './contestConfig.js'
 
 import { WorkflowRegistry } from './workflowRegistry.js'
 import { WorkflowEngine, type RunContext, type WorkflowRunner } from './workflowEngine.js'
@@ -108,9 +109,23 @@ export interface HarnessBundle {
 export function createHarness(input: CreateHarnessInput): HarnessBundle {
   ensureProfilesRegistered()
   const profile = resolveProfile(input.profile)
-  const contestScope = new ContestScopeChecker(
-    input.contestScope ?? parseContestScope({ allowedFilesRoot: input.cwd, allowPublicNetwork: true }),
-  )
+
+  // ── Resolve ContestScope ──────────────────────────────────────────
+  // Priority: explicit input.contestScope > .ovogo/contest.json > safe default.
+  // The auto-loaded file is merged with input.contestScope so callers can
+  // override individual fields without replacing the whole object.
+  const fileResult = loadContestConfig({ cwd: input.cwd })
+  const baseConfig = fileResult.loaded ? fileResult.config : parseContestScope({
+    allowedFilesRoot: input.cwd,
+    allowPublicNetwork: true,
+  })
+  const mergedConfig = input.contestScope
+    ? mergeContestConfig(
+        baseConfig,
+        input.contestScope as Partial<Parameters<typeof mergeContestConfig>[1]>,
+      )
+    : baseConfig
+  const contestScope = new ContestScopeChecker(mergedConfig)
 
   const contestId = input.contestId ?? makeContestId(input.cwd.split('/').pop() ?? 'project')
   const taskId = input.taskId ?? makeTaskId('task')

@@ -82,27 +82,65 @@
 
 | 维度 | 进度 | 备注 |
 |------|------|------|
-| 类型 / Schema | 100% | CapabilityProfile + 5/5 Profile + 4/4 Workflow |
-| Tool Registry | 100% | 14 个 legacy + 10 个 meta + 11 个 CTF 二进制工具注册 |
+| 类型 / Schema | 100% | CapabilityProfile + **9/9 Profile** + **8/8 Workflow** |
+| Tool Registry | 100% | 14 个 legacy + 10 个 meta + **21 个 CTF 二进制工具注册** (zsteg/binwalk/exiftool/pngcheck/identify/steghide/rsactftool/yafu/openssl-rsa/nmap/nikto/sqlmap/**gdb/objdump/strings/file/nm/radare2/curl/gobuster/tshark/tcpdump**) |
 | Tool Broker | 100% | Profile / Policy / Artifact / Job / Audit 全部串通 |
 | bash 命令级强制 | 100% | allowShell / deniedCommands / deniedTools / ContestScope network |
-| Workflow Engine | 100% | sequential/parallel/if/emit_finding + 4 示例 |
+| Workflow Engine | 100% | sequential/parallel/if/emit_finding + **8 示例** (unknown_file_triage, image_quick_scan, encoding_sweep, rsa_common_attacks, **binary_triage, pwn_triage, web_triage, pcap_triage**) |
 | Artifact / Finding / Handoff | 100% | 一等对象 + 持久化 + 跨 Agent 继承 |
 | Background Jobs | 100% | spawn/wait/cancel/list/cancelTask 全链路 |
-| Specialist Agents | 100% | 5 个 Profile + Factory |
+| Specialist Agents | 100% | **9 个 Profile + Factory** (orchestrator/triage/image-stego/crypto/file-forensics/**reverse/pwn/web/traffic**) |
 | Task Workspace | 100% | sessions/<contest>/tasks/<task>/... |
-| ToolFirstPolicy | 100% | 4 起步规则 + override 审计 |
+| ToolFirstPolicy | 100% | **7 起步规则** (web-enumeration/image-stego/rsa-common-attacks/unknown-file-triage/**reverse-binary-first/web-crawl-first/pcap-extract-first**) + override 审计 |
 | Orchestrator Dispatch | 100% | inspect / decide / spawn sub-harness |
-| CLI 入口 | 100% | bin/ovogogogo-ctf + --profile --run-workflow 跑通 |
-| E2E Tests | 100% | 219 个测试 / 21 文件 / 全绿 |
+| Contest Scope 加载 | 100% | **`.ovogo/contest.json` 自动加载 + CLI override 合并** (新 `src/core/contestConfig.ts`) |
+| 代码审查视角回归 | 100% | **11 个 case 验证每条拒绝路径:模型可读 + audit 可 grep** (`tests/codeReview.test.ts`) |
+| CLI 入口 | 100% | bin/ovogogogo-ctf + --profile --run-workflow 跑通 + 自动加载 contest config |
+| E2E Tests | 100% | **243 个测试 / 23 文件 / 全绿** |
 | 端到端 LLM 流程 | 100% | Mock OpenAI 客户端驱动的真实 Engine→Broker→Tools→Findings 链路已跑通（`tests/e2eEngine.test.ts` 4 个 case） |
 
 **目标适配度 ≥ 95%**
 
-未补足项：真实外部 LLM 接入（无 OpenAI key 测试环境）。我们用可脚本化的 Mock OpenAI 客户端 + 真实 `ExecutionEngine.runTurn` 跑通了完整的 LLM→Engine→Broker→Tools→Findings/Handoffs 链路（见 `tests/e2eEngine.test.ts` 4 个 case：tool_calls 触发 emit_finding + request_handoff 持久化、Bash 工具由 Broker 拦截并 event 写 audit、policy_advisory 事件含 rule 字段）。
+### 第九届西湖论剑 适配说明
 
-CLI 接口已就绪，运行：
+比赛核心要求：**AI Agent 解题夺旗**(API-only + 批量 + 人机交互)。本项目直接对应:
+
+| 比赛要求 | 项目对应 | 完成度 |
+|---------|---------|--------|
+| 仅开放 API 接口 | `bin/ovogogogo-ctf.ts` + `Engine.runTurn` | ✅ CLI + tests 验证 |
+| 题量超人工上限 | `BackgroundJobManager` 并发 + 不阻塞 workflow | ✅ `tests/backgroundJobs.test.ts` |
+| 多领域题(图像/密码/取证/逆向/Pwn/Web/流量) | **9 个 Specialist Profile + 8 个 Workflow** | ✅ |
+| 人机持续交互 | OrchestratorDispatch + request_handoff + emit_finding | ✅ `tests/e2eHarness.test.ts` |
+| 工程化与编排 | CapabilityProfile + ToolFirstPolicy + 4 层架构 | ✅ |
+| 决赛代码审查 + 技术问答 | `tests/codeReview.test.ts` 11 case 覆盖每条拒绝路径 | ✅ |
+
+### 仍依赖真实 LLM 的最后一公里
+
+未补足项:真实外部 LLM 接入(无 OpenAI key 测试环境)。我们用可脚本化的 Mock OpenAI 客户端 + 真实 `ExecutionEngine.runTurn` 跑通了完整的 LLM→Engine→Broker→Tools→Findings/Handoffs 链路(见 `tests/e2eEngine.test.ts` 4 个 case:tool_calls 触发 emit_finding + request_handoff 持久化、Bash 工具由 Broker 拦截并 event 写 audit、policy_advisory 事件含 rule 字段)。
+
+CLI 接口已就绪,运行:
 ```sh
 ovogogogo-ctf --profile image-stego --run-workflow image_quick_scan --input ctf.png --allow-host cdn.example
+ovogogogo-ctf --profile reverse  --run-workflow binary_triage --input crackme.elf
+ovogogogo-ctf --profile web      --run-workflow web_triage --text "http://ctf.example/"
+ovogogogo-ctf --profile traffic  --run-workflow pcap_triage --input capture.pcap
+ovogogogo-ctf --profile pwn      --run-workflow pwn_triage --input vuln.bin
 ```
-即可拉起真实 LLM。
+即可拉起真实 LLM;同时所有 8 个 workflow 可用 `--run-workflow` 离线跑通(纯工具链 + broker,无需 LLM)。
+
+### `.ovogo/contest.json` 配置
+
+比赛平台下发的网络/文件边界配置,放在项目根 `.ovogo/contest.json`:
+```json
+{
+  "allowedHosts":     ["10.0.0.0/24", "ctf.example.com"],
+  "allowedDomains":   ["example.com"],
+  "allowedCidrs":     ["10.0.0.0/8"],
+  "allowedPorts":     [80, 443, 8080],
+  "allowedFilesRoot": "/srv/ctf",
+  "allowPublicNetwork": false,
+  "notes": "Round 1 — strict egress",
+  "maxTaskDurationMs": 3600000
+}
+```
+CLI flags (`--allow-host` / `--allow-public-network`) 覆盖文件配置。详见 `src/core/contestConfig.ts` 与 `tests/contestConfig.test.ts`。

@@ -70,7 +70,8 @@ export class ContestScopeChecker {
 
   /** Strip brackets and split host:port. Returns null for unparseable. */
   private static splitHostPort(target: string): { host: string; port?: number } | null {
-    const m = target.match(/^(\[?[\w.:-]+\]?)(?::(\d+))?$/)
+    // NOTE: char class excludes ':' so the optional ':port' group can match.
+    const m = target.match(/^(\[?[\w.-]+\]?)(?::(\d+))?$/)
     if (!m) return null
     let host = m[1]
     if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1)

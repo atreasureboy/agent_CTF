@@ -103,6 +103,79 @@ export const FORENSICS_PROTOCOL: PromptModule = () => [
 - workflow: \`magic_header_repair_candidates\` 处理文件头损坏 / 长度截断 / 缺尾`,
 ]
 
+export const REVERSE_PROTOCOL: PromptModule = () => [
+  `## Reverse 工作流
+
+**默认第一步**: workflow: \`binary_triage\`(file + strings + nm + objdump + 反编译入口)
+
+**禁止**:
+- 在 objdump / strings / nm 未尝试前手写字节级分析
+- 在 r2 / gdb -batch 未尝试前手写反汇编器
+
+**提取**:
+- 关键函数 / 段表 / 字符串落 Artifact
+- 跨页结构(layout / offset / size)用 finding 表 schema 化
+
+**接力**:
+- 提取出密文 → crypto
+- 提取出网络流量/端口 → traffic
+- 提取出 archive → file-forensics`,
+]
+
+export const PWN_PROTOCOL: PromptModule = () => [
+  `## Pwn 工作流
+
+**默认第一步**: workflow: \`pwn_triage\`(checksec + file + strings + 运行观察 + 段表)
+
+**禁止**:
+- 在 file/checksec/strings 未尝试前手写 rop / shellcode
+- 在 gdb 调试未跑前盲目给 payload
+
+**调试**:
+- gdb -batch -ex 'b main' -ex 'r' -ex 'info registers' 模式系统化收集寄存器/栈
+- python3 -c "..." 用于快速构造 payload,允许 (allowPython=true)
+
+**接力**:
+- 提取出加密/编码 payload → crypto
+- 网络 IO 部分 → traffic 或 web`,
+]
+
+export const WEB_PROTOCOL: PromptModule = () => [
+  `## Web 工作流
+
+**默认第一步**: workflow: \`web_triage\`(curl HEAD → 路径枚举 → nmap 后台 → nikto)
+
+**禁止**:
+- 在 nmap/gobuster 未尝试前手写目录暴力
+- 在 sqlmap/nikto 未尝试前手写 fuzz / SQL 注入
+
+**网络边界**:
+- 默认 deny 出网;允许 host 时通过 ContestScope 的 allowPublicNetwork / allowHost
+- 大扫描入后台任务,主流程不被阻塞
+
+**接力**:
+- 提取到 JS / 路径 / 用户名 → file-forensics (二进制侧)
+- 提取到密文 / token → crypto`,
+]
+
+export const TRAFFIC_PROTOCOL: PromptModule = () => [
+  `## Traffic 工作流
+
+**默认第一步**: workflow: \`pcap_triage\`(tshark -r → 协议统计 → follow tcp/udp → 导出对象)
+
+**禁止**:
+- 在 tshark 未尝试前手写 pcap parser
+- 在 tcpdump 过滤未尝试前手抓 packet
+
+**导出**:
+- HTTP objects → file-forensics
+- TLS keylog 存在 → 尝试解密
+- 提取出 binary → reverse
+
+**审计**:
+- 每次 tshark 调用都进 Artifact (outputMode=artifact)`,
+]
+
 export const BUILT_IN_PROMPT_MODULES: Record<string, PromptModule> = {
   'role.boundary': ROLE_BOUNDARY,
   'tool.first': TOOL_FIRST,
@@ -112,4 +185,8 @@ export const BUILT_IN_PROMPT_MODULES: Record<string, PromptModule> = {
   'image.protocol': IMAGE_PROTOCOL,
   'crypto.protocol': CRYPTO_PROTOCOL,
   'forensics.protocol': FORENSICS_PROTOCOL,
+  'reverse.protocol': REVERSE_PROTOCOL,
+  'pwn.protocol': PWN_PROTOCOL,
+  'web.protocol': WEB_PROTOCOL,
+  'traffic.protocol': TRAFFIC_PROTOCOL,
 }

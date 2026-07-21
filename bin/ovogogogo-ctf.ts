@@ -173,26 +173,27 @@ async function main(): Promise<void> {
   ensureProfilesRegistered()
   __resetWorkflowRegistrationForTests()
 
-  // ContestScope — start safe; add whitelisted hosts via flags.
-  const { ContestScopeChecker, parseContestScope } = await import('../src/core/contestScope.js')
-  const scope = new ContestScopeChecker(
-    parseContestScope({
-      allowedFilesRoot: cwd,
-      allowPublicNetwork: args.allowPublicNetwork,
-      allowedHosts: args.allowHosts,
-    }),
-  )
+  // ContestScope — load .ovogo/contest.json first, merge with CLI overrides.
+  const { resolveContestConfig } = await import('../src/core/contestConfig.js')
+  const { ContestScopeChecker } = await import('../src/core/contestScope.js')
+  const { scope: mergedScope, sourcePath: contestCfgPath } = resolveContestConfig({
+    cwd,
+    cliOverride: {
+      allowedHosts: args.allowHosts.length > 0 ? args.allowHosts : undefined,
+      allowPublicNetwork: args.allowPublicNetwork ? true : undefined,
+    },
+  })
+  const scope = new ContestScopeChecker(mergedScope)
+  if (contestCfgPath) {
+    process.stdout.write(`contest config: ${CYAN}${contestCfgPath}${RESET}\n`)
+  }
 
   const harness = createHarness({
     cwd,
     profile: args.profile,
     contestId: args.contest,
     taskId: args.taskId,
-    contestScope: {
-      allowedFilesRoot: cwd,
-      allowPublicNetwork: args.allowPublicNetwork,
-      allowedHosts: args.allowHosts,
-    },
+    contestScope: mergedScope,
     inlineMaxBytes: 1024,
     jobLimits: { maxPerAgent: 0, maxPerTask: 0 }, // CLI mode forces inline
   })

@@ -14,7 +14,7 @@ import type OpenAI from 'openai'
 
 export type ScriptedAction =
   | { type: 'text'; content: string }
-  | { type: 'tool_call'; toolName: string; args: object; callId?: string }
+  | { type: 'tool_call'; toolName: string; args: object; callId?: string; index?: number }
   | { type: 'finish'; reason?: 'stop' | 'tool_calls' | 'length'; usage?: { prompt: number; completion: number } }
   | { type: 'error'; message: string }
   /** Concatenated multiple actions into a single response (no separate choice). */

@@ -175,9 +175,101 @@ export const WORKFLOW_RSA_COMMON_ATTACKS: WorkflowDefinition = {
   ],
 }
 
+export const WORKFLOW_BINARY_TRIAGE: WorkflowDefinition = {
+  id: 'binary_triage',
+  name: 'Binary Triage',
+  description:
+    '二进制逆向初筛:file → strings → nm → objdump → r2 aaa;afl。结构化识别入口函数和可疑符号。',
+  domains: ['reverse'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'continue',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  steps: [
+    { kind: 'tool', id: 'b-file',    toolId: 'Bash', input: { command: 'file "$FILE_INPUT"' } },
+    { kind: 'tool', id: 'b-strings', toolId: 'Bash', input: { command: 'strings -n 6 "$FILE_INPUT" | head -n 100' } },
+    { kind: 'tool', id: 'b-nm',      toolId: 'Bash', input: { command: 'nm -C "$FILE_INPUT" 2>&1 | head -n 100' } },
+    { kind: 'tool', id: 'b-objdump', toolId: 'Bash', input: { command: 'objdump -d -M intel "$FILE_INPUT" 2>&1 | head -n 200 || echo "objdump failed (stripped?)"' } },
+    { kind: 'tool', id: 'b-r2',      toolId: 'Bash', input: { command: 'r2 -q -c "aaa;afl" "$FILE_INPUT" 2>&1 | head -n 80 || echo "r2 unavailable"' } },
+    { kind: 'emit_finding', id: 'b-summary', category: 'reverse', title: 'Binary triage', summary: '类型 + 关键函数 + 入口地址', confidence: 'medium', suggestedNextActions: ['request_handoff'], suggestedAgent: 'pwn|crypto' },
+  ],
+}
+
+export const WORKFLOW_PWN_TRIAGE: WorkflowDefinition = {
+  id: 'pwn_triage',
+  name: 'Pwn Triage',
+  description:
+    '漏洞利用初筛:checksec → file → strings → 运行观察 → gdb -batch 调试。结构化捕获寄存器/段表/栈状态。',
+  domains: ['pwn'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'continue',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  steps: [
+    { kind: 'tool', id: 'p-checksec', toolId: 'Bash', input: { command: 'which checksec && checksec --file="$FILE_INPUT" 2>&1 || (file "$FILE_INPUT"; readelf -l "$FILE_INPUT" 2>&1 | head -n 30)' } },
+    { kind: 'tool', id: 'p-file',     toolId: 'Bash', input: { command: 'file "$FILE_INPUT"' } },
+    { kind: 'tool', id: 'p-strings',  toolId: 'Bash', input: { command: 'strings -n 6 "$FILE_INPUT" | head -n 80' } },
+    { kind: 'tool', id: 'p-nm',       toolId: 'Bash', input: { command: 'nm -C "$FILE_INPUT" 2>&1 | grep -iE "main|read|write|exec|system|win|flag|shell" | head -n 40 || true' } },
+    { kind: 'tool', id: 'p-gdb',      toolId: 'Bash', input: { command: 'gdb -batch -ex "info functions" -ex "disas main" "$FILE_INPUT" 2>&1 | head -n 80 || echo "gdb failed"' } },
+    { kind: 'emit_finding', id: 'p-summary', category: 'pwn', title: 'Pwn triage', summary: '保护位 + 关键函数 + 段表', confidence: 'medium', suggestedNextActions: ['request_handoff'], suggestedAgent: 'reverse|crypto' },
+  ],
+}
+
+export const WORKFLOW_WEB_TRIAGE: WorkflowDefinition = {
+  id: 'web_triage',
+  name: 'Web Triage',
+  description:
+    'Web 漏洞初筛:curl HEAD → 路径枚举( gobuster 后台 )→ nmap 后台 → nikto。',
+  domains: ['web'],
+  acceptedInputs: ['url'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'continue',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  steps: [
+    { kind: 'tool', id: 'w-curl',     toolId: 'Bash', input: { command: 'curl -i -L -s -o /dev/null -w "%{http_code} %{size_download}\\n" "$URL_INPUT"' } },
+    { kind: 'tool', id: 'w-headers',  toolId: 'Bash', input: { command: 'curl -i -L -s "$URL_INPUT" 2>&1 | head -n 60' } },
+    { kind: 'parallel', id: 'w-scan', join: 'all', steps: [
+      { kind: 'tool', id: 'w-gobuster', toolId: 'Bash', input: { command: 'gobuster dir -u "$URL_INPUT" -w /usr/share/wordlists/dirb/common.txt -t 30 -q 2>&1 | head -n 100 || echo "gobuster unavailable"' } },
+      { kind: 'tool', id: 'w-nmap',     toolId: 'Bash', input: { command: 'echo "nmap -sV --top-ports 1000 $URL_HOST"' } },
+    ] },
+    { kind: 'emit_finding', id: 'w-summary', category: 'web', title: 'Web triage', summary: '状态码 + headers + 路径/端口', confidence: 'medium', suggestedNextActions: ['request_handoff'], suggestedAgent: 'crypto|file-forensics' },
+  ],
+}
+
+export const WORKFLOW_PCAP_TRIAGE: WorkflowDefinition = {
+  id: 'pcap_triage',
+  name: 'PCAP Triage',
+  description:
+    '流量分析初筛:tshark -r → 协议统计 → follow tcp/udp → 导出 HTTP objects → 字符串/密文定位。',
+  domains: ['network'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'continue',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  steps: [
+    { kind: 'tool', id: 'c-protocol',  toolId: 'Bash', input: { command: 'tshark -r "$FILE_INPUT" -q -z io,phs 2>&1 | head -n 60' } },
+    { kind: 'tool', id: 'c-conversations', toolId: 'Bash', input: { command: 'tshark -r "$FILE_INPUT" -q -z conv,tcp 2>&1 | head -n 40' } },
+    { kind: 'parallel', id: 'c-follow', join: 'all', steps: [
+      { kind: 'tool', id: 'c-http', toolId: 'Bash', input: { command: 'tshark -r "$FILE_INPUT" -Y "http" -T fields -e http.request.method -e http.request.uri -e http.response.code 2>&1 | head -n 60' } },
+      { kind: 'tool', id: 'c-dns',  toolId: 'Bash', input: { command: 'tshark -r "$FILE_INPUT" -Y "dns" -T fields -e dns.qry.name 2>&1 | head -n 30' } },
+      { kind: 'tool', id: 'c-tls',  toolId: 'Bash', input: { command: 'tshark -r "$FILE_INPUT" -Y "tls.handshake.extensions_server_name" -T fields -e tls.handshake.extensions_server_name 2>&1 | head -n 30' } },
+    ] },
+    { kind: 'tool', id: 'c-strings', toolId: 'Bash', input: { command: 'strings -n 6 "$FILE_INPUT" | grep -iE "flag|password|key|secret" | head -n 40 || true' } },
+    { kind: 'emit_finding', id: 'c-summary', category: 'traffic', title: 'PCAP triage', summary: '协议分布 + 主要会话 + flag 关键字命中', confidence: 'medium', suggestedNextActions: ['request_handoff'], suggestedAgent: 'file-forensics|crypto|reverse' },
+  ],
+}
+
 export const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
   WORKFLOW_UNKNOWN_FILE_TRIAGE,
   WORKFLOW_IMAGE_QUICK_SCAN,
   WORKFLOW_ENCODING_SWEEP,
   WORKFLOW_RSA_COMMON_ATTACKS,
+  WORKFLOW_BINARY_TRIAGE,
+  WORKFLOW_PWN_TRIAGE,
+  WORKFLOW_WEB_TRIAGE,
+  WORKFLOW_PCAP_TRIAGE,
 ]

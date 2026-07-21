@@ -51,6 +51,8 @@ interface PolicyRule {
 
 const RULE_PORT_SCAN_KEYWORDS = ['full port scan', 'service enumeration', 'port scan', 'all ports', 'complete scan', 'service detection']
 const RULE_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp']
+const RULE_BINARY_EXTS = ['.elf', '.bin', '.so', '.out', '.exe', '.dll', '.mach-o', '.class', '.jar', '.apk']
+const RULE_PCAP_EXTS = ['.pcap', '.pcapng', '.cap']
 
 function fpStr(value: unknown): string {
   if (typeof value === 'string') return value
@@ -142,6 +144,68 @@ const RULES: PolicyRule[] = [
       return (
         'Reminder: input looks like an unclassified file. Run unknown_file_triage ' +
         '(file + exiftool + magic + entropy heuristic) before attempting decoding.'
+      )
+    },
+  },
+  {
+    id: 'reverse-binary-first',
+    severity: 'info',
+    injectInResult: false,
+    match: ({ toolId, input, profile }) => {
+      if (profile.id !== 'reverse') return false
+      if (toolId !== 'Bash') return false
+      const fp = combinedInputFingerprint(input)
+      // Trigger when the agent is about to hand-disassemble a binary before
+      // running the standard triage workflow.
+      const isBinary = RULE_BINARY_EXTS.some((ext) => fp.includes(ext))
+      if (!isBinary) return false
+      return /(xxd|hexdump|od\s+|disas|disassemble|hex.{0,10}dump|readelf)/.test(fp)
+    },
+    advice() {
+      return (
+        'Reminder: input is an ELF/binary. Run binary_triage workflow (file + strings + ' +
+        'nm + objdump + r2) before hand-disassembling. Standard tools must be tried first.'
+      )
+    },
+  },
+  {
+    id: 'web-crawl-first',
+    severity: 'info',
+    injectInResult: false,
+    match: ({ toolId, input, profile }) => {
+      if (profile.id !== 'web') return false
+      if (toolId !== 'Bash') return false
+      const fp = combinedInputFingerprint(input)
+      // Trigger when the agent is about to hand-fuzz paths / curl-loop instead
+      // of running the standard triage workflow.
+      const looksUrlish = /https?:\/\/|www\./.test(fp)
+      if (!looksUrlish) return false
+      return /(curl\s+-L\s+.*?for|for\s+path|loop.{0,10}url|brute.{0,10}path|wfuzz|ffuf)/.test(fp)
+    },
+    advice() {
+      return (
+        'Reminder: input is a URL. Run web_triage workflow (curl HEAD + gobuster + nmap) ' +
+        'before hand-fuzzing paths. Long scans should be background jobs.'
+      )
+    },
+  },
+  {
+    id: 'pcap-extract-first',
+    severity: 'info',
+    injectInResult: false,
+    match: ({ toolId, input, profile }) => {
+      if (profile.id !== 'traffic') return false
+      if (toolId !== 'Bash') return false
+      const fp = combinedInputFingerprint(input)
+      const isPcap = RULE_PCAP_EXTS.some((ext) => fp.includes(ext))
+      if (!isPcap) return false
+      // Trigger when the agent is about to write a pcap parser manually.
+      return /(scapy|dpkt|pyshark|python.{0,30}pcap|parse.{0,20}packet)/.test(fp)
+    },
+    advice() {
+      return (
+        'Reminder: input is a pcap. Run pcap_triage workflow (tshark + protocol stats + ' +
+        'follow tcp + extract objects) before hand-writing a parser with scapy/dpkt.'
       )
     },
   },
