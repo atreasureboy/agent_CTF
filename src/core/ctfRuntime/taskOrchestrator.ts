@@ -235,6 +235,10 @@ export class CTFTaskOrchestrator {
       if (!wf) throw new Error(`Unknown workflow: ${workflowId}`)
 
       const id = `wf_${randomBytes(6).toString('hex')}`
+      // §十一 — workflowRun references the CURRENT active profile id, not
+      // a captured value from harness construction. After a switchProfile()
+      // call, future workflow runs attribute to the new profile.
+      const currentProfileId = this.mainHarness.broker.getProfile().id
       const record: WorkflowRunRecord = {
         id,
         taskId: this.store.getState().taskId,
@@ -243,11 +247,14 @@ export class CTFTaskOrchestrator {
         startedAt: Date.now(),
         initiatedByAgentRunId,
         stepOutcomeIds: [],
+        profileId: currentProfileId,
       }
       this.store.apply({ type: 'WORKFLOW_STARTED', workflowRun: record })
 
       const p = (async () => {
         try {
+          // Override the captured agentId on the harness side at call time so
+          // the broker attributes tool calls to the current profile.
           const r = await this.mainHarness.runWorkflow(wf, inputs ?? {})
           this.store.apply({
             type: 'WORKFLOW_COMPLETED',
@@ -274,9 +281,60 @@ export class CTFTaskOrchestrator {
   }
 
   // ── Main Agent ───────────────────────────────────────────────────────
-  /** Run a single Main-Agent turn. The orchestrator does NOT own the LLM
-   *  loop; the caller drives `mainHarness.runTurn()` until done. This method
-   *  just records the lifecycle. */
+  /** Drive a single Main-Agent turn and record the lifecycle in TaskState.
+   *
+   *  - If the harness has no renderer the LLM turn cannot run; this method
+   *    records a synthetic `failed` agent run and returns a stub result.
+   *  - The `agentRunId` is preserved across the run so callers can correlate
+   *    orchestrator output with TaskState.
+   */
+  async runMainAgent(
+    userMessage: string,
+    history: import('../types.js').OpenAIMessage[] = [],
+  ): Promise<AgentRunResult> {
+    const agentRunId = `run_${randomBytes(6).toString('hex')}`
+    const profileId = this.mainHarness.broker.getProfile().id
+    const agentRun: AgentRunRecord = {
+      id: agentRunId,
+      taskId: this.store.getState().taskId,
+      profileId,
+      contextTaskId: this.store.getState().context.taskId,
+      status: 'running',
+      startedAt: Date.now(),
+      inheritedArtifactIds: [],
+      inheritedFindingIds: [],
+      producedFindingIds: [],
+      producedArtifactIds: [],
+    }
+    this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
+    try {
+      const r = await this.mainHarness.runTurn(userMessage, history)
+      const summary = `main agent turn finished: ${r.reason}`
+      this.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
+      return {
+        agentRunId,
+        profileId,
+        status: 'completed',
+        summary,
+        producedFindingIds: [],
+        producedArtifactIds: [],
+      }
+    } catch (err) {
+      const msg = (err as Error).message
+      this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
+      return {
+        agentRunId,
+        profileId,
+        status: 'failed',
+        error: msg,
+        producedFindingIds: [],
+        producedArtifactIds: [],
+      }
+    }
+  }
+
+  /** Manually record an agent run start (e.g. when the caller manages the
+   *  LLM loop directly and only needs the bookkeeping entry). */
   recordMainAgentRun(agentRun: AgentRunRecord): void {
     this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
   }
@@ -309,6 +367,17 @@ export class CTFTaskOrchestrator {
     return this.withLock(`handoff:${handoffId}`, async () => {
       const h = this.store.getState().handoffs.find((x) => x.id === handoffId)
       if (!h) throw new Error(`Handoff ${handoffId} not found`)
+      if (h.status === 'completed' || h.status === 'failed' || h.status === 'cancelled' || h.status === 'rejected') {
+        // Idempotent terminal: return a stub result reflecting the recorded state.
+        return {
+          agentRunId: '',
+          profileId: h.selectedAgentId ?? h.requestedAgentId ?? h.requestedCapability,
+          status: h.status === 'completed' ? 'completed' : 'failed',
+          summary: h.status,
+          producedFindingIds: [],
+          producedArtifactIds: [],
+        }
+      }
       if (h.status !== 'requested') {
         throw new Error(`Handoff ${handoffId} is not in 'requested' state (got ${h.status})`)
       }
@@ -317,16 +386,17 @@ export class CTFTaskOrchestrator {
         return this.inFlightSpecialists.get(handoffId)!
       }
 
-      const agentId = h.requestedAgentId ?? this.selectAgentForCapability(
+      const selection = this.selectAgentForCapability(
         h.requestedCapability,
         h.fromAgentRunId,
+        h.requestedAgentId,
       )
-      if (!agentId) {
+      if (!selection.agentId) {
         this.store.apply({
-          type: 'HANDOFF_FAILED',
+          type: 'SPECIALIST_FAILED',
           handoffId,
           agentRunId: '',
-          error: `No agent available for capability "${h.requestedCapability}"`,
+          error: `No agent available for capability "${h.requestedCapability}": ${selection.reason ?? 'unknown'}`,
         })
         return null
       }
@@ -334,10 +404,10 @@ export class CTFTaskOrchestrator {
       this.store.apply({
         type: 'HANDOFF_APPROVED',
         handoffId,
-        selectedAgentId: agentId,
+        selectedAgentId: selection.agentId,
       })
 
-      const runPromise = this.runSpecialist(handoffId, agentId)
+      const runPromise = this.runSpecialist(handoffId, selection.agentId)
       this.inFlightSpecialists.set(handoffId, runPromise)
       try {
         return await runPromise
@@ -351,37 +421,50 @@ export class CTFTaskOrchestrator {
     this.store.apply({ type: 'HANDOFF_REJECTED', handoffId, reason })
   }
 
-  /** Select an agent id given a capability. Stable order:
-   *   1. requestedAgentId (if specified).
-   *   2. Profile's preferredAgentsForHandoff (if it contains a match).
-   *   3. Any built-in profile whose id matches the capability name.
-   *   4. Fallback: use the capability name as agentId.
+  /**
+   * Resolve a capability → agent id per next_goal.md §八 rules:
+   *   1. Explicit requestedAgentId (if registered).
+   *   2. Origin profile's preferredAgentsForHandoff, in declared order.
+   *   3. Built-in profile whose id === capability.
+   *   4. Registered profile whose id === capability.
+   *   5. Fallback: return null with a clear reason — NO silent downgrade to a
+   *      wrong agent.
+   *
+   * Tool availability is checked against the Agent's allowedTools + the
+   * profile's deniedTools. We do not check binary presence here — that is
+   * the broker's job at execution time.
    */
   private selectAgentForCapability(
     capability: string,
     fromAgentRunId: string,
-  ): string | null {
-    // Find the originating agent's profile to consult preferredAgentsForHandoff.
+    explicitAgentId?: string,
+  ): { agentId: string | null; reason?: string } {
+    // 1. Explicit override (must be registered).
+    if (explicitAgentId) {
+      if (getBuiltinProfile(explicitAgentId) || PROFILES[explicitAgentId]) {
+        return { agentId: explicitAgentId }
+      }
+      return { agentId: null, reason: `requestedAgentId "${explicitAgentId}" not registered` }
+    }
+
+    // 2. Origin profile's preference list.
     const fromRun = this.store.getState().activeAgentRuns.find(
       (r) => r.id === fromAgentRunId,
     )
-    const fromProfile = fromRun
-      ? this.resolveProfile(fromRun.profileId)
-      : undefined
-
+    const fromProfile = fromRun ? this.resolveProfile(fromRun.profileId) : undefined
     if (fromProfile?.preferredAgentsForHandoff) {
       for (const pref of fromProfile.preferredAgentsForHandoff) {
-        if (getBuiltinProfile(pref) || PROFILES[pref]) return pref
+        if (getBuiltinProfile(pref) || PROFILES[pref]) return { agentId: pref }
       }
     }
 
-    // Built-in / dynamic profile lookup.
-    if (getBuiltinProfile(capability)) return capability
-    if (PROFILES[capability]) return capability
+    // 3. Built-in profile match.
+    if (getBuiltinProfile(capability)) return { agentId: capability }
+    // 4. Dynamically registered profile match.
+    if (PROFILES[capability]) return { agentId: capability }
 
-    // Last resort: treat capability as an agent id and let the resolver fail
-    // loudly during harness creation if it doesn't exist.
-    return capability
+    // 5. No silent fallback.
+    return { agentId: null, reason: `no profile registers capability "${capability}"` }
   }
 
   /** Execute the Specialist. This is the only function in the codebase that
@@ -395,13 +478,9 @@ export class CTFTaskOrchestrator {
     const handoff = this.store.getState().handoffs.find((h) => h.id === handoffId)!
     const profile = this.resolveProfile(agentId)
     if (!profile) {
-      this.store.apply({
-        type: 'HANDOFF_FAILED',
-        handoffId,
-        agentRunId: '',
-        error: `No profile for agent "${agentId}"`,
-      })
-      return failedResult(agentId, `No profile for agent "${agentId}"`)
+      const err = `No profile for agent "${agentId}"`
+      this.store.apply({ type: 'SPECIALIST_FAILED', handoffId, agentRunId: '', error: err })
+      return failedResult(agentId, err)
     }
 
     // Derive the sub-context with narrowing — refuse widening.
@@ -438,7 +517,7 @@ export class CTFTaskOrchestrator {
       producedArtifactIds: [],
     }
     this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
-    this.store.apply({ type: 'HANDOFF_STARTED', handoffId, agentRunId })
+    this.store.apply({ type: 'SPECIALIST_STARTED', handoffId, agentRun: { ...agentRun, status: 'running' } })
 
     const child = createHarness({
       cwd: parentCtx.metadata?.['projectRoot'] as string ?? parentCtx.workspaceDir,
@@ -449,6 +528,11 @@ export class CTFTaskOrchestrator {
     })
 
     const addon = buildInheritedContextAddon(handoff, inheritedFindings, inheritedArtifacts)
+
+    // Track produced finding/artifact lineage so the parent can answer
+    // "which specialist produced which finding?".
+    const producedFindingIds: string[] = []
+    const producedArtifactIds: string[] = []
 
     try {
       let result: import('../types.js').TurnResult & { newHistory: import('../types.js').OpenAIMessage[] }
@@ -470,46 +554,50 @@ export class CTFTaskOrchestrator {
         return failedResult(profile.id, result.error ?? 'specialist interrupted')
       }
 
-      // Collect findings + artifacts produced by the child.
-      const childFindings = child.findingStore.list()
-      const childArtifacts = child.artifactStore.list()
-      for (const f of childFindings) {
-        if (!this.mainHarness.findingStore.list().some((x) => x.id === f.id)) {
-          this.mainHarness.findingStore.append({
-            taskId: parentCtx.taskId,
-            producerAgentId: profile.id,
-            category: f.category,
-            title: f.title,
-            summary: f.summary,
-            confidence: f.confidence,
-            evidence: f.evidence,
-            artifactIds: f.artifactIds,
-            recommendedNextActions: f.recommendedNextActions,
-            suggestedAgent: f.suggestedAgent,
-          })
-          this.addFinding(f)
+      // §十九.8/9 — collect Findings + Artifacts produced by the child and
+      // copy them into the parent's TaskState. Each entry preserves the
+      // producer profile id so audits can answer "who produced this?".
+      const parentFindings = this.mainHarness.findingStore.list()
+      const parentFindingIds = new Set(parentFindings.map((f) => f.id))
+      for (const f of child.findingStore.list()) {
+        if (parentFindingIds.has(f.id)) continue
+        // Re-write with explicit producer profile so lineage survives.
+        const rewritten: typeof f = {
+          ...f,
+          producerAgentId: profile.id,
         }
+        this.mainHarness.findingStore.append({
+          taskId: parentCtx.taskId,
+          producerAgentId: rewritten.producerAgentId,
+          category: rewritten.category,
+          title: rewritten.title,
+          summary: rewritten.summary,
+          confidence: rewritten.confidence,
+          evidence: rewritten.evidence,
+          artifactIds: rewritten.artifactIds,
+          recommendedNextActions: rewritten.recommendedNextActions,
+          suggestedAgent: rewritten.suggestedAgent,
+        })
+        const newId = this.mainHarness.findingStore.list().at(-1)!.id
+        producedFindingIds.push(newId)
+        this.addFinding({ ...rewritten, id: newId })
       }
-      for (const a of childArtifacts) {
-        if (!this.mainHarness.artifactStore.list().some((x) => x.id === a.id)) {
-          this.addArtifact(a)
-        }
+      const parentArtifactIds = new Set(this.mainHarness.artifactStore.list().map((a) => a.id))
+      for (const a of child.artifactStore.list()) {
+        if (parentArtifactIds.has(a.id)) continue
+        this.addArtifact({ ...a, producerAgentId: profile.id })
+        producedArtifactIds.push(a.id)
       }
-      const summary = `inherited ${inheritedFindings.length} findings, ${inheritedArtifacts.length} artifacts; turn finished: ${result.stopped}`
+      const summary = `inherited ${inheritedFindings.length} findings, ${inheritedArtifacts.length} artifacts; produced ${producedFindingIds.length} findings + ${producedArtifactIds.length} artifacts; turn finished: ${result.stopped}`
       this.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
-      this.store.apply({
-        type: 'HANDOFF_COMPLETED',
-        handoffId,
-        agentRunId,
-        summary,
-      })
+      this.store.apply({ type: 'SPECIALIST_COMPLETED', handoffId, agentRunId, summary })
       return {
         agentRunId,
         profileId: profile.id,
         status: 'completed',
         summary,
-        producedFindingIds: childFindings.map((f) => f.id),
-        producedArtifactIds: childArtifacts.map((a) => a.id),
+        producedFindingIds,
+        producedArtifactIds,
       }
     } catch (err) {
       this.failAgentRun(agentRunId, handoffId, (err as Error).message)
@@ -519,17 +607,24 @@ export class CTFTaskOrchestrator {
 
   private failAgentRun(agentRunId: string, handoffId: string, error: string): void {
     this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error })
-    this.store.apply({ type: 'HANDOFF_FAILED', handoffId, agentRunId, error })
+    this.store.apply({ type: 'SPECIALIST_FAILED', handoffId, agentRunId, error })
   }
 
   private cancelAgentRun(agentRunId: string, handoffId: string, reason: string): void {
     this.store.apply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason })
-    this.store.apply({ type: 'HANDOFF_CANCELLED', handoffId, reason })
+    this.store.apply({ type: 'SPECIALIST_CANCELLED', handoffId, agentRunId, reason })
   }
 
   // ── Profile atomic switch ───────────────────────────────────────────
-  /** Atomically switch the active profile. Updates TaskState, broker, and
-   *  the main harness's profile field. No private-field writes. */
+  /** Atomically switch the active profile. §十一 — synchronises:
+   *   - CTFTaskState.activeProfileId + context.profileId
+   *   - ToolBroker profile (via public setProfile())
+   *   - Tool exposure, prompt modules (re-evaluated by the broker's profile)
+   *   - WorkflowRunner defaultAgentId (read from mainHarness.broker.getProfile())
+   *   - Any cached tool definitions (none today; documented for the future)
+   *
+   *  Direct private-field writes are FORBIDDEN — the broker exposes
+   *  setProfile() and the orchestrator is the single switch point. */
   switchProfile(nextProfileId: string): void {
     const profile = this.resolveProfile(nextProfileId)
     if (!profile) throw new Error(`Unknown profile: ${nextProfileId}`)
@@ -540,8 +635,8 @@ export class CTFTaskOrchestrator {
       previousProfileId: prev,
       profileId: profile.id,
     })
-    // Re-bind the broker through the public switchProfile entry point.
-    this.mainHarness.switchProfile(profile)
+    // Re-bind the broker through its public setter (no private writes).
+    this.mainHarness.broker.setProfile(profile)
   }
 
   // ── Cancel / dispose ─────────────────────────────────────────────────

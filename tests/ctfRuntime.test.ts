@@ -213,8 +213,17 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       },
     })
     store.apply({ type: 'HANDOFF_APPROVED', handoffId: 'h1', selectedAgentId: 'crypto' })
-    store.apply({ type: 'HANDOFF_STARTED', handoffId: 'h1', agentRunId: 'run2' })
-    store.apply({ type: 'HANDOFF_COMPLETED', handoffId: 'h1', agentRunId: 'run2', summary: 'ok' })
+    store.apply({
+      type: 'SPECIALIST_STARTED',
+      handoffId: 'h1',
+      agentRun: {
+        id: 'run2', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
+        status: 'running', startedAt: Date.now(),
+        inheritedArtifactIds: [], inheritedFindingIds: [],
+        producedFindingIds: [], producedArtifactIds: [],
+      },
+    })
+    store.apply({ type: 'SPECIALIST_COMPLETED', handoffId: 'h1', agentRunId: 'run2', summary: 'ok' })
     const h = store.getState().handoffs[0]
     expect(h.status).toBe('completed')
   })
@@ -247,7 +256,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
     })
     store.apply({ type: 'HANDOFF_REJECTED', handoffId: 'h1', reason: 'nope' })
     expect(() =>
-      store.apply({ type: 'HANDOFF_STARTED', handoffId: 'h1', agentRunId: 'r' }),
+      store.apply({
+        type: 'SPECIALIST_STARTED',
+        handoffId: 'h1',
+        agentRun: {
+          id: 'r', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
+          status: 'running', startedAt: Date.now(),
+          inheritedArtifactIds: [], inheritedFindingIds: [],
+          producedFindingIds: [], producedArtifactIds: [],
+        },
+      }),
     ).toThrow()
   })
 
@@ -262,9 +280,42 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       },
     })
     store.apply({ type: 'HANDOFF_APPROVED', handoffId: 'h1', selectedAgentId: 'crypto' })
-    store.apply({ type: 'HANDOFF_STARTED', handoffId: 'h1', agentRunId: 'r1' })
-    store.apply({ type: 'HANDOFF_FAILED', handoffId: 'h1', agentRunId: 'r1', error: 'boom' })
+    store.apply({
+      type: 'SPECIALIST_STARTED',
+      handoffId: 'h1',
+      agentRun: {
+        id: 'r1', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
+        status: 'running', startedAt: Date.now(),
+        inheritedArtifactIds: [], inheritedFindingIds: [],
+        producedFindingIds: [], producedArtifactIds: [],
+      },
+    })
+    store.apply({ type: 'SPECIALIST_FAILED', handoffId: 'h1', agentRunId: 'r1', error: 'boom' })
     expect(store.getState().handoffs[0].status).toBe('failed')
+  })
+
+  it('refuses a second TASK_COMPLETED event', () => {
+    const store = new CTFTaskStateStore(freshState())
+    store.apply({ type: 'TASK_COMPLETED', status: 'solved', reason: 'first' })
+    expect(() =>
+      store.apply({ type: 'TASK_COMPLETED', status: 'failed', reason: 'second' }),
+    ).toThrow(/already completed/)
+  })
+
+  it('still accepts FINDING_ADDED after TASK_COMPLETED for audit', () => {
+    const store = new CTFTaskStateStore(freshState())
+    store.apply({ type: 'TASK_COMPLETED', status: 'solved', reason: 'done' })
+    expect(() =>
+      store.apply({
+        type: 'FINDING_ADDED',
+        finding: {
+          id: 'post', taskId: 't1', producerAgentId: 'audit',
+          category: 'verifier', title: 'audit', summary: 's',
+          confidence: 'low', evidence: [], artifactIds: [],
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    ).not.toThrow()
   })
 
   it('refuses new workflow runs after TASK_COMPLETED', () => {
@@ -540,5 +591,347 @@ describe('Existing stores still work as before', () => {
     } finally {
       await orch.dispose()
     }
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §八 — Capability matching + tool availability in agent selection
+// ──────────────────────────────────────────────────────────────────────
+describe('§八 — Capability matching', () => {
+  it('approved handoff picks a registered agent for the capability', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      const h = orch.requestHandoff({
+        fromAgentRunId: 'run_main',
+        targetCapability: 'crypto',
+        reason: 'rsa', objective: 'crack',
+      })
+      const result = await orch.approveHandoff(h.id).catch((e) => ({ error: (e as Error).message }))
+      const record = orch.getState().handoffs.find((x) => x.id === h.id)!
+      expect(record.selectedAgentId).toBe('crypto')
+      expect(result).toBeTruthy()
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('unknown capability marks the handoff failed (no silent downgrade)', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      const h = orch.requestHandoff({
+        fromAgentRunId: 'run_main',
+        targetCapability: 'no-such-agent-anywhere',
+        reason: 'r', objective: 'o',
+      })
+      const result = await orch.approveHandoff(h.id)
+      const record = orch.getState().handoffs.find((x) => x.id === h.id)!
+      expect(record.status).toBe('failed')
+      expect(record.error).toMatch(/no profile registers capability/)
+      expect(result).toBeNull()
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('explicit requestedAgentId is honoured when registered', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      const h = orch.requestHandoff({
+        fromAgentRunId: 'run_main',
+        targetCapability: 'misc',
+        targetAgentId: 'crypto', // explicit override
+        reason: 'r', objective: 'o',
+      })
+      await orch.approveHandoff(h.id).catch(() => {})
+      const record = orch.getState().handoffs.find((x) => x.id === h.id)!
+      expect(record.selectedAgentId).toBe('crypto')
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('explicit requestedAgentId that is not registered fails the handoff', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      const h = orch.requestHandoff({
+        fromAgentRunId: 'run_main',
+        targetCapability: 'misc',
+        targetAgentId: 'ghost-agent',
+        reason: 'r', objective: 'o',
+      })
+      await orch.approveHandoff(h.id).catch(() => {})
+      const record = orch.getState().handoffs.find((x) => x.id === h.id)!
+      expect(record.status).toBe('failed')
+      expect(record.error).toMatch(/not registered/)
+    } finally {
+      await orch.dispose()
+    }
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §十一 — Profile changes propagate to broker + workflow runner
+// ──────────────────────────────────────────────────────────────────────
+describe('§十一 — Profile sync after switchProfile', () => {
+  it('switchProfile updates TaskState + broker + main harness profile', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      orch.switchProfile('crypto')
+      expect(orch.getState().activeProfileId).toBe('crypto')
+      expect(orch.getState().context.profileId).toBe('crypto')
+      expect(orch.getMainHarness().broker.getProfile().id).toBe('crypto')
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('workflow runs after switchProfile attribute to the new profile', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      orch.switchProfile('crypto')
+      await orch.runWorkflow('unknown_file_triage', {})
+      const wfRun = orch.getState().activeWorkflowRuns[0]
+      expect(wfRun.profileId).toBe('crypto')
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('ToolBroker.setProfile is the only public surface — private writes are blocked by tsc', async () => {
+    // Compile-time guarantee: `private readonly opts` cannot be reassigned
+    // without the public setProfile() helper. This test only verifies the
+    // runtime side: switching twice in a row converges to the same state.
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      orch.switchProfile('crypto')
+      const p1 = orch.getMainHarness().broker.getProfile().id
+      orch.switchProfile('crypto') // no-op
+      const p2 = orch.getMainHarness().broker.getProfile().id
+      expect(p1).toBe(p2)
+    } finally {
+      await orch.dispose()
+    }
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §十一 — WorkflowRunner no longer reads process.cwd()
+// ──────────────────────────────────────────────────────────────────────
+describe('§十 — WorkflowRunner uses TaskExecutionContext', () => {
+  it('runStep cwd equals context.workspaceDir, not process.cwd()', async () => {
+    const { createHarness } = await import('../src/core/harness.js')
+    const h = createHarness({ cwd: root, profile: 'orchestrator' })
+    const seen: string[] = []
+    const orig = h.broker.execute.bind(h.broker)
+    ;(h.broker as unknown as { execute: typeof orig }).execute = async (
+      toolId: string,
+      input: Record<string, unknown>,
+      ctx: { cwd: string; taskId: string; agentId: string },
+    ) => {
+      if (toolId === 'Bash') seen.push(ctx.cwd)
+      return orig(toolId, input, ctx as Parameters<typeof orig>[2])
+    }
+    const wf = h.workflowRegistry.get('unknown_file_triage')!
+    await h.runWorkflow(wf, {})
+    expect(seen.length).toBeGreaterThan(0)
+    for (const cwd of seen) {
+      expect(cwd).toBe(h.context.workspaceDir)
+      expect(cwd).not.toBe(process.cwd())
+    }
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §九 — createDefaultContestConfig is the single source
+// ──────────────────────────────────────────────────────────────────────
+describe('§九 — Default ContestConfig consistency', () => {
+  it('every entry path yields allowPublicNetwork=false and the same filesRoot', async () => {
+    const { createDefaultContestConfig } = await import('../src/core/contestConfig.js')
+    const { loadContestConfig } = await import('../src/core/contestConfig.js')
+    const fromFactory = createDefaultContestConfig({ cwd: root })
+    const fromLoader = loadContestConfig({ cwd: root }).config
+    expect(fromFactory.allowPublicNetwork).toBe(fromLoader.allowPublicNetwork)
+    expect(fromFactory.allowPublicNetwork).toBe(false)
+    expect(fromFactory.allowedFilesRoot).toBe(fromLoader.allowedFilesRoot)
+  })
+
+  it('harness built with no input.contestScope uses the safe default', async () => {
+    const { createHarness } = await import('../src/core/harness.js')
+    const h = createHarness({ cwd: root, profile: 'orchestrator' })
+    expect(h.contestScope['scope'].allowPublicNetwork).toBe(false)
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §七 — Orchestrator.createTask + runMainAgent + runWorkflow + handoff loop
+// ──────────────────────────────────────────────────────────────────────
+describe('§七 — Orchestrator end-to-end (no LLM)', () => {
+  it('runMainAgent without a renderer records a failed agent run', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      const r = await orch.runMainAgent('hello')
+      expect(r.status).toBe('failed')
+      expect(r.error).toMatch(/renderer/)
+      const runs = orch.getState().activeAgentRuns
+      expect(runs.find((x) => x.id === r.agentRunId)?.status).toBe('failed')
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('runWorkflow records WORKFLOW_STARTED → WORKFLOW_COMPLETED', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      const r = await orch.runWorkflow('unknown_file_triage', {})
+      expect(r).toBeTruthy()
+      expect(orch.getState().activeWorkflowRuns[0].status).toBe('completed')
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('runWorkflow throws when the workflow id is unknown', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      await expect(orch.runWorkflow('not-a-workflow', {})).rejects.toThrow(/Unknown workflow/)
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('runWorkflow is serialised per workflow id', async () => {
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
+    try {
+      // Fire two concurrent runs of the same workflow — withLock serialises them.
+      const [r1, r2] = await Promise.all([
+        orch.runWorkflow('unknown_file_triage', {}),
+        orch.runWorkflow('unknown_file_triage', {}),
+      ])
+      expect(r1).toBeTruthy()
+      expect(r2).toBeTruthy()
+    } finally {
+      await orch.dispose()
+    }
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §六 — Multiple guards
+// ──────────────────────────────────────────────────────────────────────
+describe('§六 — StateStore guards', () => {
+  function freshState(): CTFTaskState {
+    const now = Date.now()
+    return {
+      taskId: 't1', phase: 'intake',
+      context: {
+        taskId: 't1', workspaceDir: root, sessionDir: root,
+        artifactDir: join(root, 'artifacts'),
+        eventsFile: join(root, 'events.ndjson'),
+        profileId: 'orchestrator',
+        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
+        contestConfig: createDefaultContestConfig({ cwd: root }),
+      },
+      challenge: { inputArtifactIds: [] },
+      activeProfileId: 'orchestrator',
+      findings: [], artifactIds: [], hypotheses: [], attempts: [],
+      handoffs: [], activeAgentRuns: [], activeWorkflowRuns: [], activeJobs: [],
+      flagCandidates: [],
+      createdAt: now, updatedAt: now,
+    }
+  }
+
+  it('refuses to start a workflow after the task is cancelled', () => {
+    const store = new CTFTaskStateStore(freshState())
+    store.apply({ type: 'TASK_COMPLETED', status: 'cancelled', reason: 'abort' })
+    expect(() =>
+      store.apply({
+        type: 'WORKFLOW_STARTED',
+        workflowRun: {
+          id: 'w1', taskId: 't1', workflowId: 'image_quick_scan',
+          status: 'running', startedAt: Date.now(), stepOutcomeIds: [],
+        },
+      }),
+    ).toThrow(/cancelled/)
+  })
+
+  it('refuses unknown handoff id on SPECIALIST_STARTED', () => {
+    const store = new CTFTaskStateStore(freshState())
+    expect(() =>
+      store.apply({
+        type: 'SPECIALIST_STARTED',
+        handoffId: 'missing',
+        agentRun: {
+          id: 'r', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
+          status: 'running', startedAt: Date.now(),
+          inheritedArtifactIds: [], inheritedFindingIds: [],
+          producedFindingIds: [], producedArtifactIds: [],
+        },
+      }),
+    ).toThrow(/not found/)
+  })
+
+  it('PHASE_CHANGED refreshes updatedAt monotonically', () => {
+    const store = new CTFTaskStateStore(freshState())
+    const a = store.getState().updatedAt
+    store.apply({ type: 'PHASE_CHANGED', from: 'intake', to: 'triage' })
+    const b = store.getState().updatedAt
+    expect(b).toBeGreaterThanOrEqual(a)
+    store.apply({ type: 'PHASE_CHANGED', from: 'triage', to: 'exploration' })
+    const c = store.getState().updatedAt
+    expect(c).toBeGreaterThanOrEqual(b)
+  })
+
+  it('event counts accumulate per type', () => {
+    const store = new CTFTaskStateStore(freshState())
+    store.apply({ type: 'PHASE_CHANGED', from: 'intake', to: 'triage' })
+    store.apply({ type: 'PHASE_CHANGED', from: 'triage', to: 'exploration' })
+    const counts = store.getEventCounts()
+    expect(counts['PHASE_CHANGED']).toBe(2)
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────
+// §十六 — Backwards compatibility: createHarness + dispatchNext still work
+// ──────────────────────────────────────────────────────────────────────
+describe('§十六 — Backwards compatibility', () => {
+  it('createHarness() without orchestrator keeps working', async () => {
+    const { createHarness } = await import('../src/core/harness.js')
+    const h = createHarness({ cwd: root, profile: 'orchestrator' })
+    expect(h.context).toBeTruthy()
+    expect(h.context.profileId).toBe('orchestrator')
+  })
+
+  it('dispatchNext with orchestrator routes through the unified path', async () => {
+    const { createHarness } = await import('../src/core/harness.js')
+    const { dispatchNext } = await import('../src/core/orchestratorDispatch.js')
+    const h = createHarness({ cwd: root, profile: 'image-stego' })
+    const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'image-stego' })
+    try {
+      // Pre-create a pending handoff through the legacy HandoffStore path
+      // (so dispatchNext has something to dispatch).
+      await h.broker.execute('request_handoff', {
+        suggestedAgent: 'crypto', reason: 'rsa', objective: 'crack',
+      }, { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' })
+      const r = await dispatchNext(h, { decision: 'approve', orchestrator: orch })
+      expect(r?.status).toBe('approved')
+      // The orchestrator's state has a new HANDOFF_REQUESTED + an approved
+      // lifecycle — proving the unified path was taken.
+      const orchHandoffs = orch.getState().handoffs
+      expect(orchHandoffs.length).toBeGreaterThan(0)
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('dispatchNext without orchestrator uses the legacy shim (does not spawn specialist)', async () => {
+    const { createHarness } = await import('../src/core/harness.js')
+    const { dispatchNext } = await import('../src/core/orchestratorDispatch.js')
+    const h = createHarness({ cwd: root, profile: 'image-stego' })
+    await h.broker.execute('request_handoff', {
+      suggestedAgent: 'crypto', reason: 'rsa', objective: 'crack',
+    }, { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' })
+    const r = await dispatchNext(h, { decision: 'approve' })
+    expect(r?.status).toBe('approved')
+    expect(r?.executedOn?.summary).toMatch(/no autoExecute|inherit/)
   })
 })

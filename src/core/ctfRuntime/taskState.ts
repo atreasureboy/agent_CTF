@@ -134,6 +134,9 @@ export interface WorkflowRunRecord {
   completedAt?: number
   summary?: string
   error?: string
+  /** Profile id active when the workflow started. Preserved across the
+   *  lifecycle so audit can answer "which profile was running this?". */
+  profileId?: string
   /** Agent run that initiated the workflow. */
   initiatedByAgentRunId?: string
   /** Step outcomes — light refs (id + status). */

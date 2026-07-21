@@ -86,9 +86,17 @@ export class CTFTaskStateStore {
   }
 
   private guardAcceptsEvent(event: CTFTaskEvent): void {
-    // TASK_COMPLETED is terminal; nothing else can follow.
-    if (this.state.completion && event.type !== 'TASK_COMPLETED') {
-      // Allow bookkeeping events that don't change phase / handoffs.
+    // §6.7 — once TASK_COMPLETED has fired, no other completion event is
+    // allowed. Bookkeeping events (findings / artifacts / flag candidates /
+    // hypotheses) remain legal because they enrich the audit trail.
+    if (event.type === 'TASK_COMPLETED') {
+      if (this.state.completion) {
+        throw new TaskAlreadyCompletedError(
+          `Task ${this.state.taskId} already completed as ${this.state.completion.status}; ` +
+            `refusing to overwrite with ${event.status}.`,
+        )
+      }
+    } else if (this.state.completion) {
       const bookkeepingOnly: CTFTaskEvent['type'][] = [
         'FINDING_ADDED',
         'ARTIFACT_ADDED',
@@ -102,12 +110,25 @@ export class CTFTaskStateStore {
       }
     }
 
-    // Handoff-related guards.
-    if (event.type === 'HANDOFF_APPROVED' || event.type === 'HANDOFF_STARTED' ||
-        event.type === 'HANDOFF_COMPLETED' || event.type === 'HANDOFF_FAILED' ||
-        event.type === 'HANDOFF_CANCELLED') {
-      const h = this.findHandoff(event.handoffId)
-      if (!h) throw new UnknownHandoffError(`Handoff ${event.handoffId} not found.`)
+    // Handoff-related guards — the handoff must exist and be in a state that
+    // permits this transition. Specialist events drive the same handoff FSM
+    // because the lifecycle is `requested → approved → running → completed`.
+    const handoffTransitions: CTFTaskEvent['type'][] = [
+      'HANDOFF_APPROVED',
+      'HANDOFF_REJECTED',
+      'HANDOFF_CANCELLED',
+      'SPECIALIST_STARTED',
+      'SPECIALIST_COMPLETED',
+      'SPECIALIST_FAILED',
+      'SPECIALIST_CANCELLED',
+    ]
+    if (handoffTransitions.includes(event.type)) {
+      const handoffId = (event as { handoffId?: string }).handoffId
+      if (!handoffId) {
+        throw new TaskStateStoreError(`${event.type} requires handoffId`)
+      }
+      const h = this.findHandoff(handoffId)
+      if (!h) throw new UnknownHandoffError(`Handoff ${handoffId} not found.`)
       assertHandoffTransition(h, event.type)
     }
 
@@ -115,11 +136,22 @@ export class CTFTaskStateStore {
     if (isTerminalPhase(this.state.phase)) {
       const blockInTerminal: CTFTaskEvent['type'][] = [
         'WORKFLOW_STARTED',
+        'WORKFLOW_COMPLETED',
+        'WORKFLOW_FAILED',
         'AGENT_RUN_STARTED',
+        'AGENT_RUN_COMPLETED',
+        'AGENT_RUN_FAILED',
+        'AGENT_RUN_CANCELLED',
         'HANDOFF_REQUESTED',
         'HANDOFF_APPROVED',
-        'HANDOFF_STARTED',
+        'SPECIALIST_STARTED',
+        'SPECIALIST_COMPLETED',
+        'SPECIALIST_FAILED',
+        'SPECIALIST_CANCELLED',
         'PHASE_CHANGED',
+        'PROFILE_CHANGED',
+        'CONTEXT_REPLACED',
+        'TASK_COMPLETED',
       ]
       if (blockInTerminal.includes(event.type)) {
         throw new TaskAlreadyCompletedError(
@@ -135,11 +167,19 @@ export class CTFTaskStateStore {
 }
 
 function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): void {
+  // §八 — a Handoff can be failed by the orchestrator at any pre-running
+  // state (no agent available, configuration error). Once a Specialist has
+  // started, only the Specialist events can move it forward.
   const allowed: Record<HandoffRecord['status'], CTFTaskEvent['type'][]> = {
-    requested: ['HANDOFF_APPROVED', 'HANDOFF_REJECTED', 'HANDOFF_CANCELLED'],
-    approved: ['HANDOFF_STARTED', 'HANDOFF_CANCELLED'],
+    requested: [
+      'HANDOFF_APPROVED',
+      'HANDOFF_REJECTED',
+      'HANDOFF_CANCELLED',
+      'SPECIALIST_FAILED',
+    ],
+    approved: ['SPECIALIST_STARTED', 'SPECIALIST_FAILED', 'SPECIALIST_CANCELLED'],
     rejected: [],
-    running: ['HANDOFF_COMPLETED', 'HANDOFF_FAILED', 'HANDOFF_CANCELLED'],
+    running: ['SPECIALIST_COMPLETED', 'SPECIALIST_FAILED', 'SPECIALIST_CANCELLED'],
     completed: [],
     failed: [],
     cancelled: [],
@@ -211,10 +251,11 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
 
     case 'HANDOFF_APPROVED':
     case 'HANDOFF_REJECTED':
-    case 'HANDOFF_STARTED':
-    case 'HANDOFF_COMPLETED':
-    case 'HANDOFF_FAILED':
     case 'HANDOFF_CANCELLED':
+    case 'SPECIALIST_STARTED':
+    case 'SPECIALIST_COMPLETED':
+    case 'SPECIALIST_FAILED':
+    case 'SPECIALIST_CANCELLED':
       return {
         ...state,
         handoffs: state.handoffs.map((h) =>
@@ -295,6 +336,14 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         },
         phase: phaseForCompletion(event.status),
       }
+
+    default: {
+      // Exhaustiveness guard — any new event type added to the union that
+      // does not match a case above triggers a compile-time error here.
+      const _exhaustive: never = event
+      void _exhaustive
+      return state
+    }
   }
 }
 
@@ -310,10 +359,11 @@ function applyHandoffEvent(
       type:
         | 'HANDOFF_APPROVED'
         | 'HANDOFF_REJECTED'
-        | 'HANDOFF_STARTED'
-        | 'HANDOFF_COMPLETED'
-        | 'HANDOFF_FAILED'
         | 'HANDOFF_CANCELLED'
+        | 'SPECIALIST_STARTED'
+        | 'SPECIALIST_COMPLETED'
+        | 'SPECIALIST_FAILED'
+        | 'SPECIALIST_CANCELLED'
     }
   >,
 ): HandoffRecord {
@@ -327,13 +377,15 @@ function applyHandoffEvent(
       }
     case 'HANDOFF_REJECTED':
       return { ...h, status: 'rejected', rejectionReason: event.reason, completedAt: Date.now() }
-    case 'HANDOFF_STARTED':
-      return { ...h, status: 'running', startedAt: Date.now() }
-    case 'HANDOFF_COMPLETED':
-      return { ...h, status: 'completed', completedAt: Date.now() }
-    case 'HANDOFF_FAILED':
-      return { ...h, status: 'failed', completedAt: Date.now(), error: event.error }
     case 'HANDOFF_CANCELLED':
+      return { ...h, status: 'cancelled', completedAt: Date.now(), error: event.reason }
+    case 'SPECIALIST_STARTED':
+      return { ...h, status: 'running', startedAt: Date.now() }
+    case 'SPECIALIST_COMPLETED':
+      return { ...h, status: 'completed', completedAt: Date.now() }
+    case 'SPECIALIST_FAILED':
+      return { ...h, status: 'failed', completedAt: Date.now(), error: event.error }
+    case 'SPECIALIST_CANCELLED':
       return { ...h, status: 'cancelled', completedAt: Date.now(), error: event.reason }
   }
 }
