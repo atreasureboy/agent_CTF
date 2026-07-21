@@ -93,8 +93,10 @@ export class CTFTaskOrchestrator {
   private readonly inFlightWorkflows = new Map<string, Promise<WorkflowRunResult>>()
   private readonly workflowUnsubscribes = new Map<string, () => void>()
   private readonly locks = new Map<string, { promise: Promise<unknown>; abort: AbortController }>()
-  private disposed = false
-  private cancelled = false
+  /** Phase 1.7 §八 — track Main Agent runs too so dispose/cancel can await them. */
+  private readonly inFlightAgentRuns = new Map<string, Promise<AgentRunResult>>()
+  /** Phase 1.7 §八.1 — proper state machine: active | cancelling | cancelled | disposing | disposed. */
+  private lifecycleState: 'active' | 'cancelling' | 'cancelled' | 'disposing' | 'disposed' = 'active'
 
   private constructor(
     store: CTFTaskStateStore,
@@ -127,6 +129,7 @@ export class CTFTaskOrchestrator {
       abort,
       projector: this.projector,
       wrapError: (summary, cause) => this.wrapError(summary, cause),
+      runtimeRenderer: harness.renderer,
     })
   }
 
@@ -419,37 +422,60 @@ export class CTFTaskOrchestrator {
     }
     this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
     const before = this.projector.captureSnapshot()
+    // Phase 1.7 §八.2 — track this Main Agent run so cancel() and dispose()
+    // can await its settlement.
+    const runP = (async () => {
+      try {
+        const r = await this.mainHarness.runTurn(userMessage, history)
+        const projection = this.projector.projectDiff(before, { producerProfileId: profileId })
+        for (const ev of projection.events) this.store.apply(ev)
+        this.store.apply({
+          type: 'AGENT_RUN_OUTPUT_RECORDED',
+          agentRunId,
+          producedFindingIds: projection.newFindingIds,
+          producedArtifactIds: projection.newArtifactIds,
+        })
+        const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
+        this.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
+        return {
+          agentRunId,
+          profileId,
+          status: 'completed' as const,
+          summary,
+          producedFindingIds: projection.newFindingIds,
+          producedArtifactIds: projection.newArtifactIds,
+        }
+      } catch (err) {
+        const msg = (err as Error).message
+        // Phase 1.7 §十七 — map abort to cancelled rather than failed so
+        // the run reflects the actual termination reason.
+        if (this.abort.signal.aborted) {
+          this.store.apply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason: msg })
+          return {
+            agentRunId,
+            profileId,
+            status: 'cancelled' as const,
+            error: msg,
+            producedFindingIds: [],
+            producedArtifactIds: [],
+          }
+        }
+        this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
+        return {
+          agentRunId,
+          profileId,
+          status: 'failed' as const,
+          error: msg,
+          producedFindingIds: [],
+          producedArtifactIds: [],
+        }
+      }
+    })()
+    this.inFlightAgentRuns.set(agentRunId, runP)
     try {
-      const r = await this.mainHarness.runTurn(userMessage, history)
-      const projection = this.projector.projectDiff(before, { producerProfileId: profileId })
-      for (const ev of projection.events) this.store.apply(ev)
-      this.store.apply({
-        type: 'AGENT_RUN_OUTPUT_RECORDED',
-        agentRunId,
-        producedFindingIds: projection.newFindingIds,
-        producedArtifactIds: projection.newArtifactIds,
-      })
-      const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
-      this.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
-      return {
-        agentRunId,
-        profileId,
-        status: 'completed',
-        summary,
-        producedFindingIds: projection.newFindingIds,
-        producedArtifactIds: projection.newArtifactIds,
-      }
-    } catch (err) {
-      const msg = (err as Error).message
-      this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
-      return {
-        agentRunId,
-        profileId,
-        status: 'failed',
-        error: msg,
-        producedFindingIds: [],
-        producedArtifactIds: [],
-      }
+      return await runP
+    } finally {
+      this.inFlightAgentRuns.delete(agentRunId)
     }
   }
 
@@ -510,8 +536,10 @@ export class CTFTaskOrchestrator {
    * disposed) is a no-op.
    */
   async cancel(reason: string): Promise<void> {
-    if (this.disposed || this.cancelled) return
-    this.cancelled = true
+    // Phase 1.7 §八.1 — 5-state lifecycle: active → cancelling → cancelled
+    // (then disposed via dispose()). Idempotent.
+    if (this.lifecycleState !== 'active') return
+    this.lifecycleState = 'cancelling'
 
     // 1. Abort the Task-level signal — propagates everywhere.
     this.abort.controller.abort(reason)
@@ -527,15 +555,17 @@ export class CTFTaskOrchestrator {
     // 4. Touch every in-flight workflow — abort signal already propagates
     //    through the workflow runner, the engine will resolve the workflow
     //    promise with status='cancelled', and our `runWorkflow` wrapper
-    //    emits WORKFLOW_CANCELLED. We swallow the rejection so a failed
-    //    cancel doesn't escape the cancel() call.
+    //    emits WORKFLOW_CANCELLED.
     for (const [, runP] of this.inFlightWorkflows) {
       void runP.catch(() => {})
     }
 
-    // 5. Converge to 'cancelled'. If the task already completed (e.g. a
-    //    workflow raced ahead and finished), TASK_COMPLETED is a no-op
-    //    because guardAcceptsEvent refuses to overwrite a previous completion.
+    // 5. Wait for in-flight Main Agent runs to settle (they see the abort
+    //    signal and throw / short-circuit).
+    await Promise.allSettled([...this.inFlightAgentRuns.values()])
+
+    // 6. Converge to 'cancelled'.
+    this.lifecycleState = 'cancelled'
     try {
       this.store.apply({
         type: 'TASK_COMPLETED',
@@ -544,17 +574,25 @@ export class CTFTaskOrchestrator {
       })
     } catch {
       // TaskAlreadyCompletedError — the task finished before cancel landed.
-      // Acceptable: completion status reflects the race winner.
     }
   }
 
   async dispose(): Promise<void> {
-    if (this.disposed) return
-    this.disposed = true
-    await this.cancel('dispose')
-    this.abort.unlink()
-    await this.handoffCoordinator.disposeAll()
-    await Promise.allSettled([...this.inFlightWorkflows.values()])
+    // Phase 1.7 §八.1 — set `disposing` BEFORE cancel() so cancel() does
+    // not see a `disposed` flag and skip work.
+    if (this.lifecycleState === 'disposed' || this.lifecycleState === 'disposing') return
+    this.lifecycleState = 'disposing'
+    try {
+      await this.cancel('dispose')
+      this.abort.unlink()
+      await this.handoffCoordinator.disposeAll()
+      await Promise.allSettled([
+        ...this.inFlightWorkflows.values(),
+        ...this.inFlightAgentRuns.values(),
+      ])
+    } finally {
+      this.lifecycleState = 'disposed'
+    }
   }
 
 

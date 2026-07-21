@@ -127,6 +127,8 @@ export interface HarnessBundle {
   workflowEngine: WorkflowEngine
   taskWorkspace: TaskWorkspace
   toolFirstPolicy: ToolFirstPolicy
+  /** Phase 1.7 — explicit renderer accessor (was previously closure-only). */
+  renderer: Renderer | undefined
   eventLog: EventLog
   /** Run a workflow; returns the engine's WorkflowRunResult. */
   runWorkflow(workflow: WorkflowDefinition, inputs?: Record<string, unknown>): Promise<WorkflowRunResult>
@@ -384,6 +386,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     taskWorkspace,
     toolFirstPolicy,
     eventLog: new EventLog(taskWorkspace.paths.root),
+    renderer: input.renderer,
     runWorkflow,
     runTurn,
     switchProfile,

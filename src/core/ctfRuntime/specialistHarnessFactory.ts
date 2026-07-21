@@ -43,6 +43,12 @@ export interface CreateSpecialistHarnessInput {
   /** Shared runtime deps (client/renderer/modelConfig/eventLog). */
   dependencies: AgentRuntimeDependencies
   /**
+   * Fallback renderer when dependencies.renderer was deliberately
+   * nulled. Phase 1.7 — kept for backward compat with legacy
+   * CTFTaskOrchestrator.create() callers.
+   */
+  runtimeRenderer?: import('../../ui/renderer.js').Renderer
+  /**
    * Parent's LinkedAbortController.signal — the Specialist's controller
    * will link to this signal so parent cancel propagates to this
    * Specialist only (each Specialist owns its own controller).
@@ -89,7 +95,13 @@ export class SpecialistHarnessFactory {
         ),
       )
     }
-    if (!input.dependencies.renderer) {
+    // Phase 1.7 — the renderer requirement is checked against
+    // `input.dependencies.renderer` first; if the orchestrator deliberately
+    // nulled it (e.g. CTFTaskOrchestrator.create legacy path where the
+    // caller did NOT supply one), we still create the specialist with the
+    // Runtime's own renderer so the Handoff can complete.
+    const renderer = input.dependencies.renderer ?? input.runtimeRenderer
+    if (!renderer) {
       return Promise.reject(
         new Error(
           'createSpecialistHarness: parent must provide a Renderer; ' +
@@ -131,7 +143,7 @@ export class SpecialistHarnessFactory {
       taskId: linkedContext.taskId,
       sessionsRoot: input.sessionsRoot,
       client: input.dependencies.client,
-      renderer: input.dependencies.renderer,
+      renderer,
       artifactStore: input.parentArtifactStore,
       findingStore: input.parentFindingStore,
     })

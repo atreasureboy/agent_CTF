@@ -71,6 +71,9 @@ export interface HandoffCoordinatorDeps {
   projector: TaskStateProjector
   /** Re-emit wrapped errors. */
   wrapError(userSummary: string, cause: unknown): Error
+  /** Phase 1.7 — runtime-owned Renderer used when the per-handle deps
+   *  Renderer was deliberately nulled (legacy CTFTaskOrchestrator.create). */
+  runtimeRenderer?: import('../../ui/renderer.js').Renderer
 }
 
 export class HandoffCoordinator {
@@ -313,6 +316,7 @@ export class HandoffCoordinator {
       handoff: this.deps.store.getState().handoffs.find((h) => h.id === handoffId)!,
       profile,
       dependencies: this.deps.parentDependencies,
+      runtimeRenderer: this.deps.runtimeRenderer,
       parentAbortSignal: this.deps.abort.signal,
       subtaskScope: this.deps.parentContext.contestScope,
       subtaskId: `${this.deps.parentTaskId}/spec_${handoffId.slice(-6)}`,
