@@ -108,7 +108,19 @@ export class HandoffCoordinator {
   }
 
   cancel(handoffId: string, reason: string): void {
-    this.deps.store.apply({ type: 'HANDOFF_CANCELLED', handoffId, reason })
+    // Phase 1.7 §十一 — cancelHandoff must actually abort the Specialist.
+    // For requested/approved we just emit HANDOFF_CANCELLED; for running
+    // we trigger the per-Specialist AbortController so the harness
+    // observes the abort signal in its next check.
+    const handle = this.specialized.get(handoffId)
+    if (handle) {
+      handle.abort.controller.abort(reason)
+    }
+    try {
+      this.deps.store.apply({ type: 'HANDOFF_CANCELLED', handoffId, reason })
+    } catch {
+      /* already terminal — the abort signal above is still delivered */
+    }
   }
 
   /**
@@ -301,7 +313,7 @@ export class HandoffCoordinator {
       handoff: this.deps.store.getState().handoffs.find((h) => h.id === handoffId)!,
       profile,
       dependencies: this.deps.parentDependencies,
-      abort: this.deps.abort,
+      parentAbortSignal: this.deps.abort.signal,
       subtaskScope: this.deps.parentContext.contestScope,
       subtaskId: `${this.deps.parentTaskId}/spec_${handoffId.slice(-6)}`,
       cwd: this.deps.cwd,

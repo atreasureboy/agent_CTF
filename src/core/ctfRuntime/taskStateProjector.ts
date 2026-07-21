@@ -33,6 +33,28 @@ import type { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { BackgroundJobEvent } from '../backgroundJobs.js'
 import type { JobRecord } from './taskState.js'
 
+/**
+ * Phase 1.7 §十三 — ProjectionError. Carries the stage at which the
+ * projection failed so the Orchestrator can decide whether to surface it
+ * to the caller (Main / Workflow / Specialist) or downgrade to a
+ * non-fatal Handoff `projection` failure.
+ */
+export class ProjectionError extends Error {
+  constructor(
+    message: string,
+    readonly stage:
+      | 'snapshot'
+      | 'finding'
+      | 'artifact-copy'
+      | 'artifact-store'
+      | 'state',
+    readonly cause?: unknown,
+  ) {
+    super(message)
+    this.name = 'ProjectionError'
+  }
+}
+
 export interface ProjectorStorages {
   findingStore: FindingStore
   artifactStore: ArtifactStore
@@ -65,19 +87,30 @@ export interface ProjectionResult {
 export class TaskStateProjector {
   constructor(private readonly storages: ProjectorStorages) {}
 
-  /** Capture the current set of finding/artifact ids. Cheap: just lists. */
+  /** Capture the current set of finding/artifact ids. Cheap: just lists.
+   *  Phase 1.7 — surfaces real read errors as ProjectionError('snapshot')
+   *  instead of silently returning an empty snapshot. Empty snapshots
+   *  remain valid when the store genuinely has no entries. */
   captureSnapshot(): TaskOutputSnapshot {
     const findingIds = new Set<string>()
     try {
       for (const f of this.storages.findingStore.list()) findingIds.add(f.id)
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      throw new ProjectionError(
+        `finding snapshot failed: ${(err as Error).message}`,
+        'snapshot',
+        err,
+      )
     }
     const artifactIds = new Set<string>()
     try {
       for (const a of this.storages.artifactStore.list()) artifactIds.add(a.id)
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      throw new ProjectionError(
+        `artifact snapshot failed: ${(err as Error).message}`,
+        'snapshot',
+        err,
+      )
     }
     return { findingIds, artifactIds }
   }
@@ -110,8 +143,12 @@ export class TaskStateProjector {
         events.push({ type: 'FINDING_ADDED', finding: rewritten })
         newFindingIds.push(rewritten.id)
       }
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      throw new ProjectionError(
+        `finding projection failed: ${(err as Error).message}`,
+        'finding',
+        err,
+      )
     }
 
     const parent = this.storages.parentArtifactStore
@@ -122,17 +159,26 @@ export class TaskStateProjector {
           // Specialist artifact → physically copy into the parent store
           // and emit ARTIFACT_ADDED with the parent id.
           const parentMeta = this.copyArtifactIntoParent(a, metadata)
-          if (parentMeta) {
-            newArtifactIds.push(parentMeta.id)
-            events.push({ type: 'ARTIFACT_ADDED', artifactId: parentMeta.id })
-            continue
+          if (!parentMeta) {
+            throw new ProjectionError(
+              `artifact copy failed for ${a.id} (handoff=${metadata.handoffId})`,
+              'artifact-copy',
+            )
           }
+          newArtifactIds.push(parentMeta.id)
+          events.push({ type: 'ARTIFACT_ADDED', artifactId: parentMeta.id })
+          continue
         }
         events.push({ type: 'ARTIFACT_ADDED', artifactId: a.id })
         newArtifactIds.push(a.id)
       }
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      if (err instanceof ProjectionError) throw err
+      throw new ProjectionError(
+        `artifact projection failed: ${(err as Error).message}`,
+        'artifact-store',
+        err,
+      )
     }
 
     return { events, newFindingIds, newArtifactIds }
@@ -172,23 +218,23 @@ export class TaskStateProjector {
       // mapping parentId → { originalArtifactId, handoffId,
       // producerAgentId, sourcePath }.
       if (this.storages.parentArtifactRoot) {
-        try {
-          this.appendLineage(this.storages.parentArtifactRoot, {
-            parentArtifactId: newMeta.id,
-            originalArtifactId: childMeta.id,
-            handoffId: metadata.handoffId,
-            producerAgentId: metadata.producerProfileId ?? childMeta.producerAgentId,
-            sourcePath: childMeta.path,
-            copiedAt: new Date().toISOString(),
-          })
-        } catch {
-          /* best-effort */
-        }
+        this.appendLineage(this.storages.parentArtifactRoot, {
+          parentArtifactId: newMeta.id,
+          originalArtifactId: childMeta.id,
+          handoffId: metadata.handoffId,
+          producerAgentId: metadata.producerProfileId ?? childMeta.producerAgentId,
+          sourcePath: childMeta.path,
+          copiedAt: new Date().toISOString(),
+        })
       }
       void metadata.agentRunId
       return newMeta
-    } catch {
-      return null
+    } catch (err) {
+      throw new ProjectionError(
+        `artifact copy failed for ${childMeta.id}: ${(err as Error).message}`,
+        'artifact-copy',
+        err,
+      )
     }
   }
 

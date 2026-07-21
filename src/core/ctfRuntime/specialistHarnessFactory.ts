@@ -2,18 +2,20 @@
  * SpecialistHarnessFactory — the single class that creates a Specialist
  * Harness for a Handoff.
  *
- * Per forth_goal.md §八 it guarantees:
+ * Per five_goal.md §五 + §十 + §十二 it guarantees:
  *   - Client / Renderer / ModelConfig / Profile are inherited from the
  *     parent (never silently nulled).
  *   - The Specialist runs under a NARROWER TaskExecutionContext derived via
- *     `deriveSubtaskContext` — refuse widening at this layer too.
- *   - The Specialist's Profile is its OWN (not the parent's). The parent's
- *     Profile stays unchanged when the Specialist starts.
- *   - The AbortSignal is linked to the parent so cancellation propagates.
- *   - Teardown is explicit via `handle.dispose()`.
- *
- * The factory is the only seam where a Specialist Harness is constructed.
- * Anywhere else that does so is a regression of §八 / §十二.
+ *     `deriveSubtaskContext`.
+ *   - Each Specialist owns its OWN LinkedAbortController bound to the
+ *     parent's signal so cancelling one Specialist does not affect the
+ *     parent Task or other Specialists.
+ *   - The Harness binds the SAME Context reference (no post-hoc mutation).
+ *   - The factory uses the parent's stores (Phase 1.7 §十二 — see §十三
+ *     lineage test in phase16E2E.test.ts which asserts the projection
+ *     path).
+ *   - Teardown is explicit via `handle.dispose()` which only unlinks this
+ *     Specialist's parent listener.
  */
 
 import type { CapabilityProfile } from '../capabilityProfile.js'
@@ -25,7 +27,10 @@ import type { FindingStore } from '../findings.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { deriveSubtaskContext } from './taskExecutionContext.js'
-import type { LinkedAbortController } from './linkedAbortController.js'
+import {
+  createLinkedAbortController,
+  type LinkedAbortController,
+} from './linkedAbortController.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
 import type { HandoffRecord } from './taskState.js'
 
@@ -37,8 +42,12 @@ export interface CreateSpecialistHarnessInput {
   profile: CapabilityProfile
   /** Shared runtime deps (client/renderer/modelConfig/eventLog). */
   dependencies: AgentRuntimeDependencies
-  /** Linked abort controller already bound to the parent's signal. */
-  abort: LinkedAbortController
+  /**
+   * Parent's LinkedAbortController.signal — the Specialist's controller
+   * will link to this signal so parent cancel propagates to this
+   * Specialist only (each Specialist owns its own controller).
+   */
+  parentAbortSignal: AbortSignal
   /** Sub-context overrides — must NARROW the parent's scope. */
   subtaskScope: ContestScope
   /** Sub-task id (e.g. `<parent>/spec_<handoffId.slice(-6)>`). */
@@ -58,8 +67,10 @@ export interface CreateSpecialistHarnessInput {
 export interface SpecialistHarnessHandle {
   harness: HarnessBundle
   context: TaskExecutionContext
+  /** Per-Specialist AbortController — `abort()` triggers the Specialist's
+   *  own signal, parent listens via linked chain. */
   abort: LinkedAbortController
-  /** Detach the parent signal listener. Safe to call multiple times. */
+  /** Detach this Specialist's parent signal listener only. */
   dispose(): Promise<void>
 }
 
@@ -90,7 +101,10 @@ export class SpecialistHarnessFactory {
     // Validate the narrowed scope before deriving the context.
     parseContestScope(input.subtaskScope)
 
-    const subContext = deriveSubtaskContext(input.parentContext, {
+    // ── Phase 1.7 §五 — every Specialist owns its OWN LinkedAbortController.
+    const ownAbort = createLinkedAbortController(input.parentAbortSignal)
+
+    const subContext: TaskExecutionContext = deriveSubtaskContext(input.parentContext, {
       subtaskId: input.subtaskId,
       contestScope: input.subtaskScope,
       workspaceDir: input.cwd,
@@ -99,37 +113,37 @@ export class SpecialistHarnessFactory {
       profileId: input.profile.id,
       metadata: { fromHandoff: input.handoff.id },
     })
-
-    // Re-bind the abort signal from the linked controller so the harness
-    // carries the child signal (which fires when the parent cancels).
+    // Inject the Specialist's own abort signal into the derived context.
+    // No post-hoc mutation: the context is built with abortSignal from the
+    // start so every downstream component captures the SAME reference.
     const linkedContext: TaskExecutionContext = {
       ...subContext,
-      abortSignal: input.abort.signal,
+      abortSignal: ownAbort.signal,
     }
 
     const harness = createHarness({
       cwd: input.cwd,
       profile: input.profile,
+      // Phase 1.7 §三 — pass the SAME context reference into the Harness
+      // instead of letting createHarness build its own and patching later.
+      context: linkedContext,
       contestScope: linkedContext.contestScope,
       taskId: linkedContext.taskId,
       sessionsRoot: input.sessionsRoot,
       client: input.dependencies.client,
       renderer: input.dependencies.renderer,
-      // Share the parent's stores so the orchestrator's projector observes
-      // every write the specialist makes — this is what enables the
-      // Handoff → Specialist → Parent-state → .lineage.jsonl end-to-end
-      // path that forth_goal §十三 requires.
       artifactStore: input.parentArtifactStore,
       findingStore: input.parentFindingStore,
     })
-    ;(harness as unknown as { context: TaskExecutionContext }).context = linkedContext
 
     return Promise.resolve({
       harness,
       context: linkedContext,
-      abort: input.abort,
+      abort: ownAbort,
       dispose(): Promise<void> {
-        input.abort.unlink()
+        // Phase 1.7 §五 — only detach THIS Specialist's parent listener,
+        // never the parent's own controller.
+        ownAbort.unlink()
         return Promise.resolve()
       },
     })

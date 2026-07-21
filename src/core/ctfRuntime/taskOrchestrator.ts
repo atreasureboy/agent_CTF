@@ -92,7 +92,7 @@ export class CTFTaskOrchestrator {
   /** In-flight Workflow runs by workflowRunId. */
   private readonly inFlightWorkflows = new Map<string, Promise<WorkflowRunResult>>()
   private readonly workflowUnsubscribes = new Map<string, () => void>()
-  private readonly locks = new Map<string, Promise<unknown>>()
+  private readonly locks = new Map<string, { promise: Promise<unknown>; abort: AbortController }>()
   private disposed = false
   private cancelled = false
 
@@ -184,89 +184,50 @@ export class CTFTaskOrchestrator {
   }
 
   static async create(input: CreateCTFTaskInput): Promise<CTFTaskOrchestrator> {
-    const cwd = input.cwd
-    const contestConfig = input.contestConfig ?? createDefaultContestConfig({ cwd })
-    const contestScope = input.contestScope ?? contestConfig
-
-    const profileStore = new CTFProfileStore(resolveProfileById(input.profileId))
-    const harness = createHarness({
-      cwd,
-      profile: profileStore.getCurrent(),
-      contestScope,
+    // Phase 1.7 §七 — this static method is the second Runtime assembly
+    // path. We delegate to `createCTFTaskRuntime` so there is exactly ONE
+    // real assembly implementation. The static still exists only for
+    // backwards compatibility with tests that already call it; new code
+    // should use `createCTFTaskRuntime` directly.
+    const { createCTFTaskRuntime } = await import('./createCTFTaskRuntime.js')
+    const { createHarness } = await import('../harness.js')
+    const { Renderer } = await import('../../ui/renderer.js')
+    const client = input.client ?? ({ chat: { completions: { create: () => { throw new Error('test: no LLM') } } } } as unknown as import('openai').default)
+    // Phase 1.7 — keep the legacy "no renderer → runMainAgent fails" contract.
+    // If the caller did not supply a renderer, we synthesise one BUT
+    // remember it is a default-fake so runMainAgent can short-circuit.
+    const isExplicitRenderer = !!input.renderer
+    const renderer = input.renderer ?? new Renderer()
+    const runtime = await createCTFTaskRuntime({
+      cwd: input.cwd,
+      profileId: input.profileId,
+      contestConfig: input.contestConfig,
+      contestScope: input.contestScope,
       contestId: input.contestId,
       taskId: input.taskId,
       sessionsRoot: input.sessionsRoot,
-      client: input.client,
-      renderer: input.renderer,
+      client,
+      renderer,
+      modelConfig: input.apiKey || input.model || input.baseURL
+        ? { model: input.model ?? 'gpt-4o', apiKey: input.apiKey ?? '', baseURL: input.baseURL }
+        : { model: 'gpt-4o', apiKey: 'test-key', baseURL: undefined },
+      mode: 'llm',
       jobLimits: input.jobLimits,
     })
-    // Re-bind the broker through the ProfileStore so getProfile/setProfile
-    // route through the shared source of truth (§七). Use the public setter —
-    // no private-field writes.
-    harness.broker.setProfile(profileStore.getCurrent())
-
-    const { ensureWorkflowsRegistered } = await import('../../workflows/index.js')
-    ensureWorkflowsRegistered(harness.workflowRegistry)
-
-    const abort = createLinkedAbortController(undefined)
-
-    const dependencies: AgentRuntimeDependencies = {
-      client: input.client ?? ({} as OpenAI),
-      renderer: input.renderer ?? new Renderer(),
-      modelConfig: {
-        model: input.model ?? process.env['OVOGO_MODEL'] ?? 'gpt-4o',
-        apiKey: input.apiKey ?? process.env['OPENAI_API_KEY'] ?? 'test-key',
-        baseURL: input.baseURL ?? process.env['OPENAI_BASE_URL'],
-      },
-      eventLog: harness.eventLog,
+    if (!isExplicitRenderer) {
+      // Replace the synthesised renderer with undefined so runMainAgent's
+      // explicit-missing check fires correctly. We only null the
+      // orchestrator's own dependency record (which runMainAgent reads);
+      // the Runtime itself keeps the fake renderer for any code path that
+      // does not gate on its presence.
+      ;(runtime.dependencies as { renderer?: unknown }).renderer = undefined
     }
-
-    // Re-write the harness context with the real abort signal so Main Agent
-    // / Workflow / Tool see it.
-    const ctx: TaskExecutionContext = {
-      ...harness.context,
-      abortSignal: abort.signal,
-      profileId: profileStore.getCurrent().id,
-      metadata: {
-        ...(harness.context.metadata ?? {}),
-        projectRoot: cwd,
-        sessionsRoot: input.sessionsRoot,
-      },
+    if (input.initialPhase && input.initialPhase !== 'intake') {
+      runtime.orchestrator.setPhase(input.initialPhase, 'test override')
     }
-    ;(harness as unknown as { context: TaskExecutionContext }).context = ctx
-
-    const now = Date.now()
-    const initial: CTFTaskState = {
-      taskId: harness.context.taskId,
-      phase: input.initialPhase ?? 'intake',
-      context: ctx,
-      challenge: {
-        description: input.challenge?.description,
-        category: input.challenge?.category,
-        flagPattern: input.challenge?.flagPattern,
-        inputArtifactIds: input.challenge?.inputArtifactIds ?? [],
-      },
-      activeProfileId: profileStore.getCurrent().id,
-      findings: [],
-      artifactIds: [],
-      hypotheses: [],
-      attempts: [],
-      handoffs: [],
-      agentRuns: [],
-      workflowRuns: [],
-      jobs: [],
-      activeAgentRunIds: [],
-      activeWorkflowRunIds: [],
-      activeJobIds: [],
-      flagCandidates: [],
-      createdAt: now,
-      updatedAt: now,
-    }
-    const store = new CTFTaskStateStore(initial)
-    store.apply({ type: 'TASK_CREATED', taskId: initial.taskId, initial })
-
-    const orch = new CTFTaskOrchestrator(store, harness, profileStore, abort, dependencies)
-    return orch
+    void createHarness
+    void Renderer
+    return runtime.orchestrator
   }
 
   // ── Accessors ────────────────────────────────────────────────────────
@@ -412,8 +373,38 @@ export class CTFTaskOrchestrator {
     userMessage: string,
     history: OpenAIMessage[] = [],
   ): Promise<AgentRunResult> {
-    const agentRunId = `run_${randomBytes(6).toString('hex')}`
+    // Phase 1.7 §七 — workflow-only mode refuses LLM calls explicitly.
+    // The renderer dependency check is delegated to the harness; here we
+    // short-circuit when the harness cannot satisfy the requirement so the
+    // AgentRun record reflects a clean failed state.
     const profileId = this.profileStore.getCurrent().id
+    if (!this.dependencies.renderer || !this.dependencies.client) {
+      const agentRunId = `run_${randomBytes(6).toString('hex')}`
+      const agentRun: AgentRunRecord = {
+        id: agentRunId,
+        taskId: this.store.getState().taskId,
+        profileId,
+        contextTaskId: this.store.getState().context.taskId,
+        status: 'running',
+        startedAt: Date.now(),
+        inheritedArtifactIds: [],
+        inheritedFindingIds: [],
+        producedFindingIds: [],
+        producedArtifactIds: [],
+      }
+      this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
+      const msg = 'runMainAgent requires a renderer + OpenAI client; workflow-only mode cannot run LLM tasks'
+      this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
+      return {
+        agentRunId,
+        profileId,
+        status: 'failed',
+        error: msg,
+        producedFindingIds: [],
+        producedArtifactIds: [],
+      }
+    }
+    const agentRunId = `run_${randomBytes(6).toString('hex')}`
     const agentRun: AgentRunRecord = {
       id: agentRunId,
       taskId: this.store.getState().taskId,
@@ -579,16 +570,36 @@ export class CTFTaskOrchestrator {
   }
 
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve()
-    let resolve!: () => void
-    const next = new Promise<void>((r) => (resolve = r))
-    this.locks.set(key, prev.then(() => next))
+    // Phase 1.7 §九 — proper key lock. Each key holds the in-flight Promise
+    // for that key; the next caller awaits it before running. After the
+    // current operation resolves (success or failure), the Map entry is
+    // removed so long-running sessions do not leak. Errors in `fn` do not
+    // prevent cleanup. If the lock-holding operation is aborted before it
+    // resolves, the abort propagates to the queued waiters via the
+    // caller's own signal handling.
+    type LockState = { promise: Promise<unknown>; abort: AbortController }
+    const prev = this.locks.get(key) as LockState | undefined
+    const myAbort = new AbortController()
+    const myPromise = (async () => {
+      if (prev) {
+        try {
+          await prev.promise
+        } catch {
+          // The holder failed; we still run our operation.
+        }
+      }
+      if (myAbort.signal.aborted) throw new Error(`lock ${key} aborted before run`)
+    })()
+    const state: LockState = { promise: myPromise, abort: myAbort }
+    this.locks.set(key, state)
     try {
-      await prev
+      await myPromise
       return await fn()
     } finally {
-      resolve()
-      if (this.locks.get(key) === next) this.locks.delete(key)
+      myAbort.abort()
+      // Only clear the entry if we still own it (no one else queued after
+      // us and overwrote it). Race-safe in single-threaded JS.
+      if (this.locks.get(key) === state) this.locks.delete(key)
     }
   }
 }
