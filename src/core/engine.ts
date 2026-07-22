@@ -741,13 +741,17 @@ export class ExecutionEngine {
     // Per-turn AbortController — Phase 1.7 §四.2 — if the harness supplied
     // an external signal (the Task-level abort), we forward it into the
     // turn's controller so cancelling the Task aborts the in-flight LLM
-    // call. When the external signal is not supplied (legacy callers), the
-    // controller remains standalone (callers use engine.abort() instead).
-    const turnAbortController = new AbortController()
-    if (this.config.signal && !this.config.signal.aborted) {
-      const onAbort = (): void => turnAbortController.abort('task_cancelled')
-      this.config.signal.addEventListener('abort', onAbort, { once: true })
-      if (this.config.signal.aborted) onAbort()
+    // call. We make the turn controller LINK to the external signal via
+    // the existing LinkedAbortController primitive so they share the
+    // exact same lifecycle (one-way propagation: external fires → turn
+    // fires).
+    let turnAbortController: AbortController
+    if (this.config.signal) {
+      const { createLinkedAbortController } = await import('./ctfRuntime/linkedAbortController.js')
+      const linked = createLinkedAbortController(this.config.signal)
+      turnAbortController = linked.controller
+    } else {
+      turnAbortController = new AbortController()
     }
     this.currentTurnAbortController = turnAbortController
 
