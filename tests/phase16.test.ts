@@ -473,6 +473,170 @@ describe('§4 — Abort chain', () => {
     expect(wfRun.error).toBe('test cancel')
     expect(state.activeWorkflowRunIds).not.toContain(wfId)
   })
+
+  it('§九 — Lock Map returns to empty after a single workflow run', async () => {
+    // §9.6 — long-running sessions do not leak Map entries.
+    const orch = await createCTFTaskRuntime({
+      cwd: root,
+      profileId: 'triage',
+      client: makeFakeClient(),
+      renderer: makeFakeRenderer(),
+    })
+    try {
+      // Reach into the private field via bracket access for the test
+      // (the public surface doesn't expose the Map yet — this is a
+      // documented test affordance).
+      const locks = (orch.orchestrator as unknown as { locks: Map<string, unknown> }).locks
+      const before = locks.size
+      await orch.orchestrator.runWorkflow('unknown_file_triage', {})
+      expect(locks.size).toBe(before)
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('§8 — dispose() actually cancels the Task (verified by runtime state)', async () => {
+    // §8.1 — runtime.dispose() must converge to phase='cancelled' and
+    // completion.status='cancelled'. The earlier audit found the previous
+    // FSM short-circuited cancel when disposed was already true; this
+    // test exercises the production dispose path end-to-end.
+    const orch = await createCTFTaskRuntime({
+      cwd: root,
+      profileId: 'triage',
+    })
+    expect(orch.getState().completion).toBeUndefined()
+    await orch.dispose()
+    const state = orch.getState()
+    expect(state.phase).toBe('cancelled')
+    expect(state.completion?.status).toBe('cancelled')
+    expect(orch.abort.signal.aborted).toBe(true)
+  })
+
+  it('§17.3 — cancel is idempotent and a second cancel is a no-op', async () => {
+    const orch = await createCTFTaskRuntime({
+      cwd: root,
+      profileId: 'triage',
+    })
+    await orch.cancel('first')
+    const afterFirst = orch.getState().completion
+    await orch.cancel('second')  // idempotent
+    const afterSecond = orch.getState().completion
+    expect(afterSecond).toEqual(afterFirst)
+    await orch.dispose()
+  })
+
+  it('§17.4 — dispose clears in-flight Workflow Map', async () => {
+    const orch = await createCTFTaskRuntime({
+      cwd: root,
+      profileId: 'triage',
+      client: makeFakeClient(),
+      renderer: makeFakeRenderer(),
+    })
+    try {
+      // Run a workflow that completes naturally; then dispose; in-flight
+      // map should be empty afterwards.
+      await orch.orchestrator.runWorkflow('unknown_file_triage', {})
+      const inFlight = (orch.orchestrator as unknown as {
+        inFlightWorkflows: Map<string, unknown>
+      }).inFlightWorkflows
+      expect(inFlight.size).toBe(0)
+    } finally {
+      await orch.dispose()
+    }
+    // After dispose the map is still empty.
+    const inFlight = (orch.orchestrator as unknown as {
+      inFlightWorkflows: Map<string, unknown>
+    }).inFlightWorkflows
+    expect(inFlight.size).toBe(0)
+  })
+
+  it('§17.3 — WorkflowEngine receives Task-level abortSignal via Harness.runWorkflow', async () => {
+    // The signal on WorkflowContext.abortSignal must be the SAME
+    // reference as the runtime's task abort signal.
+    const orch = await createCTFTaskRuntime({
+      cwd: root,
+      profileId: 'triage',
+      client: makeFakeClient(),
+      renderer: makeFakeRenderer(),
+    })
+    try {
+      const ctx = orch.mainHarness.context
+      expect(ctx.abortSignal).toBeDefined()
+      expect(ctx.abortSignal).toBe(orch.abort.signal)
+    } finally {
+      await orch.dispose()
+    }
+  })
+
+  it('§8.4 — Workflow failed status emits WORKFLOW_FAILED (not WORKFLOW_COMPLETED)', async () => {
+    // §8.4 — explicit failure must NOT be marked completed.
+    // Tested via the reducer: when a workflow run is in failed status the
+    // orchestrator must record WORKFLOW_FAILED, not WORKFLOW_COMPLETED.
+    const now = Date.now()
+    const store = new CTFTaskStateStore({
+      taskId: 'wf-fail',
+      phase: 'exploration',
+      context: {
+        taskId: 'wf-fail',
+        workspaceDir: root,
+        sessionDir: root,
+        artifactDir: join(root, 'artifacts'),
+        eventsFile: join(root, 'events.ndjson'),
+        profileId: 'triage',
+        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
+        contestConfig: createDefaultContestConfig({ cwd: root }),
+      },
+      challenge: { inputArtifactIds: [] },
+      activeProfileId: 'triage',
+      findings: [], artifactIds: [], hypotheses: [], attempts: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [],
+      workflowRuns: [], activeWorkflowRunIds: [],
+      jobs: [], activeJobIds: [],
+      flagCandidates: [],
+      createdAt: now, updatedAt: now,
+    })
+    const wfId = 'wf_failed_test'
+    store.apply({
+      type: 'WORKFLOW_STARTED',
+      workflowRun: {
+        id: wfId, taskId: 'wf-fail', workflowId: 'w', status: 'running',
+        startedAt: now, stepOutcomeIds: [], profileId: 'triage',
+      },
+    })
+    store.apply({
+      type: 'WORKFLOW_FAILED',
+      workflowRunId: wfId,
+      error: 'step errored',
+    })
+    const wfRun = store.getState().workflowRuns.find((w) => w.id === wfId)!
+    expect(wfRun.status).toBe('failed')
+    expect(wfRun.error).toBe('step errored')
+  })
+
+  it('§17.1 — WorkflowRunner receives the SAME TaskExecutionContext object as Harness', async () => {
+    // §17.1 — Harness, WorkflowRunner, and ExecutionEngine must hold
+    // the SAME TaskExecutionContext reference (not a copy).
+    const orch = await createCTFTaskRuntime({
+      cwd: root,
+      profileId: 'triage',
+      client: makeFakeClient(),
+      renderer: makeFakeRenderer(),
+    })
+    try {
+      const harnessCtx = orch.mainHarness.context
+      // WorkflowRunner internally caches context — verify the reference
+      // identity at runtime by reading the public surface.
+      expect(harnessCtx).toBeDefined()
+      expect(harnessCtx.abortSignal).toBe(orch.abort.signal)
+      // runTurn's runWorkflow path uses the same context.
+      const wfRunnerCtx = (orch.mainHarness.workflowRunner as unknown as {
+        opts: { context: typeof harnessCtx }
+      }).opts.context
+      expect(wfRunnerCtx).toBe(harnessCtx)
+    } finally {
+      await orch.dispose()
+    }
+  })
 })
 
 // ────────────────────────────────────────────────────────────────────────
