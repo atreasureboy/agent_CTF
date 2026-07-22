@@ -493,6 +493,14 @@ export class ExecutionEngine {
         apiConfig: context.apiConfig,
         taskId: this.config.taskId ?? 'session',
         agentId: this.config.agentId ?? 'main',
+        // Audit rounds 6-10 — propagate run-id so the projector's
+        // matchesRun filter actually classifies emitted findings/
+        // artifacts by run. Without these the projector falls back
+        // to the legacy snapshot-diff path which doesn't actually
+        // attribute the run.
+        agentRunId: this.config.agentRunId,
+        workflowRunId: this.config.workflowRunId,
+        handoffId: this.config.handoffId,
       })
       const out: ToolResult = brokerResult.result
       for (const module of this.modules) {

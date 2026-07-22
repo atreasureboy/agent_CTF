@@ -118,6 +118,15 @@ export interface EngineConfig {
    */
   profile?: import('./capabilityProfile.js').CapabilityProfile
   /**
+   * Audit rounds 6-10 — run-id association so emitted findings /
+   * artifacts can be attributed to the producing run. Optional —
+   * callers that don't care (legacy single-run paths) leave these
+   * unset and the projector falls back to the snapshot-diff path.
+   */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
+  /**
    * Phase 1.7 §四.2 — external AbortSignal. When supplied, the per-turn
    * AbortController listens to this signal so cancelling the parent task
    * (or any upstream controller) aborts the in-flight LLM call.

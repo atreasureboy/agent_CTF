@@ -97,6 +97,13 @@ export interface CreateHarnessInput {
   jobLimits?: { maxPerAgent?: number; maxPerTask?: number; globalTimeoutMs?: number }
   /** Inline-byte threshold for Artifact conversion (default 10 KB). */
   inlineMaxBytes?: number
+  /**
+   * Audit rounds 6-10 — explicit ModelConfig overrides the env-driven
+   * defaults. The previous code ignored this and hardcoded model='gpt-4o'
+   * + apiKey from OPENAI_API_KEY; tests / production callers could
+   * not pin a model.
+   */
+  modelConfig?: { model?: string; apiKey?: string; baseURL?: string }
   /** Pre-built tools (e.g. MCP tools). */
   extraTools?: Tool[]
   /**
@@ -361,13 +368,11 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       client: input.client,
       cwd: input.cwd,
       sessionDir: taskWorkspace.paths.workspaceDir,
-      // §七 — no 'test-key' fallback. If no apiKey is supplied, the
-      // engine will surface a clear error from the OpenAI client when
-      // it tries to make a request. The 'gpt-4o' default below is a
-      // model name, not a fake credential.
-      apiKey: process.env.OPENAI_API_KEY ?? '',
-      baseURL: process.env.OPENAI_BASE_URL,
-      model: 'gpt-4o',
+      // Audit rounds 6-10 — ModelConfig from caller wins. Fall back to
+      // env-derived defaults only if the caller did not supply.
+      apiKey: input.modelConfig?.apiKey ?? process.env.OPENAI_API_KEY ?? '',
+      baseURL: input.modelConfig?.baseURL ?? process.env.OPENAI_BASE_URL,
+      model: input.modelConfig?.model ?? 'gpt-4o',
       maxIterations: 60,
       permissionMode: 'auto',
       broker,
