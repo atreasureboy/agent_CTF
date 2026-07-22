@@ -30,7 +30,6 @@ import { composeSystemPrompt } from './specialistAgent.js'
 import { ToolRegistry } from './toolRegistry.js'
 import { TOOL_METADATA } from './toolMetadata.js'
 import { createTools } from '../tools/index.js'
-import { BashTool } from '../tools/bash.js'
 
 import { parseCapabilityProfile } from './capabilityProfile.js'
 import { ContestScopeChecker, type ContestScope } from './contestScope.js'
@@ -194,7 +193,9 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   const handoffStore = taskWorkspace.handoffStore
 
   // Tool layer
-  const bashOnly = new BashTool()  // we keep BashTool single-instance so policy can short-circuit consistently
+  // Audit round 1 — the previous code instantiated a single BashTool
+  // here and never used it (Bash is part of the legacyTools created
+  // below via createTools). Removed; the instance was dead code.
   const legacyTools: Tool[] = createTools(input.extraTools ?? [])
   const registry = ToolRegistry.fromLegacyTools(legacyTools, TOOL_METADATA)
 
@@ -381,9 +382,6 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     const engine = new ExecutionEngine(engineConfig, renderer)
     return engine.runTurn(userMessage, history)
   }
-
-  // Silence unused (BashTool ref used by reference above)
-  void bashOnly
 
   return {
     profile,

@@ -110,7 +110,7 @@ export class BrokerExecutionResult {
 }
 
 export class ToolBroker {
-  private readonly opts: ToolBrokerOptions
+  private opts: ToolBrokerOptions
 
   constructor(opts: ToolBrokerOptions) {
     this.opts = opts
@@ -151,12 +151,11 @@ export class ToolBroker {
   }
 
   /** Typed internal helper — replaces the entire opts object so any
-   *  cached references update. The cast is required because `opts` is
-   *  `private readonly`; this is the only place we mutate it. Object
+   *  cached references update. opts is a plain mutable field (not
+   *  readonly) so we assign directly without any type cast. Object
    *  identity of the new object is preserved by spread. */
   private replaceOpts(next: ToolBrokerOptions): void {
-     
-    (this as unknown as { opts: ToolBrokerOptions }).opts = next
+    this.opts = next
   }
 
   /** Quick boolean predicate for the engine to use before scheduling. */

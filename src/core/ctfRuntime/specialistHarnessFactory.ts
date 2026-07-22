@@ -141,13 +141,15 @@ export class SpecialistHarnessFactory {
 // FindingStore / ArtifactStore rooted at the parent's sessionDir under
 // `agents/<subtaskId>/`. The parent keeps the original stores for
 // projection at run end; lineage is reconstructed by the Projector.
+    // Phase 1.7 audit round 1 — the specialist's independent stores
+    // were rooted at linkedContext.workspaceDir (defaults to cwd),
+    // which meant specialist writes could land outside the parent's
+    // sessionDir. Use the explicit specialistRoot (sessionsRoot arg
+    // or parent's sessionDir) so the specialist's files stay under
+    // the same sessions root.
     const specialistRoot = input.sessionsRoot ?? input.parentContext.sessionDir
-    const independentFindingStore = new FindingStore(
-      linkedContext.workspaceDir,
-    )
-    const independentArtifactStore = new ArtifactStore(
-      linkedContext.workspaceDir,
-    )
+    const independentFindingStore = new FindingStore(specialistRoot)
+    const independentArtifactStore = new ArtifactStore(specialistRoot)
 
     const harness = createHarness({
       cwd: input.cwd,

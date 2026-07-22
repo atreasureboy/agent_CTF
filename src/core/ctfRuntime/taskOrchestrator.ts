@@ -92,7 +92,11 @@ export class CTFTaskOrchestrator {
 
   /** In-flight Workflow runs by workflowRunId. */
   private readonly inFlightWorkflows = new Map<string, Promise<WorkflowRunResult>>()
-  private readonly locks = new Map<string, { promise: Promise<unknown>; abort: AbortController }>()
+  private readonly locks = new Map<string, { promise: Promise<unknown>; abort: AbortController; generation: number }>()
+  // Audit round 1 — per-key generation counter so finally cleanup can
+  // detect that the current Map entry is still ours (vs a newer holder
+  // that took over the slot while we were async).
+  private readonly lockGeneration = new Map<string, number>()
   /** Phase 1.7 §八 — track Main Agent runs too so dispose/cancel can await them. */
   private readonly inFlightAgentRuns = new Map<string, Promise<AgentRunResult>>()
   /** Phase 1.7 §八.1 — proper state machine: active | cancelling | cancelled | disposing | disposed. */
@@ -713,7 +717,15 @@ export class CTFTaskOrchestrator {
     //   4. Failed fn still releases the lock.
     //   5. No unhandled rejection.
     //   6. Task-level abort releases waiters that are blocked on prev.
-    type LockState = { promise: Promise<unknown>; abort: AbortController }
+    //   7. Audit round 1 — generation counter on each LockState so the
+    //      finally cleanup deletes the Map entry only if our generation
+    //      still owns it (avoids accidentally deleting a newer holder's
+    //      entry that took over the slot while we were async).
+    type LockState = {
+      promise: Promise<unknown>
+      abort: AbortController
+      generation: number
+    }
     const prev = this.locks.get(key)
     const myAbort = new AbortController()
     const onAbort = (): void => myAbort.abort()
@@ -724,6 +736,8 @@ export class CTFTaskOrchestrator {
     // callers wait for the previous fn to complete — including its body,
     // not just the barrier), then runs `fn`, and exposes the result /
     // rejection to whoever awaits `state.promise`.
+    const myGeneration = (this.lockGeneration.get(key) ?? 0) + 1
+    this.lockGeneration.set(key, myGeneration)
     const state: LockState = {
       promise: (async (): Promise<unknown> => {
         if (prev) {
@@ -739,6 +753,7 @@ export class CTFTaskOrchestrator {
         return await fn()
       })(),
       abort: myAbort,
+      generation: myGeneration,
     }
     // Attach the cleanup to the promise itself so it fires on
     // settle (success / failure / cancel) regardless of which path
@@ -746,7 +761,13 @@ export class CTFTaskOrchestrator {
     state.promise = state.promise.finally(() => {
       this.abort.signal.removeEventListener('abort', onAbort)
       myAbort.abort()
-      if (this.locks.get(key) === state) this.locks.delete(key)
+      // Delete the Map entry only if our generation still owns it.
+      // If a newer holder has already taken over the slot, the
+      // current Map entry belongs to them — leave it alone.
+      const current = this.locks.get(key)
+      if (current && current.generation === myGeneration) {
+        this.locks.delete(key)
+      }
     })
     this.locks.set(key, state)
     return state.promise as Promise<T>
