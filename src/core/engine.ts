@@ -744,12 +744,15 @@ export class ExecutionEngine {
     // call. We make the turn controller LINK to the external signal via
     // the existing LinkedAbortController primitive so they share the
     // exact same lifecycle (one-way propagation: external fires → turn
-    // fires).
+    // fires). The linked controller is stored so runTurn cleanup can
+    // unlink it (avoids listener accumulation across long sessions).
     let turnAbortController: AbortController
+    let linkedAbort: { unlink(): void } | null = null
     if (this.config.signal) {
       const { createLinkedAbortController } = await import('./ctfRuntime/linkedAbortController.js')
       const linked = createLinkedAbortController(this.config.signal)
       turnAbortController = linked.controller
+      linkedAbort = linked
     } else {
       turnAbortController = new AbortController()
     }
@@ -906,6 +909,10 @@ export class ExecutionEngine {
       result = { stopped: true, reason: 'error', output: finalOutput, error: errMsg }
     } finally {
       this.currentTurnAbortController = null
+      // Phase 1.7 audit round 1 — unlink the per-turn linked abort
+      // controller so the parent signal listener is released at runTurn
+      // completion (avoids listener accumulation across long sessions).
+      linkedAbort?.unlink()
     }
 
     // ── Module onComplete hooks (reflection, etc.) ──

@@ -376,10 +376,18 @@ function installSignalHandlers(
    * trigger a second `runtime.cancel` / `runtime.dispose`.
    */
   let shutdownPromise: Promise<void> | undefined
-  const handler = (sig: NodeJS.Signals): void => {
-    shutdownPromise ??= shutdown(sig)
+  function shutdown(sig: NodeJS.Signals): Promise<void> {
+    if (!shutdownPromise) {
+      shutdownPromise = runtime.cancel(`cli_${sig.toLowerCase()}`)
+    }
+    return shutdownPromise
   }
-  const register = deps.registerSignals ?? (() => {
+  // Phase 1.7 audit round 1 — the default registerSig handler now
+  // wires the SUPPLIED callback (not its own closure), so custom
+  // registerSignals callbacks work as expected and the dedup state
+  // is shared.
+  const register = deps.registerSignals ?? ((cb: (sig: string) => void) => {
+    const handler = (sig: NodeJS.Signals): void => cb(sig)
     process.on('SIGINT', handler)
     process.on('SIGTERM', handler)
     return () => {
@@ -387,12 +395,9 @@ function installSignalHandlers(
       process.off('SIGTERM', handler)
     }
   })
-  const unregister = register((sig: string) => {
-    shutdownPromise ??= shutdown(sig as NodeJS.Signals)
+  const unregister = register((sig) => {
+    void shutdown(sig as NodeJS.Signals)
   })
-  async function shutdown(sig: NodeJS.Signals): Promise<void> {
-    await runtime.cancel(`cli_${sig.toLowerCase()}`)
-  }
   return unregister
 }
 

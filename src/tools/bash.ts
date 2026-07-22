@@ -221,6 +221,14 @@ export class BashTool implements Tool {
             followCleanup()
           }
 
+          // Cancel the SIGKILL fallback timer (audit round 1 — the
+          // timer was firing 5 s after a clean exit and trying to kill
+          // a dead pid).
+          if (sigkillTimer) {
+            clearTimeout(sigkillTimer)
+            sigkillTimer = null
+          }
+
           if (settled) return
           settled = true
 
@@ -263,6 +271,7 @@ export class BashTool implements Tool {
 
       // ── Abort handler — kill entire process group ────────────
       // Send SIGTERM to process group
+      let sigkillTimer: NodeJS.Timeout | null = null
       const onAbort = () => {
         if (settled) return
         settled = true
@@ -273,8 +282,11 @@ export class BashTool implements Tool {
           try { process.kill(-pid, 'SIGTERM') } catch {
             try { child.kill('SIGTERM') } catch { /* ignore */ }
           }
-          // SIGKILL fallback after 5 s for stubborn processes
-          setTimeout(() => {
+          // SIGKILL fallback after 5 s for stubborn processes. The timer
+          // is captured so exec handlers can clear it on the normal-exit
+          // path (Phase 1.7 audit round 1 — without this the timer
+          // fires 5 s after a clean exit and tries to kill a dead pid).
+          sigkillTimer = setTimeout(() => {
             try { process.kill(-pid, 'SIGKILL') } catch {
               try { child.kill('SIGKILL') } catch { /* ignore */ }
             }

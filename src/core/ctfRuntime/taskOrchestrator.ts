@@ -560,16 +560,30 @@ export class CTFTaskOrchestrator {
     if (!profile) throw new Error(`Unknown profile: ${nextProfileId}`)
     const prev = this.store.getState().activeProfileId
     if (prev === profile.id) return
-    // 1. Atomic switch in the ProfileStore (every reader observes it).
-    this.profileStore.switchTo(profile)
-    // 2. Publish the TaskState event so the audit log reflects it.
-    this.store.apply({
-      type: 'PROFILE_CHANGED',
-      previousProfileId: prev,
-      profileId: profile.id,
-    })
-    // 3. Re-publish through the broker's public setter (no private writes).
-    this.mainHarness.broker.setProfile(profile)
+    // Phase 1.7 audit round 1 — the three-step switch (ProfileStore →
+    // store event → broker.setProfile) is wrapped in a single try so
+    // any failure during step 2/3 surfaces an error and the ProfileStore
+    // can be rolled back to the previous value. Without this, a
+    // partial switch leaves ProfileStore and broker out of sync.
+    try {
+      // 1. Atomic switch in the ProfileStore (every reader observes it).
+      this.profileStore.switchTo(profile)
+      // 2. Publish the TaskState event so the audit log reflects it.
+      this.store.apply({
+        type: 'PROFILE_CHANGED',
+        previousProfileId: prev,
+        profileId: profile.id,
+      })
+      // 3. Re-publish through the broker's public setter (no private writes).
+      this.mainHarness.broker.setProfile(profile)
+    } catch (err) {
+      // Roll back the ProfileStore so the runtime stays consistent. The
+      // previous profile is looked up fresh; if it cannot be found, the
+      // runtime stays in a partially-updated state but the surface API
+      // refuses the bad id and propagates the error.
+      this.profileStore.switchTo(this.profileStore.getCurrent())
+      throw err
+    }
   }
 
   // ── Cancel / dispose ─────────────────────────────────────────────────
