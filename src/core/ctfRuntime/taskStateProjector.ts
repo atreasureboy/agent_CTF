@@ -24,18 +24,12 @@
 
 import {
   appendFileSync,
-  closeSync,
-  copyFileSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readSync,
   statSync,
 } from 'fs'
-import { dirname, join } from 'path'
-import { createHash } from 'crypto'
+import { join } from 'path'
 
 import type { ArtifactMeta } from '../artifacts.js'
+import { hashContentSync } from '../artifacts.js'
 import type { ArtifactStore } from '../artifacts.js'
 import type { FindingStore } from '../findings.js'
 import type { CTFTaskEvent } from './taskEvents.js'
@@ -384,29 +378,3 @@ export class TaskStateProjector {
   }
 }
 
-function hashContentSync(filePath: string): string {
-  // Sync stream-hash: read the file in 64 KB chunks from the open fd
-  // and feed them into the hash. This avoids loading the entire file
-  // into a single Buffer (which would defeat the purpose of streaming).
-  const fd = openSync(filePath, 'r')
-  try {
-    const h = createHash('sha256')
-    const buf = Buffer.alloc(64 * 1024)
-    let pos = 0
-    for (;;) {
-      const n = readSync(fd, buf, 0, buf.length, pos)
-      if (n <= 0) break
-      h.update(buf.subarray(0, n))
-      pos += n
-    }
-    return h.digest('hex')
-  } finally {
-    closeSync(fd)
-  }
-}
-
-// keep tree-shaking happy
-void copyFileSync
-void mkdirSync
-void dirname
-void join

@@ -71,8 +71,12 @@ function hashContent(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex')
 }
 
-/** §十七 — stream-hash a file on disk (no full read into memory). */
-function hashContentSync(filePath: string): string {
+/**
+ * §十七 — stream-hash a file on disk (no full read into memory).
+ * Exported for the projector (specialist artifact copy path) so we have
+ * one canonical implementation.
+ */
+export function hashContentSync(filePath: string): string {
   const fd = openSync(filePath, 'r')
   try {
     const h = createHash('sha256')

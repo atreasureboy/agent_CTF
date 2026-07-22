@@ -15,6 +15,7 @@
  */
 
 import type { CapabilityProfile } from '../capabilityProfile.js'
+import { PROFILES, getBuiltinProfile } from '../../capabilityProfiles/index.js'
 
 export type ProfileListener = (next: CapabilityProfile) => void
 export type Unsubscribe = () => void
@@ -23,6 +24,17 @@ export interface ProfileStore {
   getCurrent(): CapabilityProfile
   switchTo(next: CapabilityProfile): void
   subscribe(listener: ProfileListener): Unsubscribe
+}
+
+/**
+ * Resolve a profile id to its `CapabilityProfile` instance. Throws a
+ * descriptive error when the id is unknown. Canonical lookup shared by
+ * `createCTFTaskRuntime` and `CTFTaskOrchestrator.switchProfile`.
+ */
+export function resolveProfileById(id: string): CapabilityProfile {
+  const found = getBuiltinProfile(id) ?? PROFILES[id]
+  if (!found) throw new Error(`Unknown profile: ${id}`)
+  return found
 }
 
 export class CTFProfileStore implements ProfileStore {
@@ -42,7 +54,6 @@ export class CTFProfileStore implements ProfileStore {
       throw new Error('ProfileStore.switchTo: profile must have an id')
     }
     if (next.id === this.current.id) return
-    const prev = this.current
     this.current = next
     for (const l of this.listeners) {
       try {
@@ -51,7 +62,6 @@ export class CTFProfileStore implements ProfileStore {
         /* best-effort */
       }
     }
-    void prev
   }
 
   subscribe(listener: ProfileListener): Unsubscribe {

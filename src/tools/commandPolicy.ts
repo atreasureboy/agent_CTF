@@ -23,20 +23,23 @@ export interface BashPolicyCheck {
   reason: string
 }
 
-const SHELL_BUILTINS = new Set([
-  'echo','printf','read','test','[',']','true','false','exit','set','unset',
-  'export','source','alias','cd','pwd','jobs','bg','fg','history','hash',
-  'help','type','ulimit','umask','wait','kill','let','local','declare','typeset',
-  'shopt','caller','return','shift','times','trap','suspend','enable','eval',
-  'exec','command','getopts','hash','mapfile','readarray','coproc','bind','builtin',
-  'compgen','complete','compopt','dircolors','dirs','disown','fc','getconf','hash',
-  'hostnamectl','locale','localedef','mktemp','nproc','numfmt','od','patch','pathchk',
-  'pinky','printenv','pwd','rename','renice','runcon','seq','shred','shuf','stat',
-  'strace','sudo','sync','tac','tail','tar','tee','test','time','timeout','tload',
-  'top','touch','tr','tree','true','truncate','tsort','tty','tzselect','uclampset',
-  'umask','umount','uname','unexpand','uniq','unlink','users','vdir','wc','wget',
-  'whereis','which','who','whoami','xargs','yes','zcat','zdiff','zegrep','zfgrep',
-  'zforce','zgrep','zless','zmore','znew',
+/**
+ * Real bash builtins only — these are tokenised INSIDE the shell, never
+ * dispatched to $PATH. Anything else MUST go through the deny / allow check
+ * the same as an external binary. The previous list contaminated this set
+ * with `/usr/bin/*` binaries (wget, curl, strace, sudo, tar, …) which made
+ * `deniedCommands` silently bypassed by profiles: `image-stego` denying
+ * `wget` was a no-op. Audit P0 fix.
+ */
+const SHELL_BUILTINS: ReadonlySet<string> = new Set([
+  '.', ':', '[', 'alias', 'bg', 'bind', 'break', 'builtin', 'caller', 'cd',
+  'command', 'compgen', 'complete', 'compopt', 'continue', 'declare', 'dirs',
+  'disown', 'echo', 'enable', 'eval', 'exec', 'exit', 'export', 'false',
+  'fc', 'fg', 'getopts', 'hash', 'help', 'history', 'jobs', 'kill', 'let',
+  'local', 'logout', 'mapfile', 'popd', 'printf', 'pushd', 'pwd', 'read',
+  'readarray', 'return', 'set', 'shift', 'shopt', 'source', 'suspend',
+  'test', 'times', 'trap', 'true', 'type', 'typeset', 'ulimit', 'umask',
+  'unalias', 'unset', 'wait',
 ])
 
 /**

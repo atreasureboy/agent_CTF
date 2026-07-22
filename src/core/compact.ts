@@ -265,22 +265,19 @@ export async function maybeCompact(
     return { compacted: false, messages, summaryTokens: 0, originalTokens }
   }
 
-  // Build compacted history: summary message + recent verbatim messages
-  const summaryContent = `[CONVERSATION SUMMARY — previous context compacted]\n\n${summary}`
-
+  // Build compacted history: a single neutral summary message followed by
+  // the recent verbatim tail. Audit P0 #5 fix — we previously emitted a
+  // fabricated `role: 'assistant'` "I've reviewed the summary" ack, but
+  // the model never said that — providers that compare logprobs vs the
+  // assistant's prior turns can flag the inconsistency, and downstream
+  // turns are confused by an assistant turn that never really happened.
   const summaryMessage: OpenAIMessage = {
     role: 'user',
-    content: summaryContent,
-  }
-
-  const syntheticAssistantAck: OpenAIMessage = {
-    role: 'assistant',
-    content: `I've reviewed the conversation summary and have the context needed to continue.`,
+    content: `[CONVERSATION SUMMARY — earlier context was compacted; the following summary replaces the prior conversation]\n\n${summary}`,
   }
 
   const compactedMessages: OpenAIMessage[] = [
     summaryMessage,
-    syntheticAssistantAck,
     ...recentMessages,
   ]
 

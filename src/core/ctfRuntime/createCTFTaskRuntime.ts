@@ -32,12 +32,11 @@ import type { Renderer } from '../../ui/renderer.js'
 import { TaskWorkspace } from '../../modules/taskWorkspace.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
-import { CTFProfileStore } from './profileStore.js'
+import { CTFProfileStore, resolveProfileById } from './profileStore.js'
 import { createLinkedAbortController, type LinkedAbortController } from './linkedAbortController.js'
 import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
 import { assertLlmDependencies } from './agentRuntimeDependencies.js'
-import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
 import type { CTFTaskState } from './taskState.js'
 
 /**
@@ -207,10 +206,20 @@ export async function createCTFTaskRuntime(
   }) ?? null
 
   // ── Wrap dispose so it also unsubscribes the job listener.
+  // Phase 1.7 audit (P0) — the listener must stay subscribed until
+  // `baseDispose()` has finished. `dispose()` calls `cancel()`, which
+  // triggers `cancelAllJobs(reason)`; the job lifecycle events fire
+  // asynchronously as workers terminate and the projector needs to
+  // mirror the terminal state (cancelled / failed / success) into
+  // `TaskState.jobs`. Unsubscribe AFTER settle so no terminal event
+  // is dropped.
   const baseDispose = orchestrator.dispose.bind(orchestrator)
   const wrappedDispose = async (): Promise<void> => {
-    if (jobUnsub) jobUnsub()
-    await baseDispose()
+    try {
+      await baseDispose()
+    } finally {
+      if (jobUnsub) jobUnsub()
+    }
   }
 
   return {
@@ -225,12 +234,6 @@ export async function createCTFTaskRuntime(
     },
     dispose: wrappedDispose,
   }
-}
-
-function resolveProfileById(id: string): CapabilityProfile {
-  const found = getBuiltinProfile(id) ?? PROFILES[id]
-  if (!found) throw new Error(`Unknown profile: ${id}`)
-  return found
 }
 
 // Keep ModelConfig exported for downstream consumers; the dependency alias

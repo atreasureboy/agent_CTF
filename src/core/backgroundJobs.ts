@@ -19,7 +19,7 @@
  */
 
 import { randomBytes } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, renameSync } from 'fs'
 import { dirname, join } from 'path'
 
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
@@ -141,7 +141,17 @@ export class BackgroundJobManager {
     const dir = this.taskDirs.get(job.taskId) ?? join(this.opts.taskWorkspaceDir, 'loose')
     const file = join(dir, 'jobs', `${job.id}.json`)
     mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, JSON.stringify(job, null, 2), 'utf8')
+    // Audit P1 #G2 — atomic write via temp + rename so a process crash
+    // mid-write does not leave a corrupt jobs/<id>.json (which
+    // loadTask's `catch { continue }` silently drops, losing the
+    // job's history). renameSync is atomic on POSIX.
+    try {
+      const tmp = `${file}.tmp.${process.pid}`
+      writeFileSync(tmp, JSON.stringify(job, null, 2), 'utf8')
+      renameSync(tmp, file)
+    } catch {
+      writeFileSync(file, JSON.stringify(job, null, 2), 'utf8')
+    }
     const indexPath = this.taskIndexPaths.get(job.taskId) ?? join(dir, 'jobs', 'index.jsonl')
     // Append a single-line record to index. Cheap and idempotent on re-read.
     try {

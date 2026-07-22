@@ -157,13 +157,36 @@ function parseArgs(argv: string[]): Args {
       case '--help': case '-h': help = true; break
       case '--version': case '-v': case '-V': version = true; break
       case '--model': case '-m': model = args[++i] ?? model; break
-      case '--max-iter': maxIter = parseInt(args[++i] ?? '30', 10); break
+      case '--max-iter': {
+        const raw = args[++i] ?? '30'
+        const parsed = parseInt(raw, 10)
+        // Phase 1.7 audit — refuse NaN / non-positive values that would
+        // otherwise silently abort the run.
+        if (Number.isNaN(parsed) || parsed <= 0) {
+          console.error(`error: --max-iter requires a positive integer (got "${raw}")`)
+          process.exit(1)
+        }
+        maxIter = parsed
+        break
+      }
       case '--cwd': cwd = args[++i] ?? cwd; break
-      case '--resume': resume = args[++i] ?? 'last'; break
-      case '--permission': case '-p':
-        permission = (args[++i] as 'auto' | 'ask' | 'deny') ?? permission; break
+      case '--resume': resume = args[++i]; break
+      case '--permission': case '-p': {
+        const raw = args[++i] ?? ''
+        if (raw !== 'auto' && raw !== 'ask' && raw !== 'deny') {
+          console.error(`error: --permission must be one of auto|ask|deny (got "${raw}")`)
+          process.exit(1)
+        }
+        permission = raw
+        break
+      }
       case '--no-mcp': noMcp = true; break
       case '--sessions': listSessions = true; break
+      case '--':
+        // Phase 1.7 audit — `--` ends flag parsing so callers can pass
+        // a task whose first token starts with `-` (e.g. "-rf"-style).
+        i = args.length
+        break
       default:
         if (!arg.startsWith('-')) task = task ? task + ' ' + arg : arg
     }
@@ -327,8 +350,14 @@ async function runPlanMode(
       history.push(...trimHistoryForNextTurn(newHistory))
       const elapsed = ((Date.now() - startMs) / 1000).toFixed(1)
       renderer.info(`Done in ${elapsed}s · ${result.reason}`)
+      // Mirror run outcome to the lastRunExitCode so SIGTERM during a
+      // later turn reports the correct code (replaces legacy always-0).
+      if (result.reason === 'error') lastRunExitCode = 1
+      else if (result.reason === 'interrupted') lastRunExitCode = 130
+      else lastRunExitCode = 0
     } catch (err: unknown) {
       renderer.error(`Execution error: ${(err as Error).message}`)
+      lastRunExitCode = 1
     }
     updateProgressLog(cwd, 'idle', 'waiting for next task')
   } else {
@@ -544,6 +573,12 @@ async function runRepl(
         if (result.reason === 'error' && result.error) {
           renderer.error(`失败原因: ${result.error}`)
         }
+        // Capture run outcome so SIGTERM/SIGHUP reports a meaningful
+        // exit code. The 'interrupted' branch is handled above by the
+        // soft-interrupt prompt; here we see only stop_sequence /
+        // max_iterations / error.
+        if (result.reason === 'error') lastRunExitCode = 1
+        else lastRunExitCode = 0
         const u = engine.getTokenUsage()
         renderer.usage(u.totalTokens, u.costUsd)
         break
@@ -641,6 +676,10 @@ async function runRepl(
 // Single-shot task
 // ─────────────────────────────────────────────────────────────
 
+// Phase 1.7 audit — module-level so both REPL and single-shot task paths
+// can update it; SIGTERM/SIGHUP exits using this state.
+let lastRunExitCode = 0
+
 async function runTask(
   engine: ExecutionEngine,
   renderer: Renderer,
@@ -660,6 +699,11 @@ async function runTask(
   if (result.reason === 'error' && result.error) {
     renderer.error(`失败原因: ${result.error}`)
   }
+  // Phase 1.7 audit — capture the last run's exit code so a SIGTERM/SIGHUP
+  // during the run reflects reality (not always 0).
+  if (result.reason === 'error') lastRunExitCode = 1
+  else if (result.reason === 'interrupted') lastRunExitCode = 130
+  else lastRunExitCode = 0
   const u = engine.getTokenUsage()
   renderer.usage(u.totalTokens, u.costUsd)
   updateProgressLog(cwd, 'complete', 'done')
@@ -920,12 +964,16 @@ async function main(): Promise<void> {
   process.on('exit', cleanup)
   // For signal-driven exits, do the async close synchronously via
   // .then(exit) so the MCP process actually closes before Node exits.
+  //
+  // Phase 1.7 audit — exit code reflects the last run's outcome so
+  // callers can distinguish killed-from-success. Without this, SIGTERM
+  // always reports 0 which masks run failures from CI orchestrators.
   const onExitSignal = (): void => {
     cleanup()
     // Give the async close a tick to fire its cleanup; then exit so
     // process.on('exit') runs with cleanedUp=true and the Promise is
     // already on the way to resolution.
-    setImmediate(() => process.exit(0))
+    setImmediate(() => process.exit(lastRunExitCode))
   }
   process.on('SIGTERM', onExitSignal)
   process.on('SIGHUP',  onExitSignal)

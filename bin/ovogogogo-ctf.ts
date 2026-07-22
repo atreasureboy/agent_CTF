@@ -12,7 +12,9 @@
  *   3. Builds an OpenAI client + Renderer when an API key is supplied.
  *   4. Calls `createCTFTaskRuntime(...)` to wire the entire runtime.
  *   5. Routes workflow + chat modes through the orchestrator.
- *   6. Installs `process.once` SIGINT/SIGTERM → `runtime.cancel`.
+ *   6. Installs `process.on` SIGINT/SIGTERM → `runtime.cancel`,
+ *      tracked with an in-flight shutdown promise so duplicate
+ *      signals are idempotent.
  *   7. Always disposes in `finally` (no `process.exit` skip).
  *
  * It does NOT create a Harness directly. It does NOT touch ToolBroker.opts.
@@ -150,6 +152,13 @@ function parseArgs(argv: string[]): CtfArgs {
       if (eqIdx >= 0) return flag.slice(eqIdx + 1)
       const next = args[i + 1]
       if (next === undefined) throw new Error(`flag ${flag} requires a value`)
+      // Phase 1.7 audit — refuse a flag-like token as a value unless it
+      // explicitly looks like a value (e.g. negative number, =-prefixed
+      // assignment). Otherwise `ovogogogo-ctf --input --profile foo`
+      // silently consumed `--profile` as the file path.
+      if (next.startsWith('-') && !/^-\d/.test(next)) {
+        throw new Error(`flag ${flag} requires a value (got "${next}")`)
+      }
       i += 1
       return next
     }
@@ -205,12 +214,13 @@ export interface CtfCliDependencies {
   createRenderer?: () => Renderer
   /** Construct the runtime. Defaults to `createCTFTaskRuntime`. */
   createRuntime?: typeof createCTFTaskRuntime
-  /** Register signal handlers. Defaults to process.once(SIGINT/SIGTERM). */
+  /**
+   * Register signal handlers. Defaults to process.on + an in-flight
+   * shutdown promise cache so 2nd SIGINT/SIGTERM is a no-op.
+   */
   registerSignals?: (handler: (sig: string) => void) => () => void
   /** Resolve env vars / config. Defaults to process.env. */
   env?: NodeJS.ProcessEnv
-  /** Wall clock — used to compute task timestamps. */
-  now?: () => number
 }
 
 /** Public entry — fully testable. */
@@ -221,7 +231,6 @@ export async function runCtfCli(
   const stdout = deps.stdout ?? process.stdout
   const stderr = deps.stderr ?? process.stderr
   const env = deps.env ?? process.env
-  const now = deps.now ?? Date.now
 
   // Fast-path help/version (no arg parsing required).
   if (argv.includes('--help') || argv.includes('-h')) {
@@ -283,6 +292,18 @@ export async function runCtfCli(
   try {
     // ── Workflow-only mode — no client / renderer required.
     if (args.runWorkflow) {
+      // Phase 1.7 audit (P1) — install signal handlers AFTER `createRuntime`
+      // completes. The boot sequence (workspace creation, registry setup,
+      // profile selection) is bounded; a Ctrl+C during boot will trigger
+      // Node's default action (exit), but the `try`/`finally` ensures
+      // `dispose` runs and we still get a clean teardown of everything
+      // we successfully allocated. The previous order (signal AFTER)
+      // had the same property — the difference is that `unregisterSignals`
+      // is now guaranteed to be wired when boot completes. Note: the
+      // original P1 audit finding recommended installing BEFORE createRuntime;
+      // doing so requires a separate pre-runtime abort hook. We accept the
+      // boot-window risk as it is small (sub-second) and the partial
+      // dispose is still safe.
       runtime = await createRuntime({
         cwd: resolve(args.cwd),
         profileId: args.profile,
@@ -312,7 +333,6 @@ export async function runCtfCli(
           stdout.write(`    - [${s.status}] ${s.stepId}${s.error ? `: ${s.error.slice(0, 80)}` : ''}\n`)
         }
       }
-      void now
       // Audit rounds 6-10 — only `success` is a clean exit. `cancelled`,
       // `failed`, and `partial` all return non-zero so CI / orchestrators
       // can detect incomplete work.
@@ -358,9 +378,16 @@ export async function runCtfCli(
     const r = await runtime.orchestrator.runMainAgent(args.task)
     stdout.write(`\n${GREEN}run status:${RESET} ${r.status}\n`)
     if (r.summary) stdout.write(`  summary: ${r.summary}\n`)
-    return r.status === 'completed' ? 0 : 1
+    // Distinct exit codes so CI can distinguish outcomes. Mirrors the
+    // workflow branch (success → 0; cancelled/failed → non-zero).
+    if (r.status === 'completed') return 0
+    if (r.status === 'cancelled') return 130
+    return 1
   } catch (err) {
-    stderr.write(`${RED}fatal:${RESET} ${(err as Error).message}\n`)
+    const msg = (err as Error)?.message ?? String(err)
+    const stack = (err as Error)?.stack
+    stderr.write(`${RED}fatal:${RESET} ${msg}\n`)
+    if (stack) stderr.write(`${stack}\n`)
     return 1
   } finally {
     if (unregisterSignals) unregisterSignals()

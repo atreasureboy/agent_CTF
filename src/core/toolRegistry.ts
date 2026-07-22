@@ -64,8 +64,33 @@ export class ToolRegistry {
     return this.tools.has(id) || this.extraImplTools.has(id)
   }
 
+  /**
+   * Retrieve a registered tool. Audit P1 #C1 fix — `get()` previously
+   * consulted only the metadata-bearing map, so tools registered via
+   * `registerExtra()` (legacy / extraTools path) were "has() === true" but
+   * "get() === undefined", causing NPEs in caller patterns like
+   * `if (registry.has('Foo')) const reg = registry.get('Foo')`. Extras
+   * get a synthesised RegisteredTool with safe defaults so downstream
+   * code that does `reg.id` / `reg.executionMode` does not crash.
+   */
   get(id: string): RegisteredTool | undefined {
-    return this.tools.get(id)
+    const primary = this.tools.get(id)
+    if (primary) return primary
+    const extra = this.extraImplTools.get(id)
+    if (extra) {
+      return {
+        id: extra.name,
+        domains: [],
+        executionMode: 'either',
+        costClass: 'cheap',
+        outputMode: 'inline',
+        riskLevel: 'low',
+        requiredBinaries: undefined,
+        inlineMaxBytes: undefined,
+        impl: extra,
+      }
+    }
+    return undefined
   }
 
   /** All registered tools (with metadata) — inspect-only. */

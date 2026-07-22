@@ -19,6 +19,7 @@ import type { CapabilityProfile } from '../capabilityProfile.js'
 import type { ContestScope } from '../contestScope.js'
 
 import type { CTFTaskStateStore } from './taskStateStore.js'
+import { TaskAlreadyCompletedError, DuplicateHandoffTransitionError } from './taskStateStore.js'
 import type {
   AgentRunRecord,
   AgentRunResult,
@@ -478,18 +479,42 @@ export class HandoffCoordinator {
   }
 
   private failAgentRun(agentRunId: string, handoffId: string, error: string): void {
-    this.deps.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error })
-    this.deps.store.apply({ type: 'SPECIALIST_FAILED', handoffId, agentRunId, error })
+    // Audit P0 #F1 fix — guard against the FSM rejecting these events
+    // after a concurrent cancel already moved the handoff to a
+    // terminal state (e.g. cancelHandoff during runSpecialist would
+    // otherwise throw DuplicateHandoffTransitionError and reject the
+    // caller's `approveAndRun` promise with a confusing error).
+    this.tryApply({ type: 'AGENT_RUN_FAILED', agentRunId, error })
+    this.tryApply({ type: 'SPECIALIST_FAILED', handoffId, agentRunId, error })
   }
 
   private cancelAgentRun(agentRunId: string, handoffId: string, reason: string): void {
-    this.deps.store.apply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason })
-    this.deps.store.apply({
+    // Audit P0 #F1 fix — see failAgentRun. Concurrent cancel may have
+    // already transitioned the handoff to `cancelled`; the store then
+    // rejects SPECIALIST_CANCELLED with a transition error that would
+    // bubble out of runSpecialist and reject approveHandoff.
+    this.tryApply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason })
+    this.tryApply({
       type: 'SPECIALIST_CANCELLED',
       handoffId,
       agentRunId,
       reason,
     })
+  }
+
+  /**
+   * Apply a handoff-related event, swallowing the FSM errors that fire
+   * when a concurrent cancel already converged the handoff to a terminal
+   * state. Audit P0 #F1 fix.
+   */
+  private tryApply(ev: Parameters<CTFTaskStateStore['apply']>[0]): void {
+    try {
+      this.deps.store.apply(ev)
+    } catch (err) {
+      if (err instanceof TaskAlreadyCompletedError) return
+      if (err instanceof DuplicateHandoffTransitionError) return
+      throw err
+    }
   }
 
   /**

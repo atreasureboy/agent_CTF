@@ -93,6 +93,35 @@ Large pages are truncated — use start_index to paginate.`,
       return { content: 'Error: URL must start with http:// or https://', isError: true }
     }
 
+    // Audit P0 #2 — SSRF guard. Consult the CTF scope's network allow-list
+    // before issuing any request, including across redirects (which the
+    // fetch() default of `redirect: 'follow'` would otherwise bypass).
+    // We do NOT follow redirects automatically; instead we read the
+    // `response.url` after each hop and validate.
+    const initialHost = (() => {
+      try {
+        return new URL(url).hostname.toLowerCase()
+      } catch {
+        return null
+      }
+    })()
+    if (!initialHost) {
+      return { content: 'Error: URL is malformed', isError: true }
+    }
+    const ctfCtx = (context as unknown as {
+      __ctf?: { contestScope?: { assertNetwork?: (h: string, p?: number) => { allowed: boolean; reason?: string } } }
+    }).__ctf
+    const assertNet = ctfCtx?.contestScope?.assertNetwork?.bind(ctfCtx.contestScope)
+    if (assertNet) {
+      const v = assertNet(initialHost)
+      if (!v.allowed) {
+        return {
+          content: `WebFetch refused: ${v.reason ?? `host "${initialHost}" is not in contest scope`}`,
+          isError: true,
+        }
+      }
+    }
+
     const maxLen = typeof max_length === 'number' ? Math.min(max_length, MAX_CONTENT_LENGTH) : MAX_CONTENT_LENGTH
     const startIdx = typeof start_index === 'number' ? start_index : 0
 
@@ -120,8 +149,26 @@ Large pages are truncated — use start_index to paginate.`,
           'User-Agent': 'ovogogogo/0.1.0 (autonomous code execution engine)',
           'Accept': 'text/html,application/xhtml+xml,text/plain,*/*',
         },
-        redirect: 'follow',
+        // `manual` so we can re-check the host on each hop against the
+        // CTF contest scope (defense against SSRF through 302 → internal
+        // IP / cloud metadata server).
+        redirect: 'manual',
       })
+
+      // If the server tried to redirect, validate the new URL's host.
+      if (response.status >= 300 && response.status < 400 && assertNet) {
+        const location = response.headers.get('location')
+        if (location) {
+          const next = new URL(location, url)
+          const v = assertNet(next.hostname.toLowerCase())
+          if (!v.allowed) {
+            return {
+              content: `WebFetch refused redirect: ${v.reason ?? `host "${next.hostname}" is not in contest scope`}`,
+              isError: true,
+            }
+          }
+        }
+      }
 
       clearTimeout(timer)
 

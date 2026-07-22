@@ -48,7 +48,11 @@ export function createLinkedAbortController(parent?: AbortSignal): LinkedAbortCo
     }
     parent.addEventListener('abort', parentListener, { once: true })
   } else if (parent?.aborted) {
-    // Parent was already aborted before the child was created — propagate.
+    // Audit P1 fix — parent was already aborted before the child was
+    // created. Call abort() with the actual reason so `signal.reason`
+    // is propagated to consumers (reflection, runMainAgent cancellation
+    // status, etc.) — the previous behaviour left the child's
+    // `signal.reason === undefined`.
     try {
       controller.abort(parent.reason ?? 'parent_aborted')
     } catch {

@@ -11,7 +11,7 @@
  * Listing: scans <cwd>/sessions/<session>/conversation.json and returns metadata.
  */
 
-import { writeFileSync, readFileSync, existsSync, readdirSync, statSync } from 'fs'
+import { writeFileSync, readFileSync, existsSync, readdirSync, statSync, renameSync } from 'fs'
 import { join } from 'path'
 import type { OpenAIMessage } from './types.js'
 
@@ -36,11 +36,15 @@ export function saveConversation(
     messages,
   }
   try {
-    writeFileSync(
-      join(sessionDir, 'conversation.json'),
-      JSON.stringify(snapshot, null, 2),
-      'utf8',
-    )
+    // Audit P1 #E1 — atomic write via temp + rename so a mid-write
+    // crash doesn't leave a half-written conversation.json (which the
+    // loader treats as corrupt and silently discards, losing the
+    // user's full history). `renameSync` is atomic on POSIX; on
+    // Windows it is a best-effort replacement.
+    const target = join(sessionDir, 'conversation.json')
+    const tmp = `${target}.tmp.${process.pid}`
+    writeFileSync(tmp, JSON.stringify(snapshot, null, 2), 'utf8')
+    renameSync(tmp, target)
   } catch {
     // best-effort: never break the turn on snapshot failure
   }

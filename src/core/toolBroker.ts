@@ -435,16 +435,3 @@ export function checkRegistryAvailability(
   }
   return issues
 }
-
-/** No-op client used by the Workflow Engine when it doesn't have to call LLM. */
-export function noopOpenAIClient(): OpenAI {
-  return {
-    chat: {
-      completions: {
-        create: (() => {
-          throw new Error('Workflow runner does not call LLM directly')
-        }) as never,
-      },
-    },
-  } as unknown as OpenAI
-}

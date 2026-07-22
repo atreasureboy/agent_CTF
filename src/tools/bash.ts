@@ -142,6 +142,21 @@ export class BashTool implements Tool {
       })
       child.unref()
 
+      // Audit P1 #A2 — background-mode spawn previously ignored
+      // `context.signal` entirely. Register an abort listener that
+      // kills the spawned process group so Ctrl+C actually stops the
+      // background command. The listener is a no-op when the signal
+      // has already fired, and harmless after the process exits.
+      if (context.signal && !context.signal.aborted) {
+        const killChild = (): void => {
+          const pid = child.pid
+          if (pid === undefined) return
+          try { process.kill(-pid, 'SIGTERM') } catch { /* ignore */ }
+          try { child.kill('SIGTERM') } catch { /* ignore */ }
+        }
+        context.signal.addEventListener('abort', killChild, { once: true })
+      }
+
       const redirectInfo = alreadyRedirected ? '' : `\n输出自动重定向到: ${logFile}`
       return {
         content: `Command started in background (PID: ${child.pid})${redirectInfo}`,

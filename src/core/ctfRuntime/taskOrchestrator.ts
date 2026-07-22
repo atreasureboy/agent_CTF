@@ -30,15 +30,14 @@ import type { OpenAIMessage } from '../types.js'
 import type { Finding } from '../findings.js'
 import type { ArtifactMeta } from '../artifacts.js'
 import type { WorkflowRunResult } from '../workflowDefinition.js'
-import { createHarness, type HarnessBundle } from '../harness.js'
+import type { HarnessBundle } from '../harness.js'
 import type { Renderer } from '../../ui/renderer.js'
 import type OpenAI from 'openai'
-import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { CTFTaskStateStore, TaskAlreadyCompletedError } from './taskStateStore.js'
 import type { CTFProfileStore} from './profileStore.js';
-import { type ProfileStore } from './profileStore.js'
+import { type ProfileStore, resolveProfileById } from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
@@ -197,7 +196,6 @@ export class CTFTaskOrchestrator {
     // backwards compatibility with tests that already call it; new code
     // should use `createCTFTaskRuntime` directly.
     const { createCTFTaskRuntime } = await import('./createCTFTaskRuntime.js')
-    const { createHarness } = await import('../harness.js')
     const { Renderer } = await import('../../ui/renderer.js')
     const client = input.client ?? ({ chat: { completions: { create: () => { throw new Error('test: no LLM') } } } } as unknown as import('openai').default)
     // Phase 1.7 — keep the legacy "no renderer → runMainAgent fails" contract.
@@ -226,18 +224,15 @@ export class CTFTaskOrchestrator {
       jobLimits: input.jobLimits,
     })
     if (!isExplicitRenderer) {
-      // Replace the synthesised renderer with undefined so runMainAgent's
-      // explicit-missing check fires correctly. We only null the
-      // orchestrator's own dependency record (which runMainAgent reads);
-      // the Runtime itself keeps the fake renderer for any code path that
-      // does not gate on its presence.
-      ;(runtime.dependencies as { renderer?: unknown }).renderer = undefined
+      // Clear the synthesised renderer on the orchestrator's own
+      // dependency record so runMainAgent's explicit-missing check
+      // fires correctly. The Runtime keeps the fake renderer for any
+      // code path that doesn't gate on its presence.
+      runtime.dependencies.renderer = undefined
     }
     if (input.initialPhase && input.initialPhase !== 'intake') {
       runtime.orchestrator.setPhase(input.initialPhase, 'test override')
     }
-    void createHarness
-    void Renderer
     return runtime.orchestrator
   }
 
@@ -654,13 +649,13 @@ export class CTFTaskOrchestrator {
     //    specialist promise so dispose can run cleanly.
     await this.handoffCoordinator.cancelAll(reason)
 
-    // 4. Touch every in-flight workflow — abort signal already propagates
-    //    through the workflow runner, the engine will resolve the workflow
-    //    promise with status='cancelled', and our `runWorkflow` wrapper
-    //    emits WORKFLOW_CANCELLED.
-    for (const [, runP] of this.inFlightWorkflows) {
-      void runP.catch(() => {})
-    }
+    // 4. Await every in-flight workflow — the abort signal propagates
+    //    through the workflow runner, the engine returns 'cancelled',
+    //    and our `runWorkflow` wrapper emits WORKFLOW_CANCELLED. Audit
+    //    P0 #F2 fix — the previous code attached only `.catch(() => {})`
+    //    and returned before workflows settled, leaving workflowRuns
+    //    marked 'running' after TASK_COMPLETED was applied.
+    await Promise.allSettled([...this.inFlightWorkflows.values()])
 
     // 5. Wait for in-flight Main Agent runs to settle (they see the abort
     //    signal and throw / short-circuit).
@@ -797,9 +792,4 @@ export class CTFTaskOrchestrator {
     return state.promise as Promise<T>
   }
 }
-
-function resolveProfileById(id: string): CapabilityProfile {
-  const found = getBuiltinProfile(id) ?? PROFILES[id]
-  if (!found) throw new Error(`Unknown profile: ${id}`)
-  return found
-}
+// resolveProfileById imported from ./profileStore.js (single canonical impl).

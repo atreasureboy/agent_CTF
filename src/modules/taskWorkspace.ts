@@ -16,7 +16,7 @@
  */
 
 import { mkdirSync, existsSync } from 'fs'
-import { dirname, join, resolve } from 'path'
+import { dirname, join, resolve, sep } from 'path'
 import { randomBytes } from 'crypto'
 
 import type { AgentModule, ModuleBootContext, ModuleBootResult } from '../core/module.js'
@@ -88,9 +88,15 @@ export class TaskWorkspace {
 
   /** Resolve a path; throws if the resolved path leaves the workspace root. */
   resolveWithinWorkspace(p: string): string {
+    // Audit P0 #B2 fix — the previous `abs.startsWith(ws)` accepted
+    // sibling-prefix directories like `/<root>-evil` as "inside" the
+    // workspace. Require either exact equality OR a trailing separator
+    // after the workspace root, mirroring contestScope.ts:104-111.
+    // Also rejects leading-slash inputs that resolve to absolute
+    // paths outside the workspace, which `resolve()` does not catch.
     const abs = resolve(p)
-    const ws = this.paths.workspaceDir
-    if (!abs.startsWith(ws)) {
+    const ws = resolve(this.paths.workspaceDir)
+    if (abs !== ws && !abs.startsWith(ws + sep)) {
       throw new Error(`Path "${p}" is outside the task workspace.`)
     }
     return abs
