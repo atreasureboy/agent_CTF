@@ -135,15 +135,24 @@ export class ToolBroker {
     }
     if (this.opts.profileStore) {
       this.opts.profileStore.switchTo(next)
-      // Also keep opts.profile current so legacy tests / readers that peek
-      // at broker.opts.profile see the new value.
-      ;(this as unknown as { opts: ToolBrokerOptions }).opts = { ...this.opts, profile: next }
+      // Keep opts.profile current so legacy tests / readers that peek at
+      // broker.opts.profile see the new value. We use a typed setter helper
+      // (not a type-cast) so the mutation is visible in the type system.
+      this.replaceOpts({ ...this.opts, profile: next })
       return
     }
     // No ProfileStore wired — keep the legacy profile path for non-CTF
-    // tests. We mutate via a single typed helper that re-allocates opts so
-    // any future cached references update too.
-    ;(this as unknown as { opts: ToolBrokerOptions }).opts = { ...this.opts, profile: next }
+    // tests. Same typed setter helper as the ProfileStore branch.
+    this.replaceOpts({ ...this.opts, profile: next })
+  }
+
+  /** Typed internal helper — replaces the entire opts object so any
+   *  cached references update. The cast is required because `opts` is
+   *  `private readonly`; this is the only place we mutate it. Object
+   *  identity of the new object is preserved by spread. */
+  private replaceOpts(next: ToolBrokerOptions): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as unknown as { opts: ToolBrokerOptions }).opts = next
   }
 
   /** Quick boolean predicate for the engine to use before scheduling. */
