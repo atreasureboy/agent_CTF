@@ -547,9 +547,11 @@ export class CTFTaskOrchestrator {
    */
   async cancel(reason: string): Promise<void> {
     // Phase 1.7 §八.1 — 5-state lifecycle: active → cancelling → cancelled
-    // (then disposed via dispose()). Idempotent.
-    if (this.lifecycleState !== 'active') return
-    this.lifecycleState = 'cancelling'
+    // (then disposed via dispose()). Idempotent at terminal states; running
+    // states (cancelling, disposing) re-enter the work so callers waiting
+    // for the same settle see the work happen.
+    if (this.lifecycleState === 'cancelled' || this.lifecycleState === 'disposed') return
+    if (this.lifecycleState === 'active') this.lifecycleState = 'cancelling'
 
     // 1. Abort the Task-level signal — propagates everywhere.
     this.abort.controller.abort(reason)
@@ -574,8 +576,9 @@ export class CTFTaskOrchestrator {
     //    signal and throw / short-circuit).
     await Promise.allSettled([...this.inFlightAgentRuns.values()])
 
-    // 6. Converge to 'cancelled'.
-    this.lifecycleState = 'cancelled'
+    // 6. Converge to 'cancelled' — only when not already disposing (dispose()
+    //    drives its own state machine and may still hold 'disposing').
+    if (this.lifecycleState === 'cancelling') this.lifecycleState = 'cancelled'
     try {
       this.store.apply({
         type: 'TASK_COMPLETED',
@@ -624,10 +627,15 @@ export class CTFTaskOrchestrator {
     // removed so long-running sessions do not leak. Errors in `fn` do not
     // prevent cleanup. If the lock-holding operation is aborted before it
     // resolves, the abort propagates to the queued waiters via the
-    // caller's own signal handling.
+    // Task-level abort signal.
     type LockState = { promise: Promise<unknown>; abort: AbortController }
     const prev = this.locks.get(key) as LockState | undefined
     const myAbort = new AbortController()
+    // Wire Task-level abort so a cancel/dispose while waiting releases
+    // the waiter immediately rather than blocking the cancel path.
+    const onAbort = (): void => myAbort.abort()
+    if (this.abort.signal.aborted) myAbort.abort()
+    else this.abort.signal.addEventListener('abort', onAbort, { once: true })
     const myPromise = (async () => {
       if (prev) {
         try {
@@ -644,6 +652,7 @@ export class CTFTaskOrchestrator {
       await myPromise
       return await fn()
     } finally {
+      this.abort.signal.removeEventListener('abort', onAbort)
       myAbort.abort()
       // Only clear the entry if we still own it (no one else queued after
       // us and overwrote it). Race-safe in single-threaded JS.

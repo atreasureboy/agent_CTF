@@ -293,6 +293,10 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       workflowId: workflow.id,
       inputs: runInputs,
       capturedOutputs: new Map(),
+    }, {
+      // Phase 1.7 §四 — pass the Task-level abort signal to WorkflowEngine
+      // so cancel() can short-circuit the workflow's run loop.
+      signal: taskExecutionContext.abortSignal,
     })
   }
 
