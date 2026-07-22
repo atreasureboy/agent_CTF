@@ -264,6 +264,18 @@ export class ExecutionEngine {
       const allowed = new Set(whitelist)
       defs = defs.filter((t) => allowed.has(t.function.name))
     }
+    // Audit rounds 6-10 — when a CapabilityProfile is provided, hide
+    // tools the profile denies from the LLM. Previously the LLM saw
+    // every tool and was only rejected at execution time, which made
+    // the LLM retry denied tools in a loop.
+    if (this.config.profile?.deniedTools?.length) {
+      const denied = new Set(this.config.profile.deniedTools)
+      defs = defs.filter((t) => !denied.has(t.function.name))
+    }
+    if (this.config.profile?.allowedTools?.length) {
+      const allowed = new Set(this.config.profile.allowedTools)
+      defs = defs.filter((t) => allowed.has(t.function.name))
+    }
     // Filter by plan mode (read-only tools only)
     if (planMode) {
       defs = defs.filter((t) => PLAN_MODE_TOOLS.has(t.function.name))

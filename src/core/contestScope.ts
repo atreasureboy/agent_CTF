@@ -105,7 +105,9 @@ export class ContestScopeChecker {
     const root = resolve(this.scope.allowedFilesRoot)
     const abs = resolve(path)
     if (abs === root) return true
-    if (!abs.startsWith(root + sep) && !abs.startsWith(root)) return false
+    // Audit rounds 6-10 — require a path separator after `root` so
+    // sibling-prefix directories like /tmp/root-escape do not pass.
+    if (!abs.startsWith(root + sep) && abs !== root) return false
     return true
   }
 

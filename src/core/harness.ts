@@ -374,6 +374,11 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       taskId,
       agentId: currentProfile.id,
       eventLog: undefined,
+      // Audit rounds 6-10 — pass the active CapabilityProfile so the
+      // engine can filter tool definitions by allowedTools/deniedTools
+      // (otherwise the LLM sees every tool and is only rejected at
+      // execution time, which causes repeated retry loops).
+      profile: currentProfile,
       systemPrompt,
       // Phase 1.7 §四.2 — forward the Task-level abort signal into the
       // engine so cancelling the Task aborts the in-flight LLM call.

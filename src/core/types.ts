@@ -111,6 +111,13 @@ export interface EngineConfig {
    */
   client?: OpenAI
   /**
+   * Audit rounds 6-10 — when a CapabilityProfile is supplied, the engine
+   * filters tool definitions by profile.allowedTools / profile.deniedTools
+   * so the LLM never sees tools the profile rejects. Without this, the
+   * LLM wastes turns retrying denied tools.
+   */
+  profile?: import('./capabilityProfile.js').CapabilityProfile
+  /**
    * Phase 1.7 §四.2 — external AbortSignal. When supplied, the per-turn
    * AbortController listens to this signal so cancelling the parent task
    * (or any upstream controller) aborts the in-flight LLM call.
