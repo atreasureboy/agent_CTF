@@ -265,7 +265,12 @@ export class TaskStateProjector {
     const parent = this.storages.parentArtifactStore
     if (!parent) return null
     try {
-      const childStore = this.storages.artifactStore
+      // Audit rounds 6-10 — read from the configured child store
+      // (withChildStores scopes the projector) so the child's artifact
+      // is found at the right path. The previous code used
+      // `this.storages.artifactStore` (the parent store) which made
+      // every Specialist artifact projection fail with ENOENT.
+      const childStore = this.storages.childArtifactStore ?? this.storages.artifactStore
       const childAbs = childStore.resolvePath(childMeta)
       const ext = childMeta.path.split('.').pop() ?? 'bin'
       // §十七 — streaming copy via fs streams so we never load the

@@ -313,7 +313,14 @@ export async function runCtfCli(
         }
       }
       void now
-      return result.status === 'cancelled' ? 1 : 0
+      // Audit rounds 6-10 — only `success` is a clean exit. `cancelled`,
+      // `failed`, and `partial` all return non-zero so CI / orchestrators
+      // can detect incomplete work.
+      if (result.status === 'success') return 0
+      if (result.status === 'cancelled') return 1
+      // `partial` and `failed` indicate work that did not complete
+      // cleanly; treat as non-zero exit.
+      return 1
     }
 
     // ── Chat mode — requires a real LLM client.

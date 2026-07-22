@@ -308,6 +308,30 @@ export class CTFTaskOrchestrator {
     initiatedByAgentRunId?: string,
   ): Promise<WorkflowRunResult> {
     return this.withLock(`workflow:${workflowId}`, async () => {
+      // Audit rounds 6-10 — enforce profile.allowedWorkflows /
+// deniedWorkflows. Previously the orchestrator ignored the
+// profile-level workflow allow-list, so e.g. `triage` could
+// run `encoding_sweep` even though it should not.
+//
+// Convention: an UNSET or empty `allowedWorkflows` means "no
+// workflow allow-list constraint" (the profile runs no workflows
+// anyway). A populated list is a strict whitelist. `deniedWorkflows`
+// always wins over allowedWorkflows.
+      const profile = this.profileStore.getCurrent()
+      if (profile.deniedWorkflows && profile.deniedWorkflows.includes(workflowId)) {
+        throw new Error(
+          `Workflow "${workflowId}" is denied by profile "${profile.id}" (deniedWorkflows).`,
+        )
+      }
+      if (
+        profile.allowedWorkflows &&
+        profile.allowedWorkflows.length > 0 &&
+        !profile.allowedWorkflows.includes(workflowId)
+      ) {
+        throw new Error(
+          `Workflow "${workflowId}" is not in profile "${profile.id}" allowedWorkflows.`,
+        )
+      }
       const wf = this.mainHarness.workflowRegistry.get(workflowId)
       if (!wf) throw new Error(`Unknown workflow: ${workflowId}`)
 

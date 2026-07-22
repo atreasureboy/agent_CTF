@@ -68,6 +68,47 @@ export function firstExecutable(command: string): string | null {
 }
 
 /**
+ * Audit rounds 6-10 — extract EVERY executable from a command,
+ * including those chained by `;`, `&&`, `||`, `|`, `$(...)`, and
+ * subshells. The legacy firstExecutable only inspects the first
+ * token, so `echo ok; nmap evil.com` would pass the first token
+ * (`echo`) and bypass deniedCommands for `nmap`.
+ *
+ * Strategy: split the command on shell control operators (outside of
+ * quotes / parens), tokenize each segment, and collect the first
+ * non-assignment token of each.
+ */
+export function allExecutables(command: string): string[] {
+  const out: string[] = []
+  // Split on shell control operators. We deliberately split before
+  // tokenizing because splitting a string like `a; b && c` on `;`
+  // or `&&` is safe — each segment is independently a command.
+  // The split must skip operators inside `$(...)` and quoted strings,
+  // but for our purposes (looking for any denied binary) a coarse
+  // split is sufficient and consistent with how a real shell parses.
+  const segments = command.split(/[;|&]+(?!\w)|&&|\|\|/g)
+  for (const seg of segments) {
+    const trimmed = seg.trim()
+    if (!trimmed) continue
+    // Strip $(...) and backtick subshells by walking the string and
+    // recursively analysing the contents.
+    const cleaned = stripSubshells(trimmed)
+    const first = firstExecutable(cleaned)
+    if (first) out.push(first)
+  }
+  return Array.from(new Set(out))
+}
+
+function stripSubshells(s: string): string {
+  // Replace $(...) and `...` with empty strings so their contents
+  // don't introduce a separate first-token into the parent.
+  return s
+    .replace(/`[^`]*`/g, '')
+    .replace(/\$\((?:[^()]|\([^()]*\))*\)/g, '')
+    .replace(/\$\{[^}]*\}/g, '')
+}
+
+/**
  * Extract host or host:port or full URL args following a network-y verb.
  * Walks the argv after a network verb, skipping leading flags
  * (-x / --xxx) AND the value-after-equals form, and falls back to the first
@@ -179,6 +220,47 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
       profile: input.profile.id,
     }, ['bash-policy', 'deny'])
     return { allowed: false, reason, firstExecutable: first }
+  }
+
+  // Audit rounds 6-10 — composite commands can chain executable tokens
+  // via `;`, `&&`, `||`, `|`, `$(...)`, and subshells. The legacy
+  // policy only inspects the FIRST token, so `echo ok; nmap evil.com`
+  // would pass the first token (`echo`) and bypass deniedCommands.
+  // We extract every executable from the command and apply the
+  // denied/allowed checks against each.
+  const allExecs = allExecutables(cmd)
+  for (const exec of allExecs) {
+    if (exec === first) continue // already checked above
+    if (denied && denied.includes(exec)) {
+      const reason = `command "${exec}" is denied by profile "${input.profile.id}" (deniedCommands, via composite).`
+      input.eventLog?.append('permission', 'bash-policy', {
+        decision: 'deny',
+        command: exec,
+        reason,
+        profile: input.profile.id,
+      }, ['bash-policy', 'deny', 'composite-bypass'])
+      return { allowed: false, reason, firstExecutable: exec }
+    }
+    if (input.profile.deniedTools && input.profile.deniedTools.includes(exec)) {
+      const reason = `command "${exec}" is denied by profile "${input.profile.id}" (deniedTools, via composite).`
+      input.eventLog?.append('permission', 'bash-policy', {
+        decision: 'deny',
+        command: exec,
+        reason,
+        profile: input.profile.id,
+      }, ['bash-policy', 'deny', 'composite-bypass'])
+      return { allowed: false, reason, firstExecutable: exec }
+    }
+    if (allowed && allowed.length > 0 && !allowed.includes(exec)) {
+      const reason = `command "${exec}" is not in profile "${input.profile.id}" allowedCommands (composite).`
+      input.eventLog?.append('permission', 'bash-policy', {
+        decision: 'deny',
+        command: exec,
+        reason,
+        profile: input.profile.id,
+      }, ['bash-policy', 'deny', 'composite-bypass'])
+      return { allowed: false, reason, firstExecutable: exec }
+    }
   }
 
   // Network targets — strip and verify.

@@ -195,6 +195,13 @@ export async function createCTFTaskRuntime(
 
   // ── Step 8 — Wire Job lifecycle events into the TaskState projector.
   const projector = orchestrator.projector
+  // Audit rounds 6-10 — register the canonical TaskWorkspace so jobs
+  // are persisted under the right task dir (rather than the loose/
+  // fallback). Without this register, the project-job test would put
+  // its index file under taskWorkspaceDir/loose instead of
+  // taskWorkspaceDir/jobs, breaking loadTask() recovery.
+  const canonicalTaskDir = harness.taskWorkspace.paths.root
+  harness.jobManager?.registerTaskWorkspace(taskId, canonicalTaskDir)
   const jobUnsub = harness.jobManager?.subscribe((ev) => {
     projector.projectJobEvent(ev, orchestrator)
   }) ?? null

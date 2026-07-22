@@ -724,7 +724,9 @@ describe('§十一 — Profile sync after switchProfile', () => {
     const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
     try {
       orch.switchProfile('crypto')
-      await orch.runWorkflow('unknown_file_triage', {})
+      // Audit rounds 6-10 — crypto.allowedWorkflows now strictly
+      // gates the run; pick a workflow that crypto permits.
+      await orch.runWorkflow('encoding_sweep', {})
       const wfRun = orch.getState().workflowRuns[0]
       expect(wfRun.profileId).toBe('crypto')
     } finally {

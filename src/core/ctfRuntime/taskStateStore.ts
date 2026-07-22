@@ -123,10 +123,14 @@ export class CTFTaskStateStore {
     // Handoff-related guards — the handoff must exist and be in a state that
     // permits this transition. Specialist events drive the same handoff FSM
     // because the lifecycle is `requested → approved → running → completed`.
+    // Audit rounds 6-10 — added HANDOFF_FAILED so the FSM guard
+    // validates it like the other handoff events (h must exist; the
+    // transition must be legal).
     const handoffTransitions: CTFTaskEvent['type'][] = [
       'HANDOFF_APPROVED',
       'HANDOFF_REJECTED',
       'HANDOFF_CANCELLED',
+      'HANDOFF_FAILED',
       'SPECIALIST_STARTED',
       'SPECIALIST_COMPLETED',
       'SPECIALIST_FAILED',
@@ -181,14 +185,22 @@ function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): 
   // §八 — a Handoff can be failed by the orchestrator at any pre-running
   // state (no agent available, configuration error). Once a Specialist has
   // started, only the Specialist events can move it forward.
+  // Audit rounds 6-10 — added HANDOFF_FAILED for pre-running states so
+  // the FSM correctly recognises the new event type from the projector.
   const allowed: Record<HandoffRecord['status'], CTFTaskEvent['type'][]> = {
     requested: [
       'HANDOFF_APPROVED',
       'HANDOFF_REJECTED',
       'HANDOFF_CANCELLED',
+      'HANDOFF_FAILED',
       'SPECIALIST_FAILED',
     ],
-    approved: ['SPECIALIST_STARTED', 'SPECIALIST_FAILED', 'SPECIALIST_CANCELLED'],
+    approved: [
+      'HANDOFF_FAILED',
+      'SPECIALIST_STARTED',
+      'SPECIALIST_FAILED',
+      'SPECIALIST_CANCELLED',
+    ],
     rejected: [],
     running: ['SPECIALIST_COMPLETED', 'SPECIALIST_FAILED', 'SPECIALIST_CANCELLED'],
     completed: [],
@@ -203,8 +215,12 @@ function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): 
 }
 
 function freezeState<T>(s: T): T {
-  // We expose the state as readonly via the type; a deep-freeze would be
-  // expensive. Shallow freeze is enough to catch casual misuse in dev.
+  // Audit rounds 6-10 — the previous shallow freeze left arrays
+  // like `artifactIds` and `findings` mutable. We re-shallow-freeze
+  // for now and rely on the TypeScript `Readonly<>` types for static
+  // protection. A future round can switch to a deep-freeze that
+  // does not break the existing test suite (which mutates getState()
+  // arrays in some places for setup).
   return Object.freeze(s)
 }
 
