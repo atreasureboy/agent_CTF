@@ -91,7 +91,6 @@ export class CTFTaskOrchestrator {
 
   /** In-flight Workflow runs by workflowRunId. */
   private readonly inFlightWorkflows = new Map<string, Promise<WorkflowRunResult>>()
-  private readonly workflowUnsubscribes = new Map<string, () => void>()
   private readonly locks = new Map<string, { promise: Promise<unknown>; abort: AbortController }>()
   /** Phase 1.7 §八 — track Main Agent runs too so dispose/cancel can await them. */
   private readonly inFlightAgentRuns = new Map<string, Promise<AgentRunResult>>()
@@ -321,14 +320,10 @@ export class CTFTaskOrchestrator {
       }
       this.store.apply({ type: 'WORKFLOW_STARTED', workflowRun: record })
 
-      // Subscribe to terminal events so we can finalise the record cleanly.
-      const off = this.store.subscribe((ev) => {
-        if (ev.type === 'JOB_RECORDED' && ev.job.workflowRunId === id) {
-          // No-op — the global lifecycle handler already mirrors into jobs[].
-        }
-      })
-      this.workflowUnsubscribes.set(id, off)
-
+      // §八.5 — Phase 1.7 deletes the per-run no-op subscription. The
+      // global projector subscription in createCTFTaskRuntime already
+      // mirrors JOB_RECORDED events into state.jobs[], so per-run
+      // subscriptions are not needed.
       const before = this.projector.captureSnapshot()
       const p = (async () => {
         try {
@@ -357,6 +352,13 @@ export class CTFTaskOrchestrator {
               summary: `partial (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
             })
           } else {
+            // Note: r.status === 'failed' is also mapped here because
+            // some legacy workflows report 'failed' but still produced
+            // step outcomes; the test suite expects a single
+            // WORKFLOW_COMPLETED with the status embedded in the
+            // summary. Future work (§八.4 strict mapping) should emit
+            // WORKFLOW_FAILED separately when the engine semantics
+            // distinguish 'failed' from 'partial'.
             this.safeApply({
               type: 'WORKFLOW_COMPLETED',
               workflowRunId: id,
@@ -378,9 +380,6 @@ export class CTFTaskOrchestrator {
         return await p
       } finally {
         this.inFlightWorkflows.delete(id)
-        const sub = this.workflowUnsubscribes.get(id)
-        if (sub) sub()
-        this.workflowUnsubscribes.delete(id)
       }
     })
   }
