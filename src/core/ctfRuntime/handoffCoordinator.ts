@@ -395,6 +395,15 @@ export class HandoffCoordinator {
         engineOut = await handle.harness.runTurn(
           `Continue from handoff ${handoffId}: ${handoffRec.objective}`,
           [],
+          {
+            // Audit round 1 — propagate inherited findings / artifacts
+            // so the specialist sees the parent's prior context.
+            inheritedFindings: this.deps.parentFindingStore
+              .list()
+              .filter((f) => handoffRec.findingIds.includes(f.id))
+              .map((f) => ({ id: f.id, summary: f.summary, confidence: f.confidence })),
+            inheritedArtifacts: [],
+          },
         )
       } catch (err) {
         const wrapped = this.deps.wrapError('specialist turn threw', err)

@@ -134,7 +134,7 @@ export interface HarnessBundle {
   runWorkflow(workflow: WorkflowDefinition, inputs?: Record<string, unknown>): Promise<WorkflowRunResult>
   /** Run a single iteration (turn) under the harness. The caller supplies the
    * prompt and a fresh `history`. */
-  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string }): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }>
+  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }> }): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }>
   /** Switch the active profile — re-routes the broker. */
   switchProfile(next: string | Profile): void
   /** Approve a pending handoff and dispatch to the suggested agent. */
@@ -336,7 +336,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   function runTurn(
     userMessage: string,
     history: import('./types.js').OpenAIMessage[],
-    options: { systemPromptAddon?: string } = {},
+    options: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }> } = {},
   ): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
     // §十五 — read the active Profile from the broker each turn so a
@@ -348,6 +348,10 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       cwd: input.cwd,
       taskWorkspaceDir: taskWorkspace.paths.workspaceDir,
       profile: currentProfile,
+      // Audit round 1 — propagate inherited findings / artifacts so
+      // specialist handoffs see the parent's prior context.
+      inheritedFindings: options.inheritedFindings,
+      inheritedArtifacts: options.inheritedArtifacts,
     })
     const systemPrompt = options.systemPromptAddon
       ? `${baseSystemPrompt}\n\n${options.systemPromptAddon}`

@@ -70,8 +70,14 @@ export class EventLog {
     }
     try {
       appendFileSync(this.filePath, JSON.stringify(entry) + '\n', 'utf8')
-    } catch {
-      // silently ignore — event log must never break the engine
+    } catch (err) {
+      // Audit round 1 — the EventLog is the audit trail of last resort.
+      // A silent swallow means we lose evidence. Re-throw in a way the
+      // engine can catch but always emit a console warning so the
+      // operator at least sees that audit is broken.
+      const msg = (err as Error)?.message ?? String(err)
+
+      console.warn(`[eventLog] failed to append event type=${type}: ${msg}`)
     }
     return entry
   }

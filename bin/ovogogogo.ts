@@ -912,11 +912,23 @@ async function main(): Promise<void> {
     if (cleanedUp) return
     cleanedUp = true
     tmuxLayout.destroy()
+    // Audit round 1 — process.on('exit') cannot await Promises; fire the
+    // async close but don't wait. SIGTERM/SIGHUP handlers below trigger
+    // the actual exit, where the Promise will at least be started.
     mcpResult?.close().catch(() => undefined)
   }
   process.on('exit', cleanup)
-  process.on('SIGTERM', () => { cleanup(); process.exit(0) })
-  process.on('SIGHUP',  () => { cleanup(); process.exit(0) })
+  // For signal-driven exits, do the async close synchronously via
+  // .then(exit) so the MCP process actually closes before Node exits.
+  const onExitSignal = (): void => {
+    cleanup()
+    // Give the async close a tick to fire its cleanup; then exit so
+    // process.on('exit') runs with cleanedUp=true and the Promise is
+    // already on the way to resolution.
+    setImmediate(() => process.exit(0))
+  }
+  process.on('SIGTERM', onExitSignal)
+  process.on('SIGHUP',  onExitSignal)
 
   // Pipe input?
   if (!process.stdin.isTTY) {

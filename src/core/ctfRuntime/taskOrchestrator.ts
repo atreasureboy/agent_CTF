@@ -560,11 +560,11 @@ export class CTFTaskOrchestrator {
     if (!profile) throw new Error(`Unknown profile: ${nextProfileId}`)
     const prev = this.store.getState().activeProfileId
     if (prev === profile.id) return
-    // Phase 1.7 audit round 1 — the three-step switch (ProfileStore →
-    // store event → broker.setProfile) is wrapped in a single try so
-    // any failure during step 2/3 surfaces an error and the ProfileStore
-    // can be rolled back to the previous value. Without this, a
-    // partial switch leaves ProfileStore and broker out of sync.
+    // Audit round 1 — capture the previous Profile object so the
+    // rollback actually rolls back. (The previous round's
+    // `switchTo(getCurrent())` was a no-op because getCurrent() was
+    // already the new value after step 1.)
+    const prevProfile = this.profileStore.getCurrent()
     try {
       // 1. Atomic switch in the ProfileStore (every reader observes it).
       this.profileStore.switchTo(profile)
@@ -577,11 +577,15 @@ export class CTFTaskOrchestrator {
       // 3. Re-publish through the broker's public setter (no private writes).
       this.mainHarness.broker.setProfile(profile)
     } catch (err) {
-      // Roll back the ProfileStore so the runtime stays consistent. The
-      // previous profile is looked up fresh; if it cannot be found, the
-      // runtime stays in a partially-updated state but the surface API
-      // refuses the bad id and propagates the error.
-      this.profileStore.switchTo(this.profileStore.getCurrent())
+      // Roll back the ProfileStore to the previous profile so the runtime
+      // stays consistent. We restore the broker first (most public-facing
+      // surface) then the store.
+      try {
+        this.mainHarness.broker.setProfile(prevProfile)
+        this.profileStore.switchTo(prevProfile)
+      } catch {
+        // Rollback itself failed — re-throw the original error.
+      }
       throw err
     }
   }
