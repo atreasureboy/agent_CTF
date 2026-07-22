@@ -93,6 +93,10 @@ export class FindingStore {
       artifactIds: input.artifactIds ?? [],
       recommendedNextActions: input.recommendedNextActions,
       suggestedAgent: input.suggestedAgent,
+      // §十三.3 — propagate run-id so the projector can filter by it.
+      agentRunId: input.agentRunId,
+      workflowRunId: input.workflowRunId,
+      handoffId: input.handoffId,
       createdAt: new Date().toISOString(),
     }
     appendFileSync(this.filePath, JSON.stringify(f) + '\n', 'utf8')

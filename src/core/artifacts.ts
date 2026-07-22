@@ -119,6 +119,10 @@ export class ArtifactStore {
       createdAt: new Date().toISOString(),
       path: relPath,
       source: input.source,
+      // §十三.3 — propagate run-id so the projector can filter by it.
+      agentRunId: input.agentRunId,
+      workflowRunId: input.workflowRunId,
+      handoffId: input.handoffId,
     }
     appendFileSync(this.metaPath, JSON.stringify(meta) + '\n', 'utf8')
     return meta
@@ -146,6 +150,10 @@ export class ArtifactStore {
       size: buf.length,
       sha256: sha,
       summary: summarize(buf),
+      // §十三.3 — propagate run-id so the projector can filter by it.
+      agentRunId: input.agentRunId,
+      workflowRunId: input.workflowRunId,
+      handoffId: input.handoffId,
       createdAt: new Date().toISOString(),
       path: relPath,
       source: input.source,

@@ -329,8 +329,10 @@ export class CTFTaskOrchestrator {
         try {
           const r = await this.mainHarness.runWorkflow(wf, inputs ?? {})
           // Project any Findings/Artifacts emitted by workflow steps.
+          // §十三.3 — pass workflowRunId so the projector filters by it.
           const projection = this.projector.projectDiff(before, {
             producerProfileId: currentProfileId,
+            workflowRunId: id,
           })
           for (const ev of projection.events) this.safeApply(ev)
           if (r.status === 'cancelled') {
@@ -351,14 +353,32 @@ export class CTFTaskOrchestrator {
               workflowRunId: id,
               summary: `partial (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
             })
+          } else if (r.status === 'failed' && r.stepOutcomes.length === 0) {
+            // §八.4 — explicit failure with zero step outcomes → no
+            // partial credit. Mark WORKFLOW_FAILED so audits can
+            // distinguish from partial / success.
+            this.safeApply({
+              type: 'WORKFLOW_FAILED',
+              workflowRunId: id,
+              error: 'workflow failed (no step outcomes)',
+            })
+          } else if (r.status === 'failed') {
+            // Legacy workflows sometimes report 'failed' but still
+            // produced step outcomes — map to WORKFLOW_COMPLETED with
+            // the status embedded in the summary. Future work can
+            // introduce a distinct 'partial' or 'completed-with-errors'
+            // state if needed.
+            this.safeApply({
+              type: 'WORKFLOW_COMPLETED',
+              workflowRunId: id,
+              summary: `failed (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
+            })
           } else {
-            // Note: r.status === 'failed' is also mapped here because
-            // some legacy workflows report 'failed' but still produced
-            // step outcomes; the test suite expects a single
-            // WORKFLOW_COMPLETED with the status embedded in the
-            // summary. Future work (§八.4 strict mapping) should emit
-            // WORKFLOW_FAILED separately when the engine semantics
-            // distinguish 'failed' from 'partial'.
+            // Unknown status — keep the legacy mapping so we don't drop
+            // step outcomes. Audit round 5 flagged this branch as
+            // hiding the 'failed' case; that case is now handled by the
+            // explicit branch above. This catch-all is for unknown
+            // future status values (e.g. a new WorkflowRunStatus).
             this.safeApply({
               type: 'WORKFLOW_COMPLETED',
               workflowRunId: id,
@@ -456,7 +476,11 @@ export class CTFTaskOrchestrator {
             producedArtifactIds: [],
           }
         }
-        const projection = this.projector.projectDiff(before, { producerProfileId: profileId })
+        const projection = this.projector.projectDiff(before, {
+          producerProfileId: profileId,
+          // §十三.3 — pass agentRunId so the projector filters by it.
+          agentRunId,
+        })
         for (const ev of projection.events) this.store.apply(ev)
         this.store.apply({
           type: 'AGENT_RUN_OUTPUT_RECORDED',
@@ -655,43 +679,58 @@ export class CTFTaskOrchestrator {
   }
 
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    // Phase 1.7 §九 — proper key lock. Each key holds the in-flight Promise
-    // for that key; the next caller awaits it before running. After the
-    // current operation resolves (success or failure), the Map entry is
-    // removed so long-running sessions do not leak. Errors in `fn` do not
-    // prevent cleanup. If the lock-holding operation is aborted before it
-    // resolves, the abort propagates to the queued waiters via the
-    // Task-level abort signal.
+    // Phase 1.7 §九 — proper key lock. Each key holds a Promise that
+    // resolves only AFTER the holder's `fn()` completes (success or
+    // failure). This guarantees that the next caller awaits the actual
+    // work — not just the barrier. The previous implementation had a
+    // bug: `state.promise = barrier` resolved before `fn()` ran, so
+    // subsequent callers saw the barrier as done and ran `fn()`
+    // concurrently with the original (audit round 5 caught this).
+    //
+    // Properties:
+    //   1. Same key: serialised (next caller runs after prev's fn ends).
+    //   2. Different key: parallel.
+    //   3. After completion the Map entry is removed (no leak).
+    //   4. Failed fn still releases the lock.
+    //   5. No unhandled rejection.
+    //   6. Task-level abort releases waiters that are blocked on prev.
     type LockState = { promise: Promise<unknown>; abort: AbortController }
     const prev = this.locks.get(key) as LockState | undefined
     const myAbort = new AbortController()
-    // Wire Task-level abort so a cancel/dispose while waiting releases
-    // the waiter immediately rather than blocking the cancel path.
     const onAbort = (): void => myAbort.abort()
     if (this.abort.signal.aborted) myAbort.abort()
     else this.abort.signal.addEventListener('abort', onAbort, { once: true })
-    const myPromise = (async () => {
-      if (prev) {
-        try {
-          await prev.promise
-        } catch {
-          // The holder failed; we still run our operation.
+
+    // Construct the holder's Promise. It awaits `prev` (so subsequent
+    // callers wait for the previous fn to complete — including its body,
+    // not just the barrier), then runs `fn`, and exposes the result /
+    // rejection to whoever awaits `state.promise`.
+    const state: LockState = {
+      promise: (async (): Promise<unknown> => {
+        if (prev) {
+          try {
+            await prev.promise
+          } catch {
+            /* prev failed — still run this */
+          }
         }
-      }
-      if (myAbort.signal.aborted) throw new Error(`lock ${key} aborted before run`)
-    })()
-    const state: LockState = { promise: myPromise, abort: myAbort }
-    this.locks.set(key, state)
-    try {
-      await myPromise
-      return await fn()
-    } finally {
+        if (myAbort.signal.aborted) {
+          throw new Error(`lock ${key} aborted before run`)
+        }
+        return await fn()
+      })(),
+      abort: myAbort,
+    }
+    // Attach the cleanup to the promise itself so it fires on
+    // settle (success / failure / cancel) regardless of which path
+    // the caller took to await it.
+    state.promise = state.promise.finally(() => {
       this.abort.signal.removeEventListener('abort', onAbort)
       myAbort.abort()
-      // Only clear the entry if we still own it (no one else queued after
-      // us and overwrote it). Race-safe in single-threaded JS.
       if (this.locks.get(key) === state) this.locks.delete(key)
-    }
+    })
+    this.locks.set(key, state)
+    return state.promise as Promise<T>
   }
 }
 
