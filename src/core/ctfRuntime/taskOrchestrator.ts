@@ -437,6 +437,22 @@ export class CTFTaskOrchestrator {
     const runP = (async () => {
       try {
         const r = await this.mainHarness.runTurn(userMessage, history)
+        // §4.2 / §十七 — when the engine returns successfully but the
+        // Task-level abort signal has fired, the LLM call was actually
+        // cancelled mid-stream. Map this to 'cancelled' rather than
+        // 'completed' so the run reflects reality.
+        if (this.abort.signal.aborted) {
+          const msg = `main agent turn cancelled by ${this.abort.signal.reason ?? 'task_abort'}`
+          this.store.apply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason: msg })
+          return {
+            agentRunId,
+            profileId,
+            status: 'cancelled' as const,
+            error: msg,
+            producedFindingIds: [],
+            producedArtifactIds: [],
+          }
+        }
         const projection = this.projector.projectDiff(before, { producerProfileId: profileId })
         for (const ev of projection.events) this.store.apply(ev)
         this.store.apply({
