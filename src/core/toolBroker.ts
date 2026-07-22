@@ -155,7 +155,7 @@ export class ToolBroker {
    *  `private readonly`; this is the only place we mutate it. Object
    *  identity of the new object is preserved by spread. */
   private replaceOpts(next: ToolBrokerOptions): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (this as unknown as { opts: ToolBrokerOptions }).opts = next
   }
 
@@ -426,7 +426,7 @@ export function checkRegistryAvailability(
 ): { toolId: string; missingBinaries: string[] }[] {
   const issues: { toolId: string; missingBinaries: string[] }[] = []
   for (const id of toolIds) {
-    const r = registry.get(id) as RegisteredTool | undefined
+    const r = registry.get(id)
     if (!r) {
       issues.push({ toolId: id, missingBinaries: [`__unknown_tool__`] })
       continue

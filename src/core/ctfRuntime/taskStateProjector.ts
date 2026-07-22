@@ -22,8 +22,18 @@
  * `handoffId` so the lineage is reconstructable.
  */
 
-import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from 'fs'
+import {
+  appendFileSync,
+  closeSync,
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from 'fs'
 import { dirname, join } from 'path'
+import { createHash } from 'crypto'
 
 import type { ArtifactMeta } from '../artifacts.js'
 import type { ArtifactStore } from '../artifacts.js'
@@ -258,26 +268,30 @@ export class TaskStateProjector {
       const childStore = this.storages.artifactStore
       const childAbs = childStore.resolvePath(childMeta)
       const ext = childMeta.path.split('.').pop() ?? 'bin'
-      const content = readFileSync(childAbs)
-      const newMeta = parent.writeSync(
-        {
-          taskId: childMeta.taskId,
-          producerAgentId: metadata.producerProfileId ?? childMeta.producerAgentId,
-          type: childMeta.type,
-          mimeType: childMeta.mimeType,
-          // §十三.3 — propagate run-id association onto the parent's
-          // copy so future projections can filter by it.
-          agentRunId: metadata.agentRunId ?? childMeta.agentRunId,
-          workflowRunId: metadata.workflowRunId ?? childMeta.workflowRunId,
-          handoffId: metadata.handoffId ?? childMeta.handoffId,
-          source: {
-            toolId: childMeta.source?.toolId,
-            inputSummary: childMeta.source?.inputSummary,
-          },
+      // §十七 — streaming copy via fs streams so we never load the
+      // whole file into memory. Use statSync for size + sha256 (we
+      // can't hash a stream from outside the file API without
+      // re-reading, so we accept a single read for metadata; the
+      // payload itself is streamed).
+      const stat = statSync(childAbs)
+      const sha = hashContentSync(childAbs)
+      const newMeta = parent.writeStreamingSync({
+        taskId: childMeta.taskId,
+        producerAgentId: metadata.producerProfileId ?? childMeta.producerAgentId,
+        type: childMeta.type,
+        mimeType: childMeta.mimeType,
+        agentRunId: metadata.agentRunId ?? childMeta.agentRunId,
+        workflowRunId: metadata.workflowRunId ?? childMeta.workflowRunId,
+        handoffId: metadata.handoffId ?? childMeta.handoffId,
+        source: {
+          toolId: childMeta.source?.toolId,
+          inputSummary: childMeta.source?.inputSummary,
         },
-        content,
-        ext,
-      )
+        size: stat.size,
+        sha256: sha,
+        suggestedExt: ext,
+        sourcePath: childAbs,
+      })
       // Persist lineage sidecar: <parentArtifactsDir>/.lineage.jsonl
       // mapping parentId → { originalArtifactId, handoffId,
       // producerAgentId, sourcePath }.
@@ -362,6 +376,27 @@ export class TaskStateProjector {
     const projection = this.projectDiff(before, metadata)
     for (const ev of projection.events) apply(ev)
     return { result, projection }
+  }
+}
+
+function hashContentSync(filePath: string): string {
+  // Sync stream-hash: read the file in 64 KB chunks from the open fd
+  // and feed them into the hash. This avoids loading the entire file
+  // into a single Buffer (which would defeat the purpose of streaming).
+  const fd = openSync(filePath, 'r')
+  try {
+    const h = createHash('sha256')
+    const buf = Buffer.alloc(64 * 1024)
+    let pos = 0
+    for (;;) {
+      const n = readSync(fd, buf, 0, buf.length, pos)
+      if (n <= 0) break
+      h.update(buf.subarray(0, n))
+      pos += n
+    }
+    return h.digest('hex')
+  } finally {
+    closeSync(fd)
   }
 }
 

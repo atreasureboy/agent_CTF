@@ -31,13 +31,14 @@ import type { Finding } from '../findings.js'
 import type { ArtifactMeta } from '../artifacts.js'
 import type { WorkflowRunResult } from '../workflowDefinition.js'
 import { createHarness, type HarnessBundle } from '../harness.js'
-import { Renderer } from '../../ui/renderer.js'
+import type { Renderer } from '../../ui/renderer.js'
 import type OpenAI from 'openai'
 import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { CTFTaskStateStore, TaskAlreadyCompletedError } from './taskStateStore.js'
-import { CTFProfileStore, type ProfileStore } from './profileStore.js'
+import type { CTFProfileStore} from './profileStore.js';
+import { type ProfileStore } from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
@@ -695,7 +696,7 @@ export class CTFTaskOrchestrator {
     //   5. No unhandled rejection.
     //   6. Task-level abort releases waiters that are blocked on prev.
     type LockState = { promise: Promise<unknown>; abort: AbortController }
-    const prev = this.locks.get(key) as LockState | undefined
+    const prev = this.locks.get(key)
     const myAbort = new AbortController()
     const onAbort = (): void => myAbort.abort()
     if (this.abort.signal.aborted) myAbort.abort()

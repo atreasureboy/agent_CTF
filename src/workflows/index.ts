@@ -5,7 +5,7 @@
  * the canonical set into a passed-in registry.
  */
 
-import { WorkflowRegistry } from '../core/workflowRegistry.js'
+import type { WorkflowRegistry } from '../core/workflowRegistry.js'
 import { BUILTIN_WORKFLOWS } from './builtins.js'
 
 /**

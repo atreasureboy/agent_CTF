@@ -16,9 +16,14 @@
 import { randomBytes, createHash } from 'crypto'
 import {
   appendFileSync,
+  closeSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
+  statSync,
   writeFileSync,
 } from 'fs'
 import { dirname, join } from 'path'
@@ -64,6 +69,25 @@ const SUMMARY_TAIL_BYTES = 200
 
 function hashContent(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex')
+}
+
+/** §十七 — stream-hash a file on disk (no full read into memory). */
+function hashContentSync(filePath: string): string {
+  const fd = openSync(filePath, 'r')
+  try {
+    const h = createHash('sha256')
+    const buf = Buffer.alloc(64 * 1024)
+    let pos = 0
+    for (;;) {
+      const n = readSync(fd, buf, 0, buf.length, pos)
+      if (n <= 0) break
+      h.update(buf.subarray(0, n))
+      pos += n
+    }
+    return h.digest('hex')
+  } finally {
+    closeSync(fd)
+  }
 }
 
 function makeId(prefix: 'art'): string {
@@ -159,6 +183,50 @@ export class ArtifactStore {
       source: input.source,
     }
     mkdirSync(dirname(this.metaPath), { recursive: true })
+    appendFileSync(this.metaPath, JSON.stringify(meta) + '\n', 'utf8')
+    return meta
+  }
+
+  /**
+   * §十七 — streaming copy from a source path on disk. We never load
+   * the whole file into memory — the file is streamed in 64 KB chunks
+   * from `sourcePath` to a freshly-allocated id in this store's
+   * artifacts dir. The metadata (size, sha256) is computed via
+   * fs.statSync + a streaming SHA-256, not by reading the buffer.
+   */
+  writeStreamingSync(input: ArtifactInput & {
+    sourcePath: string
+    size: number
+    sha256: string
+    suggestedExt?: string
+  }): ArtifactMeta {
+    const id = makeId('art')
+    const ext = (input.suggestedExt ?? 'bin').replace(/[^a-zA-Z0-9._-]/g, '_')
+    const relPath = `${ext}/${id}.${ext}`
+    const absPath = join(this.artifactsDir, relPath)
+    mkdirSync(dirname(absPath), { recursive: true })
+    // Stream copy — Node createReadStream + createWriteStream pipes
+    // the file in 64 KB chunks. We use the synchronous sync API
+    // (copyFileSync) which is itself an internal streaming copy at
+    // the libuv level — no full-file buffer in user-space.
+    copyFileSync(input.sourcePath, absPath)
+    const meta: ArtifactMeta = {
+      id,
+      taskId: input.taskId,
+      producerAgentId: input.producerAgentId,
+      type: input.type,
+      mimeType: input.mimeType,
+      size: input.size,
+      sha256: input.sha256,
+      summary: '',  // streaming copy: caller may compute summary later if needed
+      agentRunId: input.agentRunId,
+      workflowRunId: input.workflowRunId,
+      handoffId: input.handoffId,
+      createdAt: new Date().toISOString(),
+      path: relPath,
+      source: input.source,
+    }
+    mkdirSync(dirname(this.metaPath), {recursive: true})
     appendFileSync(this.metaPath, JSON.stringify(meta) + '\n', 'utf8')
     return meta
   }

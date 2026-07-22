@@ -161,5 +161,5 @@ export function createDefaultContestConfig(opts: { cwd: string }): ContestConfig
   return parseContestScope({
     allowedFilesRoot: opts.cwd,
     allowPublicNetwork: false,
-  }) as ContestConfig
+  })
 }

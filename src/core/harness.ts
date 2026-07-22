@@ -37,9 +37,9 @@ import { ContestScopeChecker, type ContestScope } from './contestScope.js'
 import { ToolBroker } from './toolBroker.js'
 import { ToolFirstPolicy } from './toolFirstPolicy.js'
 import { BackgroundJobManager } from './backgroundJobs.js'
-import { ArtifactStore } from './artifacts.js'
-import { FindingStore } from './findings.js'
-import { HandoffStore } from './handoff.js'
+import type { ArtifactStore } from './artifacts.js'
+import type { FindingStore } from './findings.js'
+import type { HandoffStore } from './handoff.js'
 import { createDefaultContestConfig, loadContestConfig, mergeContestConfig } from './contestConfig.js'
 import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
 import type { ProfileStore } from './ctfRuntime/profileStore.js'
@@ -159,7 +159,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   const mergedConfig = input.contestScope
     ? mergeContestConfig(
         baseConfig,
-        input.contestScope as Partial<Parameters<typeof mergeContestConfig>[1]>,
+        input.contestScope,
       )
     : baseConfig
   const contestScope = new ContestScopeChecker(mergedConfig)
@@ -183,7 +183,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   const profileStore: ProfileStore = input.profileStore ?? {
     getCurrent: () => localProfile,
     switchTo: (next) => {
-      localProfile = next as Profile
+      localProfile = next
     },
     subscribe: () => () => {},
   }
@@ -321,7 +321,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     // Use the broker's public setter — direct private-field writes are
     // forbidden. The Orchestrator coordinates atomic profile changes across
     // TaskState + Broker + tool exposure.
-    broker.setProfile(p as Profile)
+    broker.setProfile(p)
   }
 
   function cancelAllJobs(reason: string): number {
@@ -356,7 +356,11 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       client: input.client,
       cwd: input.cwd,
       sessionDir: taskWorkspace.paths.workspaceDir,
-      apiKey: process.env.OPENAI_API_KEY ?? 'test-key',
+      // §七 — no 'test-key' fallback. If no apiKey is supplied, the
+      // engine will surface a clear error from the OpenAI client when
+      // it tries to make a request. The 'gpt-4o' default below is a
+      // model name, not a fake credential.
+      apiKey: process.env.OPENAI_API_KEY ?? '',
       baseURL: process.env.OPENAI_BASE_URL,
       model: 'gpt-4o',
       maxIterations: 60,
@@ -415,7 +419,7 @@ function resolveProfile(input: string | Profile | (string | Profile)[]): Profile
     if (found) return found
     throw new Error(`No builtin profile named "${input}". Known: ${Object.keys(PROFILES).join(', ')}`)
   }
-  return parseCapabilityProfile(input as unknown as Profile) as Profile
+  return parseCapabilityProfile(input)
 }
 
 /** Convenience: list available built-in profiles. */

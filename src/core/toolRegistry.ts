@@ -117,7 +117,7 @@ export class ToolRegistry {
    * never sees tools outside the profile.
    */
   getOpenAIToolDefinitions(profile: CapabilityProfile): OpenAIToolDefinition[] {
-    return this.resolveFor(profile).map((impl) => impl.definition as OpenAIToolDefinition)
+    return this.resolveFor(profile).map((impl) => impl.definition)
   }
 
   /**
