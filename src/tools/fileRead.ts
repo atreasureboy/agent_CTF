@@ -4,7 +4,9 @@
  */
 
 import { readFile } from 'fs/promises'
+import { resolve } from 'path'
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../core/types.js'
+import type { ContestScopeChecker } from '../core/contestScope.js'
 import { READ_FILE_DESCRIPTION } from '../prompts/tools.js'
 
 export interface ReadFileInput {
@@ -45,15 +47,33 @@ export class FileReadTool implements Tool {
     },
   }
 
-  async execute(input: Record<string, unknown>, _context: ToolContext): Promise<ToolResult> {
+  async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const { file_path, offset, limit } = input as unknown as ReadFileInput
 
     if (!file_path || typeof file_path !== 'string') {
       return { content: 'Error: file_path is required', isError: true }
     }
 
+    // Audit P1 — file-scope gate. Refuse reads outside the contest's
+    // allowedFilesRoot BEFORE opening the file. Mirrors the
+    // WebFetch SSRF pattern: read context.__ctf, consult contestScope.
+    const ctfCtx = (context as unknown as {
+      __ctf?: { contestScope?: ContestScopeChecker }
+    }).__ctf
+    const scope = ctfCtx?.contestScope
+    if (scope && typeof scope.assertFile === 'function') {
+      try {
+        scope.assertFile(resolve(file_path))
+      } catch (err) {
+        return { content: `Read refused: ${(err as Error).message}`, isError: true }
+      }
+    }
+
     try {
-      const raw = await readFile(file_path, 'utf8')
+      // Audit P1 — pass the context's AbortSignal to fs.readFile so a
+      // Ctrl+C during a slow file read (e.g. over a network mount)
+      // actually cancels the read instead of blocking the turn.
+      const raw = await readFile(resolve(file_path), { encoding: 'utf8', signal: context.signal })
       const lines = raw.split('\n')
       const total = lines.length
 
@@ -79,6 +99,9 @@ export class FileReadTool implements Tool {
       }
       if (error.code === 'EACCES') {
         return { content: `Permission denied: ${file_path}`, isError: true }
+      }
+      if ((error as { name?: string }).name === 'AbortError') {
+        return { content: 'Read cancelled.', isError: true }
       }
       return { content: `Error reading file: ${error.message}`, isError: true }
     }

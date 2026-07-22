@@ -42,6 +42,15 @@ export interface RunContext {
   workflowId: string
   inputs: Record<string, unknown>
   capturedOutputs: Map<string, string>
+  /**
+   * §十三.3 — workflow run id (assigned by the Orchestrator) and
+   * originating agent run id, threaded into the RunContext so the
+   * broker can attribute emitted findings/artifacts to the producing
+   * run. Optional because unit tests and direct callers may not have a
+   * Orchestrator-issued id; pass `undefined` for those.
+   */
+  workflowRunId?: string
+  agentRunId?: string
 }
 
 export interface EngineOptions {

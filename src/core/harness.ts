@@ -137,7 +137,11 @@ export interface HarnessBundle {
   renderer: Renderer | undefined
   eventLog: EventLog
   /** Run a workflow; returns the engine's WorkflowRunResult. */
-  runWorkflow(workflow: WorkflowDefinition, inputs?: Record<string, unknown>): Promise<WorkflowRunResult>
+  runWorkflow(
+    workflow: WorkflowDefinition,
+    inputs?: Record<string, unknown>,
+    options?: { workflowRunId?: string },
+  ): Promise<WorkflowRunResult>
   /** Run a single iteration (turn) under the harness. The caller supplies the
    * prompt and a fresh `history`. */
   runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }> }): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }>
@@ -293,14 +297,42 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   // Renderer may be undefined in non-CLI mode.
   const renderer = input.renderer
 
+  // §十三.3 — track the most recently-issued agent run id so workflow
+  // steps can attribute emitted findings/artifacts to the originating
+  // run. Updated by runTurn() at start and clear of the broker
+  // propagation path (specialists set their own id when spawned).
+  let lastAgentRunId: string | undefined
+  function currentAgentRunId(): string | undefined {
+    return lastAgentRunId
+  }
+  function setCurrentAgentRunId(id: string | undefined): void {
+    lastAgentRunId = id
+  }
+
   // Convenience: run a workflow under the broker
-  async function runWorkflow(workflow: WorkflowDefinition, runInputs: Record<string, unknown> = {}): Promise<WorkflowRunResult> {
+  async function runWorkflow(
+    workflow: WorkflowDefinition,
+    runInputs: Record<string, unknown> = {},
+    options: { workflowRunId?: string } = {},
+  ): Promise<WorkflowRunResult> {
+    // §十三.3 — use the orchestrator-issued workflow run id when provided
+    // so the WorkflowRunRecord, the broker's emitted Findings/Artifacts,
+    // and the projector's run-id filter all reference the SAME id.
+    // Falls back to a freshly-generated id when no Orchestrator is
+    // wired (legacy callers / unit tests).
+    const workflowRunId =
+      options.workflowRunId ?? `wf_${Math.random().toString(16).slice(2, 14)}`
     return workflowEngine.run(workflow, {
       taskId,
       agentId: profile.id,
       workflowId: workflow.id,
       inputs: runInputs,
       capturedOutputs: new Map(),
+      // The originating agent run id (if any) is forwarded so tools
+      // triggered from a specialist handoff can attribute emitted
+      // findings/artifacts back to the parent run as well.
+      workflowRunId,
+      agentRunId: currentAgentRunId(),
     }, {
       // Phase 1.7 §四 — pass the Task-level abort signal to WorkflowEngine
       // so cancel() can short-circuit the workflow's run loop.
@@ -347,6 +379,11 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     options: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }> } = {},
   ): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
+    // §十三.3 — issue an agent run id at the start of each main turn so
+    // subsequent workflow steps and tool calls can attribute their
+    // outputs to the originating run via the broker/projector.
+    const agentRunId = `run_${Math.random().toString(16).slice(2, 14)}`
+    setCurrentAgentRunId(agentRunId)
     // §十五 — read the active Profile from the broker each turn so a
     // switchProfile() call between turns is reflected in the next prompt.
     // The closure-captured `profile` is only the initial fallback (used when
@@ -385,6 +422,10 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // execution time, which causes repeated retry loops).
       profile: currentProfile,
       systemPrompt,
+      // §十三.3 — pass the agent run id (issued above) into the engine
+      // so tool calls emitted during this turn carry the right run
+      // attribution, and the orchestrator's projector can filter by it.
+      agentRunId,
       // Phase 1.7 §四.2 — forward the Task-level abort signal into the
       // engine so cancelling the Task aborts the in-flight LLM call.
       signal: taskExecutionContext.abortSignal,

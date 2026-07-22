@@ -204,12 +204,17 @@ export interface CompactResult {
  * Compact the conversation by summarizing older messages.
  * The engine gates this call — by the time we're here, compaction is needed.
  * Returns new (smaller) messages array.
+ *
+ * The `signal` is forwarded into the summary LLM call so a parent
+ * abort (Task-level cancel / Ctrl+C) interrupts summarization instead
+ * of leaving a hanging request behind.
  */
 export async function maybeCompact(
   client: OpenAI,
   model: string,
   messages: OpenAIMessage[],
   strategy: CompressionStrategy = 'proportional',
+  signal?: AbortSignal,
 ): Promise<CompactResult> {
   const originalTokens = estimateTokens(messages)
   const keepRecent = keepRecentFor(strategy)
@@ -244,16 +249,19 @@ export async function maybeCompact(
 
   let summaryText: string
   try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0,
-      max_tokens: SUMMARY_OUTPUT_RESERVE,
-      // No tools — we explicitly don't want tool calls here
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: [
+          { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0,
+        max_tokens: SUMMARY_OUTPUT_RESERVE,
+        // No tools — we explicitly don't want tool calls here
+      },
+      signal ? { signal } : undefined,
+    )
     summaryText = response.choices[0]?.message?.content ?? ''
   } catch {
     // If summarization fails, return original messages unchanged

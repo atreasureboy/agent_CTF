@@ -11,6 +11,7 @@
  */
 
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../core/types.js'
+import type { ContestScopeChecker } from '../core/contestScope.js'
 
 const SEARCH_TIMEOUT_MS = 15_000
 
@@ -25,20 +26,84 @@ interface SearchResult {
   snippet: string
 }
 
+/**
+ * Audit P1 #23 — Compose an AbortController that fires when EITHER the
+ * search-specific timeout elapses OR the caller's `context.signal` aborts
+ * (Ctrl+C / parent cancellation). Mirrors the WebFetch pattern at
+ * webFetch.ts:105-115. Also returns a `tryScope` helper that calls the
+ * CTF contest-scope `assertNetwork` so SSRF-style probes against the
+ * search API get refused before the fetch leaves the harness.
+ */
+function composeAbort(
+  context: ToolContext,
+  timeoutMs: number,
+): { controller: AbortController; clearTimer: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort('timeout'), timeoutMs)
+  if (context.signal) {
+    if (context.signal.aborted) {
+      // Already cancelled — short-circuit so the fetch never runs.
+      controller.abort('user_cancelled')
+    } else {
+      context.signal.addEventListener(
+        'abort',
+        () => { controller.abort('user_cancelled') },
+        { once: true },
+      )
+    }
+  }
+  return {
+    controller,
+    clearTimer: () => clearTimeout(timer),
+  }
+}
+
+function getAssertNetwork(context: ToolContext): ((host: string) => { allowed: boolean; reason?: string }) | null {
+  const ctfCtx = (context as unknown as {
+    __ctf?: { contestScope?: ContestScopeChecker }
+  }).__ctf
+  const scope = ctfCtx?.contestScope
+  if (!scope || typeof scope.assertNetwork !== 'function') return null
+  const assertFn = scope.assertNetwork
+  // assertNetwork throws on denial — wrap it so callers get a boolean.
+  return (host: string) => {
+    try {
+      assertFn(host)
+      return { allowed: true }
+    } catch (err) {
+      return { allowed: false, reason: (err as Error).message }
+    }
+  }
+}
+
 // ─── Backend: DuckDuckGo Instant Answer (no key) ────────────
 
-async function duckduckgoSearch(query: string, numResults: number): Promise<SearchResult[]> {
+async function duckduckgoSearch(
+  query: string,
+  numResults: number,
+  context: ToolContext,
+): Promise<SearchResult[]> {
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS)
+  const assertNet = getAssertNetwork(context)
+  if (assertNet) {
+    try {
+      const host = new URL(url).hostname.toLowerCase()
+      const v = assertNet(host)
+      if (!v.allowed) return []
+    } catch {
+      return []
+    }
+  }
+
+  const { controller, clearTimer } = composeAbort(context, SEARCH_TIMEOUT_MS)
 
   try {
     const resp = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': 'ovogogogo/0.1.0' },
     })
-    clearTimeout(timer)
+    clearTimer()
 
     if (!resp.ok) return []
 
@@ -74,7 +139,7 @@ async function duckduckgoSearch(query: string, numResults: number): Promise<Sear
 
     return results
   } catch {
-    clearTimeout(timer)
+    clearTimer()
     return []
   }
 }
@@ -86,17 +151,28 @@ async function googleSearch(
   numResults: number,
   apiKey: string,
   engineId: string,
+  context: ToolContext,
 ): Promise<SearchResult[]> {
   const url =
     `https://www.googleapis.com/customsearch/v1?key=${apiKey}` +
     `&cx=${engineId}&q=${encodeURIComponent(query)}&num=${Math.min(numResults, 10)}`
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS)
+  const assertNet = getAssertNetwork(context)
+  if (assertNet) {
+    try {
+      const host = new URL(url).hostname.toLowerCase()
+      const v = assertNet(host)
+      if (!v.allowed) return []
+    } catch {
+      return []
+    }
+  }
+
+  const { controller, clearTimer } = composeAbort(context, SEARCH_TIMEOUT_MS)
 
   try {
     const resp = await fetch(url, { signal: controller.signal })
-    clearTimeout(timer)
+    clearTimer()
     if (!resp.ok) return []
 
     const data = await resp.json() as {
@@ -109,7 +185,7 @@ async function googleSearch(
       snippet: item.snippet,
     }))
   } catch {
-    clearTimeout(timer)
+    clearTimer()
     return []
   }
 }
@@ -120,17 +196,28 @@ async function serpApiSearch(
   query: string,
   numResults: number,
   apiKey: string,
+  context: ToolContext,
 ): Promise<SearchResult[]> {
   const url =
     `https://serpapi.com/search.json?api_key=${apiKey}` +
     `&q=${encodeURIComponent(query)}&num=${Math.min(numResults, 10)}&engine=google`
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS)
+  const assertNet = getAssertNetwork(context)
+  if (assertNet) {
+    try {
+      const host = new URL(url).hostname.toLowerCase()
+      const v = assertNet(host)
+      if (!v.allowed) return []
+    } catch {
+      return []
+    }
+  }
+
+  const { controller, clearTimer } = composeAbort(context, SEARCH_TIMEOUT_MS)
 
   try {
     const resp = await fetch(url, { signal: controller.signal })
-    clearTimeout(timer)
+    clearTimer()
     if (!resp.ok) return []
 
     const data = await resp.json() as {
@@ -143,7 +230,7 @@ async function serpApiSearch(
       snippet: r.snippet,
     }))
   } catch {
-    clearTimeout(timer)
+    clearTimer()
     return []
   }
 }
@@ -203,7 +290,7 @@ Backends (set env vars for better results):
     },
   }
 
-  async execute(input: Record<string, unknown>, _context: ToolContext): Promise<ToolResult> {
+  async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const { query, num_results } = input as unknown as WebSearchInput
 
     if (!query || typeof query !== 'string') {
@@ -221,16 +308,16 @@ Backends (set env vars for better results):
     let backend = 'DuckDuckGo'
 
     if (googleKey && googleEngineId) {
-      results = await googleSearch(query, numResults, googleKey, googleEngineId)
+      results = await googleSearch(query, numResults, googleKey, googleEngineId, context)
       backend = 'Google Custom Search'
     } else if (serpKey) {
-      results = await serpApiSearch(query, numResults, serpKey)
+      results = await serpApiSearch(query, numResults, serpKey, context)
       backend = 'SerpAPI'
     }
 
     // Fallback to DDG if primary returned nothing
     if (results.length === 0) {
-      results = await duckduckgoSearch(query, numResults)
+      results = await duckduckgoSearch(query, numResults, context)
       backend = 'DuckDuckGo'
     }
 

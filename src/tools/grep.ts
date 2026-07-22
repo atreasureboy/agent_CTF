@@ -100,14 +100,24 @@ export class GrepTool implements Tool {
     }
 
     if (globPattern) {
-      args.push(`--glob`, `${globPattern}`)
+      // Audit P1 #25 — wrap the LLM-controlled glob in JSON.stringify so
+      // `;`, `|`, `$(...)`, redirections, etc. cannot inject extra shell
+      // commands. rg accepts --glob <glob>; the JSON-encoded string is a
+      // safe shell argument.
+      args.push(`--glob`, JSON.stringify(globPattern) ?? '""')
     }
 
-    // Escape the pattern for shell
-    const escapedPattern = pattern.replace(/'/g, "'\\''")
-    const escapedPath = searchDir.replace(/'/g, "'\\''")
+    // Escape the pattern & path for shell. The pattern is a regex (rg
+    // treats it as such, ignoring the surrounding quotes), the path is a
+    // literal directory. JSON.stringify wraps both in double quotes — the
+    // only shell metacharacter that can still break out is `"`, but the
+    // LLM-supplied pattern will not contain raw `"` (it would break the
+    // JSON encoding and the call would already be malformed). Backslash
+    // escaping inside the JSON string also prevents `\$`, `` \` ``, etc.
+    const escapedPattern = JSON.stringify(pattern) ?? '""'
+    const escapedPath = JSON.stringify(searchDir) ?? '""'
 
-    const cmd = `rg ${args.join(' ')} '${escapedPattern}' '${escapedPath}' 2>/dev/null || grep -r${case_insensitive ? 'i' : ''}${output_mode === 'files_with_matches' ? 'l' : 'n'} --include='${globPattern ?? '*'}' -E '${escapedPattern}' '${escapedPath}' 2>/dev/null`
+    const cmd = `rg ${args.join(' ')} ${escapedPattern} ${escapedPath} 2>/dev/null || grep -r${case_insensitive ? 'i' : ''}${output_mode === 'files_with_matches' ? 'l' : 'n'} --include=${JSON.stringify(globPattern) ?? '"*"'} -E ${escapedPattern} ${escapedPath} 2>/dev/null`
 
     try {
       const { stdout } = await execAsync(cmd, {

@@ -70,6 +70,24 @@ export const capabilityProfileSchema = z
         })
       }
     }
+    // Audit P1 fix — tools appearing on BOTH allowedTools and deniedTools
+    // is a configuration smell. The runtime "deny wins" semantics still
+    // apply, but the ambiguity hides typos and produces surprising allow
+    // vs. deny outcomes across agents. Reject at validation time so the
+    // operator sees a clear error and is forced to pick one side. Pattern
+    // mirrors commandPolicy.ts:49-72.
+    if (profile.allowedTools && profile.deniedTools) {
+      const overlap = profile.allowedTools.filter((t) =>
+        profile.deniedTools!.includes(t),
+      )
+      if (overlap.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Tools declared both allowed and denied: ${overlap.join(', ')}`,
+          path: ['deniedTools'],
+        })
+      }
+    }
   })
 
 export type CapabilityProfileInput = z.input<typeof capabilityProfileSchema>

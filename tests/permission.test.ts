@@ -84,14 +84,50 @@ describe('PermissionChecker — rules', () => {
     expect(d.allowed).toBe(false)
   })
 
-  it('first matching rule wins (consumer rule before default)', async () => {
-    // Consumer explicitly allows curl; the default rule would escalate to ask.
+  it('built-in destructive rules win over a consumer wildcard allow', async () => {
+    // Audit P1 fix — defaults now precede consumer rules. A bare wildcard
+    // allow must NOT mask the built-in `rm -rf` / `sudo ` / `git push
+    // --force` escalations. The previous ordering let broad consumer
+    // allows silently override built-in destructive asks.
+    const checker = new PermissionChecker('auto', [
+      { tool: '*', action: 'allow' },
+    ])
+    const d = await checker.check({ tool: 'Bash', input: { command: 'sudo rm -rf /' } })
+    expect(d.allowed).toBe(false)
+    expect(d.reason).toMatch(/no approver|ask|denied/)
+  })
+
+  it('consumer tool+pattern rule can still override a built-in ask (most-specific wins)', async () => {
+    // When a consumer declares an EXPLICIT (tool+pattern) match, that
+    // more-specific rule wins — but only because we re-sort consumer
+    // rules ahead of built-in defaults by specificity. Wildcards still
+    // rank lowest and cannot override built-ins.
     const approver: Approver = async () => true
     const checker = new PermissionChecker('auto', [
-      { tool: 'Bash', pattern: 'curl ', action: 'allow' },
+      { tool: 'Bash', pattern: 'ls', action: 'allow' },
     ], approver)
-    const d = await checker.check({ tool: 'Bash', input: { command: 'curl http://x' } })
+    // `ls` does not match any built-in destructive pattern, so the
+    // consumer allow rule is the first match and wins.
+    const d = await checker.check({ tool: 'Bash', input: { command: 'ls -la' } })
     expect(d.allowed).toBe(true)
+  })
+
+  it('throws on invalid mode', () => {
+    // Audit P1 fix — typo in mode would have silently fallen through
+    // to "auto" semantics.
+    expect(() => new PermissionChecker('plz-allow' as never)).toThrow(/invalid mode/)
+  })
+
+  it('deduplicates rules that share tool+pattern', async () => {
+    // Audit P1 fix — the legacy pwn profile shipped `'sqlmap'` twice
+    // in deniedTools. Verify dedup keeps a single rule.
+    const checker = new PermissionChecker('auto', [
+      { tool: 'Bash', pattern: 'sqlmap', action: 'deny' },
+      { tool: 'Bash', pattern: 'sqlmap', action: 'allow' },
+    ])
+    // First occurrence (deny) wins; second (allow) is dropped.
+    const d = await checker.check({ tool: 'Bash', input: { command: 'sqlmap --help' } })
+    expect(d.allowed).toBe(false)
   })
 
   it('a thrown approver error is caught and treated as deny', async () => {

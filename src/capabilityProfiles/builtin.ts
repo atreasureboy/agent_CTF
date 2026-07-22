@@ -155,7 +155,7 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'file', 'strings', 'objdump', 'gdb', 'exiftool',
       'list_artifacts', 'list_findings', 'list_jobs', 'query_background_job',
       'collect_background_result', 'inspect_artifact_summary', 'inspect_finding'],
-    deniedTools: ['nmap', 'sqlmap', 'tshark', 'sqlmap'],
+    deniedTools: ['nmap', 'sqlmap', 'tshark'],
     allowedWorkflows: ['pwn_triage', 'register_state_capture', 'segfault_backtrace'],
     deniedWorkflows: ['host_service_enumeration'],
     allowShell: true,

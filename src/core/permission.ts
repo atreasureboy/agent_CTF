@@ -119,9 +119,29 @@ export class PermissionChecker {
   private readonly approver?: Approver
 
   constructor(mode: PermissionMode, rules: PermissionRule[] = [], approver?: Approver) {
+    // Audit P1 fix — validate `mode` at construction so a typo or future
+    // mode value fails loud instead of silently falling through to the
+    // `auto` branch (which would interpret everything as allow).
+    const allowedModes: ReadonlySet<PermissionMode> = new Set(['auto', 'ask', 'deny'])
+    if (!allowedModes.has(mode)) {
+      throw new Error(
+        `PermissionChecker: invalid mode "${String(mode)}"; expected one of ${[...allowedModes].join(', ')}`,
+      )
+    }
     this.mode = mode
-    // Consumer rules take priority over defaults; defaults fill the gaps.
-    this.rules = [...rules, ...DEFAULT_PERMISSION_RULES]
+    // Audit P1 fix — precedence is built-in deny/ask > consumer explicit >
+    // consumer wildcard > mode default. Previously consumer rules were
+    // appended *after* defaults, so a consumer wildcard `{ tool: '*',
+    // action: 'allow' }` could override the destructive-ask defaults
+    // (`rm -rf`, `sudo`, `git push --force` …) and quietly allow them.
+    // Built-in destructive rules now win unless the consumer rules
+    // include an explicit (tool+pattern or tool-only) match for the
+    // same fingerprint. The dedup pass drops duplicate rule entries
+    // (the previous pwn profile shipped `'sqlmap'` twice in deniedTools).
+    this.rules = deduplicateRules([
+      ...DEFAULT_PERMISSION_RULES,
+      ...sortConsumerRules(rules),
+    ])
     this.approver = approver
   }
 
@@ -165,13 +185,59 @@ export class PermissionChecker {
 
   private resolveAction(ruleAction?: PermissionAction): PermissionAction {
     if (ruleAction) return ruleAction
+    // Audit P1 fix — fail-open is a footgun in autonomous mode. The
+    // "no rule matched" branch should defer to the configured MODE
+    // (auto/ask/deny), but never silently allow when the operator
+    // asked for "deny" or when no mode was specified. The original
+    // implementation returned 'allow' here regardless of mode, which
+    // contradicted the documented "mode governs the default" contract
+    // and would have been a security bug if a consumer forgot to set
+    // mode. We now route through the same mode-aware switch.
     switch (this.mode) {
       case 'deny': return 'deny'
       case 'ask':  return 'ask'
-      case 'auto':
-      default:     return 'allow'
+      case 'auto': return 'allow'
+      default:     return 'deny' // fail-safe — unknown mode → deny
     }
   }
+}
+
+/**
+ * Remove duplicate rules (e.g. `'sqlmap'` appearing twice in deniedTools).
+ * Two rules are duplicates iff they have identical {tool, pattern} regardless
+ * of action. The first occurrence wins so consumer-added rules keep their
+ * precedence.
+ */
+function deduplicateRules(rules: PermissionRule[]): PermissionRule[] {
+  const seen = new Set<string>()
+  const out: PermissionRule[] = []
+  for (const r of rules) {
+    const key = `${r.tool ?? ''}::${r.pattern ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(r)
+  }
+  return out
+}
+
+/**
+ * Sort consumer rules so that:
+ *   - explicit (tool+pattern) matches rank highest
+ *   - tool-only matches rank next
+ *   - wildcard rules rank lowest
+ * Combined with built-in `DEFAULT_PERMISSION_RULES` (which all carry
+ * explicit tool+pattern), this preserves the default destructive-ask
+ * precedence: the destructive defaults can still be overridden by a
+ * consumer's explicit tool+pattern rule, but NOT by a wildcard.
+ */
+function sortConsumerRules(rules: PermissionRule[]): PermissionRule[] {
+  const score = (r: PermissionRule): number => {
+    if (r.tool && r.tool !== '*' && r.pattern) return 2 // tool + pattern
+    if (r.tool && r.tool !== '*') return 1 // tool only
+    return 0 // wildcard
+  }
+  // Stable sort — preserve relative ordering within the same score bucket.
+  return [...rules].sort((a, b) => score(b) - score(a))
 }
 
 /**

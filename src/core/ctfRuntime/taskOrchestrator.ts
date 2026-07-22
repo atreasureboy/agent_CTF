@@ -351,7 +351,9 @@ export class CTFTaskOrchestrator {
       const before = this.projector.captureSnapshot()
       const p = (async () => {
         try {
-          const r = await this.mainHarness.runWorkflow(wf, inputs ?? {})
+          const r = await this.mainHarness.runWorkflow(wf, inputs ?? {}, {
+            workflowRunId: id,
+          })
           // Project any Findings/Artifacts emitted by workflow steps.
           // §十三.3 — pass workflowRunId so the projector filters by it.
           const projection = this.projector.projectDiff(before, {
@@ -578,9 +580,41 @@ export class CTFTaskOrchestrator {
   }
 
   // ── Profile atomic switch ───────────────────────────────────────────
+  //
+  // Concurrency-safe: concurrent `switchProfile` calls are serialized via
+  // an in-instance mutex flag. JavaScript's single-threaded event loop
+  // means "concurrent" callers can only appear when a switchProfile is
+  // re-entered from inside `setProfile` (e.g. a hook observing the new
+  // profile calls switchProfile again). The flag prevents that reentry
+  // from racing the half-completed swap.
+  //
+  // Rollback order: the BROKER first (most public-facing surface), then
+  // the ProfileStore. The previous version restored PROFILE_STORE first;
+  // that meant readers using `broker.getProfile()` between the two
+  // restores briefly saw the new profile (the rollback target) rather
+  // than what the audit log recorded as "previous".
+
+  private profileMutexInUse = false
+
   switchProfile(nextProfileId: string): void {
     const profile = resolveProfileById(nextProfileId)
     if (!profile) throw new Error(`Unknown profile: ${nextProfileId}`)
+    // Reentrant guard: a hook synchronously re-calling switchProfile
+    // would otherwise race the half-completed swap.
+    if (this.profileMutexInUse) {
+      throw new Error(
+        `switchProfile reentered while another swap is in progress on profile "${this.store.getState().activeProfileId}"`,
+      )
+    }
+    this.profileMutexInUse = true
+    try {
+      this.doSwitchProfile(profile)
+    } finally {
+      this.profileMutexInUse = false
+    }
+  }
+
+  private doSwitchProfile(profile: CapabilityProfile): void {
     const prev = this.store.getState().activeProfileId
     if (prev === profile.id) return
     // Audit round 1 — capture the previous Profile object so the
@@ -600,9 +634,9 @@ export class CTFTaskOrchestrator {
       // 3. Re-publish through the broker's public setter (no private writes).
       this.mainHarness.broker.setProfile(profile)
     } catch (err) {
-      // Roll back the ProfileStore to the previous profile so the runtime
-      // stays consistent. We restore the broker first (most public-facing
-      // surface) then the store.
+      // Rollback: restore the broker FIRST (most public-facing surface),
+      // then the ProfileStore. Readers using `broker.getProfile()`
+      // between the two restores briefly see the new value otherwise.
       try {
         this.mainHarness.broker.setProfile(prevProfile)
         this.profileStore.switchTo(prevProfile)

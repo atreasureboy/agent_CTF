@@ -37,10 +37,18 @@ export type CTFTaskEvent =
   | { type: 'HANDOFF_APPROVED'; handoffId: string; selectedAgentId: string }
   | { type: 'HANDOFF_REJECTED'; handoffId: string; reason: string }
   | { type: 'HANDOFF_CANCELLED'; handoffId: string; reason: string }
+  // TODO(§11 follow-up): widen `stage` back to
+  //   'selection' | 'creation' | 'execution' | 'projection'
+  // once `runSpecialist` (handoffCoordinator.ts) emits 'creation' on
+  // factory failure, 'execution' on engineOut rejection, and
+  // 'projection' on projectDiff failure. Today only 'selection' is
+  // actually produced (in approveAndRun when no agent matches the
+  // requested capability); shipping the broader union would just add
+  // unused type branches that no code emits.
   | {
       type: 'HANDOFF_FAILED'
       handoffId: string
-      stage: 'selection' | 'creation' | 'execution' | 'projection'
+      stage: 'selection'
       error: string
     }
   // Per next_goal.md §五 — Specialist events carry the HandoffRecord id so

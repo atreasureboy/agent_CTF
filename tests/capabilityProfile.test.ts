@@ -47,10 +47,25 @@ describe('capabilityProfile', () => {
     expect(r.success).toBe(false)
   })
 
-  it('enforces deny precedence over allow', () => {
-    const p = parseCapabilityProfile({
+  it('rejects overlap between allowed and denied tools at schema level', () => {
+    // Audit P1 fix — was previously accepted because tool overlap was
+    // intentional ("deny wins" at runtime). Rejecting up-front forces
+    // operators to pick a side and removes a foot-gun hidden by typo
+    // collisions (e.g. `Bash` vs `bash`).
+    const r = capabilityProfileSchema.safeParse({
       ...minimal,
       allowedTools: ['Bash'],
+      deniedTools: ['Bash'],
+    })
+    expect(r.success).toBe(false)
+  })
+
+  it('enforces deny precedence over allow (no overlap, distinct lists)', () => {
+    // Replaced: previously the same profile declared both lists overlapping.
+    // Now overlap is rejected; this test verifies the runtime semantics
+    // still hold when a tool is on deniedTools only.
+    const p = parseCapabilityProfile({
+      ...minimal,
       deniedTools: ['Bash'],
     })
     expect(profileAllowsTool(p, 'Bash')).toBe(false)

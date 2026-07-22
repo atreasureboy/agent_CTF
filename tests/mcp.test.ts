@@ -35,7 +35,11 @@ describe('wrapMcpTool', () => {
     const client = mockClient('srv', callTool)
     const tool = wrapMcpTool(client, { name: 'do', description: 'd' })
     const res = await tool.execute({ x: 1 }, {} as never)
-    expect(callTool).toHaveBeenCalledWith('do', { x: 1 })
+    // callTool is now invoked with a third optional `signal` parameter
+    // (AbortSignal.any([parentSignal, timeoutSignal])). Use
+    // expect.any(AbortSignal) so the test isn't coupled to the exact
+    // composed-signal identity.
+    expect(callTool).toHaveBeenCalledWith('do', { x: 1 }, expect.any(AbortSignal))
     expect(res.isError).toBe(false)
     expect(res.content).toBe('line 1\nline 2')
   })

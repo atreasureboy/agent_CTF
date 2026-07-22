@@ -94,6 +94,11 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
       agentId: this.currentAgentId(),
       apiConfig: undefined,
       signal: this.opts.context.abortSignal,
+      // §十三.3 — forward the run ids so emitted Findings / Artifacts
+      // can be filtered by run, and the projector's matchesRun check
+      // actually classifies them under the producing run.
+      agentRunId: ctx.agentRunId,
+      workflowRunId: ctx.workflowRunId,
     })
     return {
       content: r.result.content,
@@ -124,6 +129,10 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
         agentId: this.currentAgentId(),
         apiConfig: undefined,
         signal: this.opts.context.abortSignal,
+        // §十三.3 — same run-id propagation as runStep so finding
+        // emissions are attributed to the producing workflow/agent run.
+        agentRunId: ctx.agentRunId,
+        workflowRunId: ctx.workflowRunId,
       },
     )
   }

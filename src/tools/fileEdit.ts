@@ -6,8 +6,10 @@
  * This prevents accidental changes and makes diffs reviewable.
  */
 
-import { readFile, writeFile } from 'fs/promises'
+import { readFile, writeFile, rename, copyFile, unlink } from 'fs/promises'
+import { resolve } from 'path'
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../core/types.js'
+import type { ContestScopeChecker } from '../core/contestScope.js'
 import { EDIT_FILE_DESCRIPTION } from '../prompts/tools.js'
 
 export interface EditFileInput {
@@ -50,7 +52,7 @@ export class FileEditTool implements Tool {
     },
   }
 
-  async execute(input: Record<string, unknown>, _context: ToolContext): Promise<ToolResult> {
+  async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const { file_path, old_string, new_string, replace_all } = input as unknown as EditFileInput
 
     if (!file_path || typeof file_path !== 'string') {
@@ -66,8 +68,24 @@ export class FileEditTool implements Tool {
       return { content: 'Error: old_string and new_string are identical — no change needed', isError: true }
     }
 
+    // Audit P1 — file-scope gate (mirrors fileWrite / fileRead). Refuse
+    // writes that escape the contest's allowedFilesRoot before we even
+    // open the source file.
+    const ctfCtx = (context as unknown as {
+      __ctf?: { contestScope?: ContestScopeChecker }
+    }).__ctf
+    const scope = ctfCtx?.contestScope
+    if (scope && typeof scope.assertFile === 'function') {
+      try {
+        scope.assertFile(resolve(file_path))
+      } catch (err) {
+        return { content: `Edit refused: ${(err as Error).message}`, isError: true }
+      }
+    }
+
     try {
-      const content = await readFile(file_path, 'utf8')
+      const absPath = resolve(file_path)
+      const content = await readFile(absPath, 'utf8')
 
       const occurrences = countOccurrences(content, old_string)
 
@@ -91,7 +109,41 @@ export class FileEditTool implements Tool {
         ? content.split(old_string).join(new_string)
         : content.replace(old_string, new_string)
 
-      await writeFile(file_path, newContent, 'utf8')
+      // Audit P0 #12 — atomic edit via temp + rename. We snapshot the
+      // original file to `<file>.bak.<pid>` first so a crash mid-rename
+      // leaves a recoverable copy, then write to `<file>.tmp.<pid>` and
+      // rename over the original. Mirrors BackgroundJobManager.persist
+      // and SessionStore.saveConversation.
+      const tmp = `${absPath}.tmp.${process.pid}`
+      const backup = `${absPath}.bak.${process.pid}`
+      let backupMade = false
+      try {
+        await copyFile(absPath, backup)
+        backupMade = true
+      } catch (copyErr) {
+        // copyFile failure (e.g. read-only fs) — fail loud before mutating.
+        return { content: `Edit refused: cannot snapshot ${file_path}: ${(copyErr as Error).message}`, isError: true }
+      }
+      try {
+        await writeFile(tmp, newContent, 'utf8')
+        try {
+          await rename(tmp, absPath)
+        } catch (renameErr) {
+          // Restore from backup so the user does not end up with a
+          // half-modified file on disk.
+          if (backupMade) {
+            try { await copyFile(backup, absPath) } catch { /* best-effort */ }
+          }
+          try { await unlink(tmp) } catch { /* ignore */ }
+          throw renameErr
+        }
+      } catch (err) {
+        return { content: `Error editing file: ${(err as Error).message}`, isError: true }
+      } finally {
+        // Leave the backup behind — it is small, named clearly, and the
+        // user can decide to delete it. (We could clean up here but
+        // preserving the .bak gives a free undo path.)
+      }
 
       const count = replace_all ? occurrences : 1
       return {

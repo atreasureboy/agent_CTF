@@ -217,9 +217,12 @@ export interface TurnResult {
    * stop_sequence  — LLM returned finish_reason=stop with no tool calls
    * max_iterations — hit maxIterations ceiling
    * error          — hard abort (Ctrl+C × 2) or unrecoverable API error
+   * cancelled      — abort signal fired mid-stream (LLM call interrupted);
+   *                  the turn contract surfaces cancellation distinctly so
+   *                  callers don't read a quiet cancel as a hard failure.
    * interrupted    — soft pause requested (Ctrl+C × 1), partial history preserved
    */
-  reason: 'max_iterations' | 'stop_sequence' | 'error' | 'interrupted'
+  reason: 'max_iterations' | 'stop_sequence' | 'error' | 'cancelled' | 'interrupted'
   output: string
   /** Error message when reason === 'error' due to an exception (aborts leave this unset). */
   error?: string

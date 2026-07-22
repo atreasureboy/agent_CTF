@@ -61,9 +61,18 @@ export function wrapMcpTool(
         parameters: schemaToParameters(descriptor.inputSchema),
       },
     },
-    async execute(input: Record<string, unknown>, _context: ToolContext): Promise<ToolResult> {
+    async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+      // Per-call timeout — `AbortSignal.any` waits until either parent or
+      // timeout fires, then propagates to callTool so a hung MCP server
+      // can't park the agent. Always compose a composed signal (even when
+      // context.signal is undefined) so callTool's signature receives
+      // the AbortSignal parameter the wrapper promises.
+      const parentSignal = context.signal
+      const composedSignal = parentSignal
+        ? AbortSignal.any([parentSignal, AbortSignal.timeout(MCP_INVOKE_TIMEOUT_MS)])
+        : AbortSignal.timeout(MCP_INVOKE_TIMEOUT_MS)
       try {
-        const blocks = await client.callTool(descriptor.name, input)
+        const blocks = await client.callTool(descriptor.name, input, composedSignal)
         const text = blocksToText(blocks)
         return {
           content: text || `[${callName} returned no content]`,
@@ -78,6 +87,9 @@ export function wrapMcpTool(
     },
   }
 }
+
+/** Per-invocation timeout for MCP tool calls (covers hung-server failures). */
+const MCP_INVOKE_TIMEOUT_MS = 60_000
 
 export interface McpLoadResult {
   tools: Tool[]

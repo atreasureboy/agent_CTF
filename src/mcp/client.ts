@@ -140,9 +140,23 @@ export class McpClient {
     return result?.tools ?? []
   }
 
-  /** Invoke a tool by name with the given arguments. */
-  async callTool(name: string, args: Record<string, unknown>): Promise<McpContentBlock[]> {
-    const result = await this.request('tools/call', { name, arguments: args }) as { content?: McpContentBlock[] }
+  /**
+   * Invoke a tool by name with the given arguments.
+   *
+   * `signal` (optional): when provided, the underlying JSON-RPC request
+   * is aborted on signal so cancellation propagates immediately instead
+   * of waiting for the 60 s safety timeout.
+   */
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<McpContentBlock[]> {
+    const result = await this.request(
+      'tools/call',
+      { name, arguments: args },
+      signal,
+    ) as { content?: McpContentBlock[] }
     return result?.content ?? []
   }
 
@@ -164,7 +178,14 @@ export class McpClient {
 
   // ── JSON-RPC plumbing ──────────────────────────────────────────
 
-  private request(method: string, params: unknown): Promise<unknown> {
+  /**
+   * Issue a JSON-RPC request and return its result.
+   *
+   * `signal` (optional): when provided, the request's pending promise is
+   * rejected with an AbortError on abort. This lets callers honour a
+   * parent cancellation / timeout without leaving a hung request behind.
+   */
+  private request(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
     if (!this.proc) return Promise.reject(new Error(`MCP "${this.serverName}" not connected`))
     const id = this.nextId++
     const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params }
@@ -178,6 +199,28 @@ export class McpClient {
           reject(new Error(`MCP "${this.serverName}" request "${method}" timed out`))
         }
       }, 60_000)
+      // Honour an external abort signal — reject the pending request on
+      // cancellation so a parent Ctrl+C stops a hung MCP call instead of
+      // leaving it pending until the 60 s safety timeout.
+      if (signal) {
+        if (signal.aborted) {
+          if (this.pending.has(id)) {
+            this.pending.delete(id)
+            reject(new Error(`MCP "${this.serverName}" request "${method}" aborted`, { cause: signal.reason }))
+          }
+          return
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            if (this.pending.has(id)) {
+              this.pending.delete(id)
+              reject(new Error(`MCP "${this.serverName}" request "${method}" aborted`, { cause: signal.reason }))
+            }
+          },
+          { once: true },
+        )
+      }
     })
   }
 

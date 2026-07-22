@@ -45,6 +45,8 @@ import {
 import type { AgentModule, ModuleBootResult, ModuleBootContext } from './module.js'
 import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
+import { createLinkedAbortController } from './ctfRuntime/linkedAbortController.js'
+import { profileAllowsTool } from './capabilityProfile.js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -60,16 +62,14 @@ const PLAN_MODE_TOOLS = new Set([
 ])
 
 /**
- * Concurrency-safe tools: run in parallel within a single LLM response.
- * When the LLM emits multiple tool calls in one response, they are intended
- * to be independent — execute them concurrently.
- *
- * This set is the FALLBACK used by the pure `partitionToolCalls` helper (and by
- * the unit tests). At runtime the engine builds an equivalent set dynamically
- * from each tool's `concurrencySafe` self-declaration (see buildToolSchedule),
- * so custom/extra tools can opt into parallelism without editing this list.
+ * Default fallback concurrency-safe tool set used by the pure
+ * `partitionToolCalls` helper when callers do not pass an explicit set
+ * (unit tests). At runtime the engine builds an equivalent set dynamically
+ * from each tool's `concurrencySafe` self-declaration (set in the
+ * constructor and extended in `runTurn` with module-provided tools), so
+ * custom/extra tools can opt into parallelism without editing this list.
  */
-const CONCURRENCY_SAFE_TOOLS = new Set([
+const DEFAULT_PARTITION_SAFE_NAMES: ReadonlySet<string> = new Set([
   'Read',
   'Glob',
   'Grep',
@@ -102,6 +102,35 @@ interface ToolBatch {
   calls: ParsedToolCall[]
 }
 
+/**
+ * Recognise cancellation-shaped errors from the OpenAI SDK and the abort
+ * helper. Historically every such throw was reported as `reason: 'error'`,
+ * which leaked a quiet cancel to callers that should have seen
+ * `'cancelled'` (the LLM call was interrupted, not a hard failure).
+ */
+function isCancelLikeError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const name = (err as { name?: string }).name
+  return (
+    name === 'AbortError' ||
+    name === 'APIUserAbortError' ||
+    name === 'APIConnectionAbortError'
+  )
+}
+
+/**
+ * Translate an AbortSignal's reason to a TurnResult reason. Treats
+ * soft-abort reasons as `'interrupted'` (history-preserving soft pause)
+ * and any other reason as `'cancelled'`.
+ */
+function abortReasonFromSignalValue(
+  signal: AbortSignal,
+): 'cancelled' | 'interrupted' {
+  const reason = signal.reason
+  if (reason === 'soft_abort' || reason === 'softAbort') return 'interrupted'
+  return 'cancelled'
+}
+
 // ── Pure helper functions ────────────────────────────────────────────────────
 
 /**
@@ -109,13 +138,14 @@ interface ToolBatch {
  * - All safe tools → merged into one parallel batch (Promise.all)
  * - Stateful tools (Write, Edit, etc.) → each gets its own serial batch
  *
- * `safeNames` defaults to CONCURRENCY_SAFE_TOOLS for the exported pure-function
- * form (used by unit tests). The engine passes a set built from each tool's
- * `concurrencySafe` self-declaration so custom tools participate.
+ * `safeNames` defaults to `DEFAULT_PARTITION_SAFE_NAMES` for the exported
+ * pure-function form (used by unit tests). The engine passes a set built
+ * from each tool's `concurrencySafe` self-declaration so custom tools
+ * participate.
  */
 function partitionToolCalls(
   calls: ParsedToolCall[],
-  safeNames: ReadonlySet<string> = CONCURRENCY_SAFE_TOOLS,
+  safeNames: ReadonlySet<string> = DEFAULT_PARTITION_SAFE_NAMES,
 ): ToolBatch[] {
   const batches: ToolBatch[] = []
 
@@ -166,10 +196,13 @@ export class ExecutionEngine {
   /** All available tools — base + module-provided (populated in runTurn) */
   private allTools: Tool[]
   /**
-   * Names of tools that declared `concurrencySafe: true`. Built in runTurn from
-   * allTools so custom/extra tools participate without a hardcoded list.
+   * Names of tools that declared `concurrencySafe: true`. Built in the
+   * constructor from `this.tools` so module-provided tools that arrive
+   * later are merged in by extending the set in runTurn (P2-7). Building
+   * once in the constructor avoids the previous "init to static, re-assign
+   * every turn" churn.
    */
-  private concurrencySafeNames: ReadonlySet<string> = CONCURRENCY_SAFE_TOOLS
+  private concurrencySafeNames: ReadonlySet<string>
   /** Cumulative token usage across all turns in this engine (cost observability). */
   private tokenUsage: TokenUsage = {
     promptTokens: 0,
@@ -194,6 +227,11 @@ export class ExecutionEngine {
     this.tools = createTools(config.extraTools ?? [])
     this.allTools = this.tools  // will be updated with module tools in runTurn
     this.eventLog = config.eventLog
+    // Build concurrency-safe set ONCE from the base tools. Module-provided
+    // tools are merged in by extending the set during runTurn (P2-7).
+    this.concurrencySafeNames = new Set(
+      this.tools.filter((t) => t.concurrencySafe).map((t) => t.name),
+    )
 
     // Resolve enabled modules
     const enabledNames = this.deriveEnabledModules()
@@ -267,14 +305,12 @@ export class ExecutionEngine {
     // Audit rounds 6-10 — when a CapabilityProfile is provided, hide
     // tools the profile denies from the LLM. Previously the LLM saw
     // every tool and was only rejected at execution time, which made
-    // the LLM retry denied tools in a loop.
-    if (this.config.profile?.deniedTools?.length) {
-      const denied = new Set(this.config.profile.deniedTools)
-      defs = defs.filter((t) => !denied.has(t.function.name))
-    }
-    if (this.config.profile?.allowedTools?.length) {
-      const allowed = new Set(this.config.profile.allowedTools)
-      defs = defs.filter((t) => allowed.has(t.function.name))
+    // the LLM retry denied tools in a loop. Use the canonical
+    // `profileAllowsTool` so the rule order (deny > allow > otherwise) is
+    // identical to runtime enforcement in the broker.
+    if (this.config.profile) {
+      const profile = this.config.profile
+      defs = defs.filter((d) => profileAllowsTool(profile, d.function.name))
     }
     // Filter by plan mode (read-only tools only)
     if (planMode) {
@@ -283,9 +319,89 @@ export class ExecutionEngine {
     return defs
   }
 
+  // ── Hook runners (best-effort, swallowed + audited) ────────────────────
+  //
+  // The IHookRunner contract says hooks must never throw, but in practice we
+  // can't trust every implementation (3rd-party extensions, partial mocks).
+  // Wrap each call so a buggy hook cannot crash the engine; mirror the
+  // module-error pattern used for module onComplete below.
+
+  private runPreToolCallHook(toolName: string, input: Record<string, unknown>): void {
+    if (!this.config.hookRunner?.runPreToolCall) return
+    try {
+      this.config.hookRunner.runPreToolCall(toolName, input)
+    } catch (err) {
+      this.eventLog?.append('error', 'hookRunner', {
+        hook: 'PreToolCall',
+        tool: toolName,
+        stage: 'pre',
+        error: (err as Error).message,
+      })
+    }
+  }
+
+  private runPostToolCallHook(
+    toolName: string,
+    content: string,
+    isError: boolean,
+  ): void {
+    if (!this.config.hookRunner?.runPostToolCall) return
+    try {
+      this.config.hookRunner.runPostToolCall(toolName, content, isError)
+    } catch (err) {
+      this.eventLog?.append('error', 'hookRunner', {
+        hook: 'PostToolCall',
+        tool: toolName,
+        stage: 'post',
+        error: (err as Error).message,
+      })
+    }
+  }
+
+  private runOnErrorHook(
+    err: Error,
+    ctx: { turnNumber: number; lastToolName?: string },
+  ): void {
+    if (!this.config.hookRunner?.runOnError) return
+    try {
+      this.config.hookRunner.runOnError(err, ctx)
+    } catch (hookErr) {
+      this.eventLog?.append('error', 'hookRunner', {
+        hook: 'OnError',
+        stage: 'onError',
+        error: (hookErr as Error).message,
+        original_error: err.message,
+      })
+    }
+  }
+
+  private runOnCompleteHook(result: TurnResult): void {
+    if (!this.config.hookRunner?.runOnComplete) return
+    try {
+      this.config.hookRunner.runOnComplete(result)
+    } catch (err) {
+      this.eventLog?.append('error', 'hookRunner', {
+        hook: 'OnComplete',
+        stage: 'onComplete',
+        error: (err as Error).message,
+        result_reason: result.reason,
+      })
+    }
+  }
+
+  /** Translate an aborted signal's reason to a TurnResult reason. */
+  private abortReasonFromSignal(
+    signal: AbortSignal,
+  ): 'cancelled' | 'interrupted' {
+    return abortReasonFromSignalValue(signal)
+  }
+
   // ── Context budget ──────────────────────────────────────────────────────
 
-  private async evaluateContextBudget(messages: OpenAIMessage[]): Promise<void> {
+  private async evaluateContextBudget(
+    messages: OpenAIMessage[],
+    turnAbortSignal: AbortSignal,
+  ): Promise<void> {
     const maxCtxTokens =
       this.config.maxContextTokens ?? MODEL_MAX_CONTEXT_TOKENS
     // Single computation path — shares the threshold constants with compact.ts
@@ -309,6 +425,7 @@ export class ExecutionEngine {
         this.config.model,
         messages,
         state.strategy,
+        turnAbortSignal, // forwarded so a cancel propagates to summarization
       )
 
       if (compactResult.compacted) {
@@ -594,7 +711,7 @@ export class ExecutionEngine {
         // ── Parallel batch ───────────────────────────────────
         for (const { tc, input } of batch.calls) {
           this.renderer.toolStart(tc.name, input)
-          this.config.hookRunner?.runPreToolCall(tc.name, input)
+          this.runPreToolCallHook(tc.name, input)
           this.eventLog?.append('tool_call', tc.name, { input }, [tc.name])
         }
 
@@ -607,11 +724,7 @@ export class ExecutionEngine {
         for (let i = 0; i < batch.calls.length; i++) {
           const { tc } = batch.calls[i]
           const result = results[i]
-          this.config.hookRunner?.runPostToolCall(
-            tc.name,
-            result.content,
-            result.isError,
-          )
+          this.runPostToolCallHook(tc.name, result.content, result.isError)
           this.renderer.toolResult(tc.name, result.content, result.isError)
           this.eventLog?.append(
             'tool_result',
@@ -635,7 +748,7 @@ export class ExecutionEngine {
           if (turnAbortSignal.aborted) return { aborted: true }
 
           this.renderer.toolStart(tc.name, input)
-          this.config.hookRunner?.runPreToolCall(tc.name, input)
+          this.runPreToolCallHook(tc.name, input)
           this.eventLog?.append('tool_call', tc.name, { input }, [tc.name])
 
           const result = await this.executeToolCall(
@@ -646,11 +759,7 @@ export class ExecutionEngine {
             turnNumber,
           )
 
-          this.config.hookRunner?.runPostToolCall(
-            tc.name,
-            result.content,
-            result.isError,
-          )
+          this.runPostToolCallHook(tc.name, result.content, result.isError)
           this.renderer.toolResult(tc.name, result.content, result.isError)
           this.eventLog?.append(
             'tool_result',
@@ -738,10 +847,15 @@ export class ExecutionEngine {
     // Collect tools provided by modules
     const moduleTools = this.moduleBootResults.flatMap(r => r.tools ?? [])
     this.allTools = [...this.tools, ...moduleTools]
-    // Build concurrency-safe set from each tool's self-declaration (P2-7)
-    this.concurrencySafeNames = new Set(
-      this.allTools.filter(t => t.concurrencySafe).map(t => t.name),
-    )
+    // Extend the concurrency-safe set with module-provided tools (P2-7).
+    // The base set was built in the constructor from `this.tools`.
+    if (moduleTools.length > 0) {
+      const next = new Set(this.concurrencySafeNames)
+      for (const t of moduleTools) {
+        if (t.concurrencySafe) next.add(t.name)
+      }
+      this.concurrencySafeNames = next
+    }
 
     // Record boot trajectory (AgentOS pattern)
     this.eventLog?.append('boot_context', 'engine', {
@@ -766,10 +880,11 @@ export class ExecutionEngine {
     // exact same lifecycle (one-way propagation: external fires → turn
     // fires). The linked controller is stored so runTurn cleanup can
     // unlink it (avoids listener accumulation across long sessions).
+    // `createLinkedAbortController` is imported at module top-level — a
+    // // dynamic import per turn would be measurable overhead at scale.
     let turnAbortController: AbortController
     let linkedAbort: { unlink(): void } | null = null
     if (this.config.signal) {
-      const { createLinkedAbortController } = await import('./ctfRuntime/linkedAbortController.js')
       const linked = createLinkedAbortController(this.config.signal)
       turnAbortController = linked.controller
       linkedAbort = linked
@@ -793,9 +908,15 @@ export class ExecutionEngine {
     let lastToolName: string | undefined
     try {
       while (iterations < this.config.maxIterations) {
-        // Check for cancellation
+        // Check for cancellation — treat an aborted per-turn signal as
+        // 'cancelled' (or 'interrupted' for soft-abort) rather than as a
+        // generic error so callers can react to a quiet cancel.
         if (turnAbortController.signal.aborted) {
-          result = { stopped: true, reason: 'error', output: finalOutput }
+          result = {
+            stopped: true,
+            reason: this.abortReasonFromSignal(turnAbortController.signal),
+            output: finalOutput,
+          }
           break
         }
 
@@ -810,7 +931,7 @@ export class ExecutionEngine {
         }
 
         // Context budget + auto-compact
-        await this.evaluateContextBudget(messages)
+        await this.evaluateContextBudget(messages, turnAbortController.signal)
 
         // Module iteration hooks (critic, etc.)
         for (const module of this.modules) {
@@ -863,7 +984,21 @@ export class ExecutionEngine {
         }
         messages.push(assistantMsg)
 
-        // Check if we're done (no tool calls)
+        // Check if we're done (no tool calls). Distinguish a true
+        // stop_sequence from a cancelled-mid-stream response — if the
+        // per-turn signal is already aborted, the LLM call was
+        // interrupted and we must report 'cancelled' instead of
+        // misleadingly reporting success. The orchestrator has a post-hoc
+        // abort guard (§十七) but the engine contract should not leak a
+        // cancelled-mid-stream response as 'stop_sequence'.
+        if (turnAbortController.signal.aborted) {
+          result = {
+            stopped: true,
+            reason: this.abortReasonFromSignal(turnAbortController.signal),
+            output: finalOutput,
+          }
+          break
+        }
         if (finishReason === 'stop' || rawToolCalls.length === 0) {
           result = { stopped: true, reason: 'stop_sequence', output: finalOutput }
           break
@@ -899,7 +1034,12 @@ export class ExecutionEngine {
         )
 
         if (aborted || turnAbortController.signal.aborted) {
-          result = { stopped: true, reason: 'error', output: finalOutput }
+          // Map an aborted tool-schedule back to 'cancelled' / 'interrupted'
+          // so callers do not read a quiet cancel as a hard error.
+          const reason = turnAbortController.signal.aborted
+            ? this.abortReasonFromSignal(turnAbortController.signal)
+            : 'interrupted'
+          result = { stopped: true, reason, output: finalOutput }
           break
         }
       }
@@ -912,21 +1052,47 @@ export class ExecutionEngine {
         result = { stopped: true, reason: 'max_iterations', output: finalOutput }
       }
     } catch (err) {
-      const errMsg = (err as Error).message || String(err)
-      // Lifecycle hook: OnError
-      this.config.hookRunner?.runOnError?.(err as Error, {
-        turnNumber: iterations,
-        lastToolName,
-      })
-      // Persist to audit trail + preserve message on the result so callers can
-      // surface WHY the run failed (previously dropped → user saw only "error").
-      this.eventLog?.append('error', 'engine', {
-        stage: 'run',
-        turn: iterations,
-        error: errMsg,
-        ...(lastToolName ? { lastToolName } : {}),
-      })
-      result = { stopped: true, reason: 'error', output: finalOutput, error: errMsg }
+      const e = err as Error
+      const errMsg = e.message || String(err)
+      // Cancelled via the abort signal — surface as cancellation rather
+      // than as a hard error. The orchestrator already has a post-hoc
+      // cancel guard (§十七) but the engine contract should not leak a
+      // cancelled-mid-stream response as 'error' to direct callers
+      // (history, single-shot CLI, etc).
+      const isCancel = isCancelLikeError(e) || turnAbortController.signal.aborted
+      if (isCancel) {
+        const cancelReason = turnAbortController.signal.aborted
+          ? this.abortReasonFromSignal(turnAbortController.signal)
+          : 'cancelled'
+        // Lifecycle hook: OnError (wrapped — buggy hooks must never crash the engine)
+        this.runOnErrorHook(e, {
+          turnNumber: iterations,
+          lastToolName,
+        })
+        this.eventLog?.append('error', 'engine', {
+          stage: 'run',
+          turn: iterations,
+          cancelled: true,
+          reason: cancelReason,
+          ...(lastToolName ? { lastToolName } : {}),
+        })
+        result = { stopped: true, reason: cancelReason, output: finalOutput }
+      } else {
+        // Lifecycle hook: OnError (wrapped — buggy hooks must never crash the engine)
+        this.runOnErrorHook(e, {
+          turnNumber: iterations,
+          lastToolName,
+        })
+        // Persist to audit trail + preserve message on the result so callers can
+        // surface WHY the run failed (previously dropped → user saw only "error").
+        this.eventLog?.append('error', 'engine', {
+          stage: 'run',
+          turn: iterations,
+          error: errMsg,
+          ...(lastToolName ? { lastToolName } : {}),
+        })
+        result = { stopped: true, reason: 'error', output: finalOutput, error: errMsg }
+      }
     } finally {
       this.currentTurnAbortController = null
       // Phase 1.7 audit round 1 — unlink the per-turn linked abort
@@ -955,8 +1121,8 @@ export class ExecutionEngine {
       }
     }
 
-    // ── Lifecycle hook: OnComplete ──
-    this.config.hookRunner?.runOnComplete?.(result)
+    // ── Lifecycle hook: OnComplete (wrapped — buggy hooks must never crash the engine) ──
+    this.runOnCompleteHook(result)
 
     return { result, newHistory: messages }
   }

@@ -14,6 +14,7 @@
  */
 
 import { execSync, spawnSync } from 'child_process'
+import { randomBytes } from 'crypto'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
@@ -36,6 +37,15 @@ function toWindowName(label: string): string {
     .slice(0, 20)
 }
 
+/**
+ * Session-name tag for *this* Ovogo process. Includes the PID so two
+ * concurrent Ovogo instances never share a session namespace, plus a
+ * random nonce so a re-launched process with the same PID (e.g. after
+ * a SIGKILL) cannot collide with the previous run's session.
+ */
+const OVOGO_SESSION_TAG = `ovogo-${process.pid}-${randomBytes(4).toString('hex')}`
+const OVOGO_SESSION_PREFIX = `ovogo-${process.pid}-`
+
 // ─────────────────────────────────────────────────────────────
 // TmuxLayout
 // ─────────────────────────────────────────────────────────────
@@ -43,7 +53,10 @@ function toWindowName(label: string): string {
 interface AgentWindow {
   slot: number
   logFile: string
-  windowName: string
+  /** Tmux window id (e.g. @42). Addressed as session:id in commands. We
+   *  store the id rather than the name because two slots with similar
+   *  labels (both ending in "explore") would collide on the name lookup. */
+  windowId: string
   agentLabel: string
 }
 
@@ -68,11 +81,13 @@ export class TmuxLayout {
     const check = spawnSync('tmux', ['-V'], { stdio: 'pipe' })
     if (check.status !== 0) return false
 
-    // 清理上次残留的 ovogo-* sessions（Ctrl+Z 等情况下无法正常 cleanup）
+    // 清理本次进程的残留 sessions（Ctrl+Z 等情况下无法正常 cleanup）。
+    // 仅匹配 `ovogo-<pid>-*` 前缀 — 不能用全局 `ovogo-*`，否则并发运行的
+    // Ovogo 进程会互相杀掉对方的 session。这是一个进程隔离 bug。
     try {
       const out = execSync('tmux ls -F "#{session_name}"', { stdio: 'pipe' }).toString()
       for (const name of out.trim().split('\n')) {
-        if (name.startsWith('ovogo-')) {
+        if (name.startsWith(OVOGO_SESSION_PREFIX)) {
           try { execSync(`tmux kill-session -t ${sq(name)}`, { stdio: 'pipe' }) } catch { /* ok */ }
         }
       }
@@ -85,7 +100,8 @@ export class TmuxLayout {
     }
 
     this.logDir = logDir
-    this.sessionName = `ovogo-${Date.now()}`
+    // PID-tagged session name — see OVOGO_SESSION_TAG above.
+    this.sessionName = OVOGO_SESSION_TAG
 
     try {
       // 创建后台 tmux session（不 attach，不影响主终端）
@@ -137,17 +153,20 @@ export class TmuxLayout {
       writeFileSync(logFile, startBanner)
     } catch { /* best-effort */ }
 
+    let windowId = ''
     try {
-      // 在 tmux session 里新建一个窗口
-      execSync(
-        `tmux new-window -t ${sq(this.sessionName)} -n ${sq(windowName)}`,
+      // 在 tmux session 里新建一个窗口，立即捕获它的 window id（@-前缀），
+      // 而不是用 name 寻址 — 同名窗口（两个 explore 子 agent）会冲突。
+      const newOut = execSync(
+        `tmux new-window -P -F '#{window_id}' -t ${sq(this.sessionName)} -n ${sq(windowName)}`,
         { stdio: 'pipe' },
-      )
+      ).toString().trim()
+      windowId = newOut
 
       // 窗口内运行 tail -f 实时显示 agent 输出
       const tailCmd = `tail -f ${sq(logFile)}`
       execSync(
-        `tmux send-keys -t ${sq(this.sessionName + ':' + windowName)} ${JSON.stringify(tailCmd)} Enter`,
+        `tmux send-keys -t ${sq(this.sessionName + ':' + windowId)} ${JSON.stringify(tailCmd)} Enter`,
         { stdio: 'pipe' },
       )
 
@@ -155,7 +174,7 @@ export class TmuxLayout {
       // 窗口创建失败，仍然返回 logFile 供 Renderer.forFile 使用
     }
 
-    this.activeWindows.push({ slot, logFile, windowName, agentLabel })
+    this.activeWindows.push({ slot, logFile, windowId, agentLabel })
     return { slot, logFile }
   }
 
@@ -174,14 +193,16 @@ export class TmuxLayout {
       `\x1b[2m${'─'.repeat(58)}\x1b[0m\n`
     try { writeFileSync(win.logFile, footer, { flag: 'a' }) } catch { /* best-effort */ }
 
-    // 重命名窗口加 ✓ 标记
-    try {
-      const doneWindowName = `✓-${win.windowName}`.slice(0, 20)
-      execSync(
-        `tmux rename-window -t ${sq(this.sessionName + ':' + win.windowName)} ${sq(doneWindowName)}`,
-        { stdio: 'pipe' },
-      )
-    } catch { /* best-effort */ }
+    // 重命名窗口加 ✓ 标记 — 用 captured window id 寻址，避免与同名窗口碰撞
+    if (win.windowId) {
+      try {
+        const doneWindowName = `✓-${win.agentLabel.replace(/[^a-zA-Z0-9_-]/g, '-')}`.slice(0, 20)
+        execSync(
+          `tmux rename-window -t ${sq(this.sessionName + ':' + win.windowId)} ${sq(doneWindowName)}`,
+          { stdio: 'pipe' },
+        )
+      } catch { /* best-effort */ }
+    }
 
     this.activeWindows = this.activeWindows.filter(w => w.slot !== slot)
   }

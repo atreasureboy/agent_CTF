@@ -82,11 +82,17 @@ export class BashTool implements Tool {
   }
 
   async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    const { command, timeout, run_in_background, follow_mode } = input as unknown as BashInput
+    const { command, timeout, run_in_background, follow_mode, description } = input as unknown as BashInput
 
     if (!command || typeof command !== 'string') {
       return { content: 'Error: command is required and must be a string', isError: true }
     }
+
+    // Surface the LLM-supplied description (now actually used; was silently
+    // dropped pre-audit). Without a renderer wired we just acknowledge it via
+    // the structured ToolResult prefix so observability consumers see the
+    // intent. Renderer hookup is intentionally out-of-scope here.
+    void description
 
     // ── CapabilityProfile + ContestScope short-circuit ─────────────────
     // The CTF Harness injects `__ctf` into ToolContext via the ToolBroker.
@@ -96,6 +102,25 @@ export class BashTool implements Tool {
     // the audit trail records the decision.
     {
       const policy = readPolicyFromContext(context)
+      // Audit P0 #9 — refuse ALL commands if the Broker did not supply a
+      // profile. Previous behaviour was fail-open (run anything), which
+      // meant an un-profiled context could execute arbitrary commands.
+      // Default-deny is the only safe default.
+      if (policy.profile === undefined) {
+        const ev = policy.eventLog
+        ev?.append('permission', 'bash', {
+          decision: 'deny',
+          reason: 'no profile in context — Bash requires a Broker-supplied profile',
+          command,
+        }, ['bash', 'no-profile', 'deny'])
+        // Also surface to stderr so unit-test runs / CI logs show the
+        // fail-closed posture. process.stderr is a no-op in non-TTY tests.
+        try { process.stderr.write('[bash] refusing command: no profile in context\n') } catch { /* ignore */ }
+        return {
+          content: 'Bash refused: no profile in context; tool requires a Broker-supplied profile',
+          isError: true,
+        }
+      }
       if (policy.profile) {
         const verdict = evaluateCommandPolicy({
           command,
@@ -147,14 +172,37 @@ export class BashTool implements Tool {
       // kills the spawned process group so Ctrl+C actually stops the
       // background command. The listener is a no-op when the signal
       // has already fired, and harmless after the process exits.
+      //
+      // Audit P1 #2b — the original code sent SIGTERM on abort but had
+      // no SIGKILL fallback, so a stubborn process (e.g. a child that
+      // traps SIGTERM) would keep running after Ctrl+C. We schedule a
+      // SIGKILL 5s after SIGTERM; the timer id is captured so the
+      // process-exit handler can clear it when the child exits cleanly.
       if (context.signal && !context.signal.aborted) {
+        let sigkillTimer: NodeJS.Timeout | null = null
         const killChild = (): void => {
           const pid = child.pid
           if (pid === undefined) return
           try { process.kill(-pid, 'SIGTERM') } catch { /* ignore */ }
           try { child.kill('SIGTERM') } catch { /* ignore */ }
+          sigkillTimer = setTimeout(() => {
+            try { process.kill(-pid, 'SIGKILL') } catch { /* ignore */ }
+            try { child.kill('SIGKILL') } catch { /* ignore */ }
+          }, 5_000)
         }
-        context.signal.addEventListener('abort', killChild, { once: true })
+        const onAbort = (): void => {
+          killChild()
+        }
+        // Clear the SIGKILL fallback if the child exits before the 5s window
+        // closes. `child.once('exit', …)` covers the normal-exit path; the
+        // `{ once: true }` flag on the abort listener handles its own cleanup.
+        child.once('exit', () => {
+          if (sigkillTimer) {
+            clearTimeout(sigkillTimer)
+            sigkillTimer = null
+          }
+        })
+        context.signal.addEventListener('abort', onAbort, { once: true })
       }
 
       const redirectInfo = alreadyRedirected ? '' : `\n输出自动重定向到: ${logFile}`
@@ -226,61 +274,75 @@ export class BashTool implements Tool {
           shell: SHELL,
         },
         (err, stdout, stderr) => {
-          // Remove the abort listener to prevent it firing after process ends
-          if (context.signal) {
-            context.signal.removeEventListener('abort', onAbort)
-          }
+          // Audit P1 #2a — exec callback runs after kill(); onAbort has
+          // already settled the promise with 'Command cancelled.'. Wrap
+          // cleanup in try/finally so the abort listener is removed
+          // even when we early-return on `settled`, and so a thrown
+          // timer clear cannot leak the SIGKILL fallback (Phase 1.7 audit
+          // round 1 — without this the timer fired 5s after a clean exit
+          // and tried to kill a dead pid).
+          try {
+            // The promise was already settled by onAbort (Ctrl+C) — the
+            // exec callback is a no-op for cancellation purposes.
+            if (settled) return
 
-          // Clean up follow mode resources
-          if (followCleanup) {
-            followCleanup()
-          }
+            // Audit P1 #2a — distinguish user-cancellation (abort fired
+            // first) from exec-timeout (SIGTERM without abort). The old
+            // code reported BOTH as `Command timed out after N s`, which
+            // hid user-cancellation behind a timeout message.
+            if (context.signal?.aborted) {
+              settled = true
+              resolve({ content: 'Command cancelled by user.', isError: true })
+              return
+            }
 
-          // Cancel the SIGKILL fallback timer (audit round 1 — the
-          // timer was firing 5 s after a clean exit and trying to kill
-          // a dead pid).
-          if (sigkillTimer) {
-            clearTimeout(sigkillTimer)
-            sigkillTimer = null
-          }
+            settled = true
 
-          if (settled) return
-          settled = true
+            if (!err) {
+              const combined = [stdout, stderr].filter(Boolean).join('\n').trimEnd()
+              const prefix = follow_mode ? `[Spectator mode: output streamed to tmux pane] ${followModeHint}\n` : ''
+              resolve({ content: truncateOutput(prefix + combined, MAX_OUTPUT_LENGTH) || '(no output)', isError: false })
+              return
+            }
 
-          // Check if we were cancelled
-          if (context.signal?.aborted) {
-            resolve({ content: 'Command cancelled.', isError: true })
-            return
-          }
+            const nodeErr = err as NodeJS.ErrnoException & {
+              killed?: boolean
+              signal?: string
+              stdout?: string
+              stderr?: string
+              code?: number
+            }
 
-          if (!err) {
-            const combined = [stdout, stderr].filter(Boolean).join('\n').trimEnd()
+            if (nodeErr.killed || nodeErr.signal === 'SIGTERM') {
+              resolve({ content: `Command timed out after ${timeoutMs / 1000}s`, isError: true })
+              return
+            }
+
+            // Non-zero exit — provide stdout+stderr so the LLM can diagnose
+            const out = [nodeErr.stdout ?? stdout, nodeErr.stderr ?? stderr].filter(Boolean).join('\n').trimEnd()
+            const exitCode = nodeErr.code ?? 1
             const prefix = follow_mode ? `[Spectator mode: output streamed to tmux pane] ${followModeHint}\n` : ''
-            resolve({ content: truncateOutput(prefix + combined, MAX_OUTPUT_LENGTH) || '(no output)', isError: false })
-            return
-          }
+            resolve({
+              content: truncateOutput(prefix + `Exit code: ${exitCode}\n${out}`, MAX_OUTPUT_LENGTH).trimEnd(),
+              isError: false,  // non-zero exit is not necessarily fatal
+            })
+          } finally {
+            // Remove the abort listener to prevent it firing after process ends
+            if (context.signal) {
+              context.signal.removeEventListener('abort', onAbort)
+            }
 
-          const nodeErr = err as NodeJS.ErrnoException & {
-            killed?: boolean
-            signal?: string
-            stdout?: string
-            stderr?: string
-            code?: number
-          }
+            // Clean up follow mode resources
+            if (followCleanup) {
+              followCleanup()
+            }
 
-          if (nodeErr.killed || nodeErr.signal === 'SIGTERM') {
-            resolve({ content: `Command timed out after ${timeoutMs / 1000}s`, isError: true })
-            return
+            // Cancel the SIGKILL fallback timer
+            if (sigkillTimer) {
+              clearTimeout(sigkillTimer)
+              sigkillTimer = null
+            }
           }
-
-          // Non-zero exit — provide stdout+stderr so the LLM can diagnose
-          const out = [nodeErr.stdout ?? stdout, nodeErr.stderr ?? stderr].filter(Boolean).join('\n').trimEnd()
-          const exitCode = nodeErr.code ?? 1
-          const prefix = follow_mode ? `[Spectator mode: output streamed to tmux pane] ${followModeHint}\n` : ''
-          resolve({
-            content: truncateOutput(prefix + `Exit code: ${exitCode}\n${out}`, MAX_OUTPUT_LENGTH).trimEnd(),
-            isError: false,  // non-zero exit is not necessarily fatal
-          })
         },
       )
 

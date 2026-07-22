@@ -160,7 +160,7 @@ export function createCTFTools(): Tool[] {
     domains: ['image'],
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `zsteg -a ${JSON.stringify(target)}`
+      return `zsteg -a ${JSON.stringify(target) ?? '""'}`
     },
   }))
 
@@ -173,7 +173,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const extract = typeof input.command === 'string' && input.command.includes('-e') ? '' : '-e'
-      return `binwalk ${extract} ${JSON.stringify(target)}`.trim()
+      return `binwalk ${extract} ${JSON.stringify(target) ?? '""'}`.trim()
     },
   }))
 
@@ -185,7 +185,7 @@ export function createCTFTools(): Tool[] {
     domains: ['forensics'],
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `exiftool ${JSON.stringify(target)}`
+      return `exiftool ${JSON.stringify(target) ?? '""'}`
     },
   }))
 
@@ -197,7 +197,7 @@ export function createCTFTools(): Tool[] {
     domains: ['image'],
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `pngcheck -v ${JSON.stringify(target)}`
+      return `pngcheck -v ${JSON.stringify(target) ?? '""'}`
     },
   }))
 
@@ -209,7 +209,7 @@ export function createCTFTools(): Tool[] {
     domains: ['image'],
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `identify -verbose ${JSON.stringify(target)}`
+      return `identify -verbose ${JSON.stringify(target) ?? '""'}`
     },
   }))
 
@@ -223,7 +223,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const passphrase = typeof input.passphrase === 'string' ? input.passphrase : ''
-      return `steghide extract -sf ${JSON.stringify(target)} -p ${JSON.stringify(passphrase)} -xf ./extracted.bin`
+      return `steghide extract -sf ${JSON.stringify(target) ?? '""'} -p ${JSON.stringify(passphrase) ?? '""'} -xf ./extracted.bin`
     },
     formatOutput: (stdout) => `extracted to ./extracted.bin\n${stdout}`,
   }))
@@ -238,10 +238,13 @@ export function createCTFTools(): Tool[] {
     domains: ['crypto'],
     riskLevel: 'medium',
     buildCommand: (input) => {
-      const n = String(input.n ?? '')
-      const e = String(input.e ?? '')
-      const c = String(input.c ?? '')
-      return `RsaCtfTool -n ${n} -e ${e} --uncipherfile <(printf %s "${c}") --attack all 2>&1 | head -n 60 || true`
+      const n = typeof input.n === 'string' ? input.n : ''
+      const e = typeof input.e === 'string' ? input.e : ''
+      const c = typeof input.c === 'string' ? input.c : ''
+      // Bash -c style: JSON.stringify the entire command string so LLM-controlled
+      // args can never inject `;`, `|`, redirection, etc. This mirrors the
+      // canonical pattern at binwalk:176 (every ${var} → JSON.stringify(var)).
+      return `RsaCtfTool -n ${JSON.stringify(n) ?? '""'} -e ${JSON.stringify(e) ?? '""'} --uncipherfile <(printf %s ${JSON.stringify(c) ?? '""'}) --attack all 2>&1 | head -n 60 || true`
     },
   }))
 
@@ -252,8 +255,8 @@ export function createCTFTools(): Tool[] {
     requiredBinaries: ['yafu'],
     domains: ['crypto'],
     buildCommand: (input) => {
-      const n = String(input.n ?? '')
-      return `echo "factor(${n})" | yafu 2>&1 | head -n 40 || true`
+      const n = typeof input.n === 'string' ? input.n : ''
+      return `echo "factor(${JSON.stringify(n) ?? '""'})" | yafu 2>&1 | head -n 40 || true`
     },
   }))
 
@@ -264,9 +267,9 @@ export function createCTFTools(): Tool[] {
     requiredBinaries: ['openssl'],
     domains: ['crypto'],
     buildCommand: (input) => {
-      const c = String(input.c ?? '')
-      const keyPath = String(input.privateKey ?? '')
-      return `printf %s "${c}" | openssl rsautl -decrypt -inkey ${JSON.stringify(keyPath)} 2>&1 || true`
+      const c = typeof input.c === 'string' ? input.c : ''
+      const keyPath = typeof input.privateKey === 'string' ? input.privateKey : ''
+      return `printf %s ${JSON.stringify(c) ?? '""'} | openssl rsautl -decrypt -inkey ${JSON.stringify(keyPath) ?? '""'} 2>&1 || true`
     },
   }))
 
@@ -282,7 +285,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.flags === 'string' ? input.flags : '-sV --top-ports 1000'
-      return `nmap ${flags} ${JSON.stringify(target)}`
+      return `nmap ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'}`
     },
   }))
 
@@ -295,7 +298,7 @@ export function createCTFTools(): Tool[] {
     riskLevel: 'medium',
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `nikto -h ${JSON.stringify(target)} -Tuning 123bde 2>&1 | head -n 200`
+      return `nikto -h ${JSON.stringify(target) ?? '""'} -Tuning 123bde 2>&1 | head -n 200`
     },
   }))
 
@@ -308,7 +311,7 @@ export function createCTFTools(): Tool[] {
     riskLevel: 'high',
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `sqlmap -u ${JSON.stringify(target)} --batch --level 2 --risk 1 2>&1 | head -n 100`
+      return `sqlmap -u ${JSON.stringify(target) ?? '""'} --batch --level 2 --risk 1 2>&1 | head -n 100`
     },
   }))
 
@@ -324,7 +327,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const script = typeof input.command === 'string' ? input.command : 'info functions'
-      return `gdb -batch -ex ${JSON.stringify(script)} ${JSON.stringify(target)} 2>&1 | head -n 200`
+      return `gdb -batch -ex ${JSON.stringify(script) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
     },
   }))
 
@@ -337,7 +340,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '-d -M intel'
-      return `objdump ${flags} ${JSON.stringify(target)} 2>&1 | head -n 300`
+      return `objdump ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 300`
     },
   }))
 
@@ -350,7 +353,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const minLen = typeof input.command === 'string' ? input.command : '-n 6'
-      return `strings ${minLen} ${JSON.stringify(target)} 2>&1 | head -n 200`
+      return `strings ${JSON.stringify(minLen) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
     },
   }))
 
@@ -362,7 +365,7 @@ export function createCTFTools(): Tool[] {
     domains: ['forensics', 'reverse'],
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `file ${JSON.stringify(target)}`
+      return `file ${JSON.stringify(target) ?? '""'}`
     },
   }))
 
@@ -375,7 +378,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '-C'
-      return `nm ${flags} ${JSON.stringify(target)} 2>&1 | head -n 200`
+      return `nm ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
     },
   }))
 
@@ -389,7 +392,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const script = typeof input.command === 'string' ? input.command : 'aaa;afl'
-      return `r2 -q -c ${JSON.stringify(script)} ${JSON.stringify(target)} 2>&1 | head -n 200`
+      return `r2 -q -c ${JSON.stringify(script) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
     },
   }))
 
@@ -405,7 +408,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '-i -L -s'
-      return `curl ${flags} ${JSON.stringify(target)} 2>&1 | head -n 100`
+      return `curl ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 100`
     },
   }))
 
@@ -419,7 +422,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const wordlist = typeof input.command === 'string' ? input.command : '/usr/share/wordlists/dirb/common.txt'
-      return `gobuster dir -u ${JSON.stringify(target)} -w ${JSON.stringify(wordlist)} -t 30 -q 2>&1 | head -n 200`
+      return `gobuster dir -u ${JSON.stringify(target) ?? '""'} -w ${JSON.stringify(wordlist) ?? '""'} -t 30 -q 2>&1 | head -n 200`
     },
   }))
 
@@ -435,7 +438,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '-r'
-      return `tshark ${flags} ${JSON.stringify(target)} 2>&1 | head -n 200`
+      return `tshark ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
     },
   }))
 
@@ -449,7 +452,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const filter = typeof input.command === 'string' ? input.command : ''
-      return `tcpdump -nn -r ${JSON.stringify(target)} ${filter} 2>&1 | head -n 200`
+      return `tcpdump -nn -r ${JSON.stringify(target) ?? '""'} ${JSON.stringify(filter) ?? '""'} 2>&1 | head -n 200`
     },
   }))
 
@@ -465,7 +468,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const hash = typeof input.target === 'string' ? input.target : ''
       const mode = typeof input.command === 'string' ? input.command : '--help | head -n 30'
-      return `hashcat ${mode} ${JSON.stringify(hash)} 2>&1 | head -n 60`
+      return `hashcat ${JSON.stringify(mode) ?? '""'} ${JSON.stringify(hash) ?? '""'} 2>&1 | head -n 60`
     },
   }))
 
@@ -479,7 +482,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const hash = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '--show'
-      return `john ${flags} ${JSON.stringify(hash)} 2>&1 | head -n 40`
+      return `john ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(hash) ?? '""'} 2>&1 | head -n 40`
     },
   }))
 
@@ -492,7 +495,7 @@ export function createCTFTools(): Tool[] {
     riskLevel: 'low',
     buildCommand: (input) => {
       const expr = typeof input.command === 'string' ? input.command : 'print("sage ok")'
-      return `echo ${JSON.stringify(expr)} | sage 2>&1 | head -n 40 || echo "sage unavailable"`
+      return `echo ${JSON.stringify(expr) ?? '""'} | sage 2>&1 | head -n 40 || echo "sage unavailable"`
     },
   }))
 
@@ -507,7 +510,7 @@ export function createCTFTools(): Tool[] {
       const target = typeof input.target === 'string' ? input.target : ''
       const recipe = typeof input.command === 'string' ? input.command : 'From_Base64'
       // CyberChef 通常通过 node 调用 CLI;若不可用,fallback 到 node 脚本
-      return `(which cyberchef && cyberchef -r ${JSON.stringify(recipe)} -i ${JSON.stringify(target)} 2>&1 | head -n 30) || (node -e 'const d=Buffer.from(process.argv[1],"base64");console.log(d.toString("utf8"));process.exit(0);' ${JSON.stringify(target)} 2>&1 | head -n 5) || echo "cyberchef unavailable"`
+      return `(which cyberchef && cyberchef -r ${JSON.stringify(recipe) ?? '""'} -i ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30) || (node -e 'const d=Buffer.from(process.argv[1],"base64");console.log(d.toString("utf8"));process.exit(0);' ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 5) || echo "cyberchef unavailable"`
     },
   }))
 
@@ -522,7 +525,7 @@ export function createCTFTools(): Tool[] {
     riskLevel: 'low',
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `zbarimg --quiet --raw ${JSON.stringify(target)} 2>&1 | head -n 20 || echo "zbarimg unavailable"`
+      return `zbarimg --quiet --raw ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 20 || echo "zbarimg unavailable"`
     },
   }))
 
@@ -535,7 +538,7 @@ export function createCTFTools(): Tool[] {
     riskLevel: 'low',
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `python3 -c "from PIL import Image;import sys;im=Image.open(sys.argv[1]);print('size',im.size,'mode',im.mode);[print(f'ch{i} mean',sum(c)/len(c)) for i,c in enumerate(im.split())]" ${JSON.stringify(target)} 2>&1 | head -n 20 || echo "PIL not installed"`
+      return `python3 -c "from PIL import Image;import sys;im=Image.open(sys.argv[1]);print('size',im.size,'mode',im.mode);[print(f'ch{i} mean',sum(c)/len(c)) for i,c in enumerate(im.split())]" ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 20 || echo "PIL not installed"`
     },
   }))
 
@@ -549,7 +552,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '-c'
-      return `jpeginfo ${flags} ${JSON.stringify(target)} 2>&1 | head -n 30 || echo "jpeginfo unavailable"`
+      return `jpeginfo ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30 || echo "jpeginfo unavailable"`
     },
   }))
 
@@ -565,7 +568,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '-status-code -title -tech-detect -silent'
-      return `echo ${JSON.stringify(target)} | httpx ${flags} 2>&1 | head -n 30 || echo "httpx unavailable"`
+      return `echo ${JSON.stringify(target) ?? '""'} | httpx ${JSON.stringify(flags) ?? '""'} 2>&1 | head -n 30 || echo "httpx unavailable"`
     },
   }))
 
@@ -579,7 +582,7 @@ export function createCTFTools(): Tool[] {
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
       const flags = typeof input.command === 'string' ? input.command : '--no-errors -a 3'
-      return `whatweb ${flags} ${JSON.stringify(target)} 2>&1 | head -n 30 || echo "whatweb unavailable"`
+      return `whatweb ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30 || echo "whatweb unavailable"`
     },
   }))
 
@@ -594,7 +597,7 @@ export function createCTFTools(): Tool[] {
     riskLevel: 'medium',
     buildCommand: (input) => {
       const target = typeof input.target === 'string' ? input.target : ''
-      return `tcpflow -r ${JSON.stringify(target)} -C -e http 2>&1 | head -n 100 || echo "tcpflow unavailable"`
+      return `tcpflow -r ${JSON.stringify(target) ?? '""'} -C -e http 2>&1 | head -n 100 || echo "tcpflow unavailable"`
     },
   }))
 
