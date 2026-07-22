@@ -62,6 +62,13 @@ export interface ProjectorStorages {
   parentArtifactStore?: ArtifactStore
   /** Optional root for the parent artifact dir (used for the lineage sidecar). */
   parentArtifactRoot?: string
+  /**
+   * Phase 1.7 §十二 — when present, the projector reads from this
+   * CHILD store to compute the diff (the Specialist writes here instead
+   * of the parent store). Each specialist owns one.
+   */
+  childFindingStore?: FindingStore
+  childArtifactStore?: ArtifactStore
 }
 
 export interface TaskOutputSnapshot {
@@ -87,14 +94,34 @@ export interface ProjectionResult {
 export class TaskStateProjector {
   constructor(private readonly storages: ProjectorStorages) {}
 
+  /**
+   * Phase 1.7 §十二 — return a new projector view scoped to a
+   * Specialist's independent child stores. Reads from the child stores;
+   * writes to the parent's parentArtifactStore + lineage sidecar.
+   */
+  withChildStores(childFinding: FindingStore, childArtifact: ArtifactStore): TaskStateProjector {
+    return new TaskStateProjector({
+      ...this.storages,
+      childFindingStore: childFinding,
+      childArtifactStore: childArtifact,
+    })
+  }
+
   /** Capture the current set of finding/artifact ids. Cheap: just lists.
    *  Phase 1.7 — surfaces real read errors as ProjectionError('snapshot')
    *  instead of silently returning an empty snapshot. Empty snapshots
-   *  remain valid when the store genuinely has no entries. */
-  captureSnapshot(): TaskOutputSnapshot {
+   *  remain valid when the store genuinely has no entries.
+   *  Optional `childFindingStore` / `childArtifactStore` override the
+   *  default stores so callers (handoffCoordinator) can snapshot a
+   *  specialist's independent child store. */
+  captureSnapshot(
+    childFindingStore?: FindingStore,
+    childArtifactStore?: ArtifactStore,
+  ): TaskOutputSnapshot {
     const findingIds = new Set<string>()
+    const findingSrc = childFindingStore ?? this.storages.findingStore
     try {
-      for (const f of this.storages.findingStore.list()) findingIds.add(f.id)
+      for (const f of findingSrc.list()) findingIds.add(f.id)
     } catch (err) {
       throw new ProjectionError(
         `finding snapshot failed: ${(err as Error).message}`,
@@ -103,8 +130,9 @@ export class TaskStateProjector {
       )
     }
     const artifactIds = new Set<string>()
+    const artifactSrc = childArtifactStore ?? this.storages.artifactStore
     try {
-      for (const a of this.storages.artifactStore.list()) artifactIds.add(a.id)
+      for (const a of artifactSrc.list()) artifactIds.add(a.id)
     } catch (err) {
       throw new ProjectionError(
         `artifact snapshot failed: ${(err as Error).message}`,
@@ -133,8 +161,15 @@ export class TaskStateProjector {
     const newFindingIds: string[] = []
     const newArtifactIds: string[] = []
 
+    // Phase 1.7 §十二 — when the Specialist uses an independent store,
+    // we read from the CHILD store and copy into the parent.
+    const readingFindingStore =
+      this.storages.childFindingStore ?? this.storages.findingStore
+    const readingArtifactStore =
+      this.storages.childArtifactStore ?? this.storages.artifactStore
+
     try {
-      for (const f of this.storages.findingStore.list()) {
+      for (const f of readingFindingStore.list()) {
         if (before.findingIds.has(f.id)) continue
         const rewritten =
           metadata.producerProfileId && f.producerAgentId !== metadata.producerProfileId
@@ -153,7 +188,7 @@ export class TaskStateProjector {
 
     const parent = this.storages.parentArtifactStore
     try {
-      for (const a of this.storages.artifactStore.list()) {
+      for (const a of readingArtifactStore.list()) {
         if (before.artifactIds.has(a.id)) continue
         if (parent && metadata.handoffId) {
           // Specialist artifact → physically copy into the parent store

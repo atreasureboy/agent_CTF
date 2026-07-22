@@ -22,8 +22,8 @@ import type { CapabilityProfile } from '../capabilityProfile.js'
 import { createHarness, type HarnessBundle } from '../harness.js'
 import type { ContestScope } from '../contestScope.js'
 import { parseContestScope } from '../contestScope.js'
-import type { ArtifactStore } from '../artifacts.js'
-import type { FindingStore } from '../findings.js'
+import { ArtifactStore } from '../artifacts.js'
+import { FindingStore } from '../findings.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { deriveSubtaskContext } from './taskExecutionContext.js'
@@ -76,6 +76,10 @@ export interface SpecialistHarnessHandle {
   /** Per-Specialist AbortController — `abort()` triggers the Specialist's
    *  own signal, parent listens via linked chain. */
   abort: LinkedAbortController
+  /** Independent FindingStore used by the specialist (Phase 1.7 §十二). */
+  findingStore: FindingStore
+  /** Independent ArtifactStore used by the specialist (Phase 1.7 §十二). */
+  artifactStore: ArtifactStore
   /** Detach this Specialist's parent signal listener only. */
   dispose(): Promise<void>
 }
@@ -133,6 +137,18 @@ export class SpecialistHarnessFactory {
       abortSignal: ownAbort.signal,
     }
 
+    // Phase 1.7 §十二 — Specialist runs against an independent
+// FindingStore / ArtifactStore rooted at the parent's sessionDir under
+// `agents/<subtaskId>/`. The parent keeps the original stores for
+// projection at run end; lineage is reconstructed by the Projector.
+    const specialistRoot = input.sessionsRoot ?? input.parentContext.sessionDir
+    const independentFindingStore = new FindingStore(
+      linkedContext.workspaceDir,
+    )
+    const independentArtifactStore = new ArtifactStore(
+      linkedContext.workspaceDir,
+    )
+
     const harness = createHarness({
       cwd: input.cwd,
       profile: input.profile,
@@ -141,17 +157,24 @@ export class SpecialistHarnessFactory {
       context: linkedContext,
       contestScope: linkedContext.contestScope,
       taskId: linkedContext.taskId,
-      sessionsRoot: input.sessionsRoot,
+      sessionsRoot: input.sessionsRoot ?? specialistRoot,
       client: input.dependencies.client,
       renderer,
-      artifactStore: input.parentArtifactStore,
-      findingStore: input.parentFindingStore,
+      // Independent stores — NOT the parent's. The projector reads both
+      // (parent + specialist) to assemble the diff and writes lineage.
+      artifactStore: independentArtifactStore,
+      findingStore: independentFindingStore,
     })
 
     return Promise.resolve({
       harness,
       context: linkedContext,
       abort: ownAbort,
+      // Expose the specialist's independent stores so the coordinator /
+      // projector can read them after the run completes and copy valid
+      // findings/artifacts into the parent.
+      findingStore: independentFindingStore,
+      artifactStore: independentArtifactStore,
       dispose(): Promise<void> {
         // Phase 1.7 §五 — only detach THIS Specialist's parent listener,
         // never the parent's own controller.

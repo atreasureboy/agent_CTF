@@ -351,7 +351,15 @@ export class HandoffCoordinator {
 
     let failureError: Error | undefined
     try {
-      const before = this.deps.projector.captureSnapshot()
+      // Phase 1.7 §十二 — the specialist wrote into its OWN independent
+      // stores during this turn. We configure the projector to read from
+      // those child stores for this projection pass and copy valid
+      // findings/artifacts into the parent.
+      const childProjector = this.deps.projector.withChildStores(
+        handle.findingStore,
+        handle.artifactStore,
+      )
+      const before = childProjector.captureSnapshot()
       let engineOut:
         | { result: TurnResult; newHistory: OpenAIMessage[] }
         | undefined
@@ -374,7 +382,7 @@ export class HandoffCoordinator {
       // Project the diff into TaskState. The handoffId is forwarded so
       // artifacts produced by the specialist are physically copied into the
       // parent's artifact store with a lineage sidecar entry.
-      const projection = this.deps.projector.projectDiff(before, {
+      const projection = childProjector.projectDiff(before, {
         producerProfileId: profile.id,
         handoffId,
       })
