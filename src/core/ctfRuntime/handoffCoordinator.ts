@@ -422,12 +422,14 @@ export class HandoffCoordinator {
         }
       }
 
-      // Project the diff into TaskState. The handoffId is forwarded so
-      // artifacts produced by the specialist are physically copied into the
-      // parent's artifact store with a lineage sidecar entry.
+      // Project the diff into TaskState. The handoffId + agentRunId are
+      // forwarded so artifacts produced by the specialist are physically
+      // copied into the parent's artifact store with a lineage sidecar
+      // entry, and the run-id filtering (§十三.3) actually matches.
       const projection = childProjector.projectDiff(before, {
         producerProfileId: profile.id,
         handoffId,
+        agentRunId,
       })
       for (const ev of projection.events) this.deps.store.apply(ev)
       const summary = `inherited ${handoffRec.findingIds.length} findings, ${handoffRec.artifactIds.length} artifacts; produced ${projection.newFindingIds.length} findings + ${projection.newArtifactIds.length} artifacts; turn finished`

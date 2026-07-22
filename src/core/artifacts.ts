@@ -34,6 +34,10 @@ export interface ArtifactMeta {
   sha256: string
   summary: string
   createdAt: string
+  /** Phase 1.7 §十三.3 — Run-id association. */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
   /** Relative path under artifacts root, e.g. 'bin/abc123.bin'. */
   path: string
   /** Optional source reference (the tool+input that produced this). */
@@ -49,6 +53,10 @@ export interface ArtifactInput {
   type: string
   mimeType?: string
   source?: { toolId?: string; inputSummary?: string }
+  /** Phase 1.7 §十三.3 — Run-id association. */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
 }
 
 const SUMMARY_HEAD_BYTES = 200

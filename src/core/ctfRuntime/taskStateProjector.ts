@@ -83,6 +83,8 @@ export interface ProjectionMetadata {
   handoffId?: string
   /** Agent run id. */
   agentRunId?: string
+  /** Workflow run id (when projecting a Workflow's outputs). */
+  workflowRunId?: string
 }
 
 export interface ProjectionResult {
@@ -168,9 +170,28 @@ export class TaskStateProjector {
     const readingArtifactStore =
       this.storages.childArtifactStore ?? this.storages.artifactStore
 
+    // §十三.3 — when a run-id is supplied, prefer filtering by it.
+    // Items lacking run-id metadata still pass (legacy snapshot diff).
+    const matchesRun = <T extends { agentRunId?: string; workflowRunId?: string; handoffId?: string }>(
+      item: T,
+      md: ProjectionMetadata,
+    ): boolean => {
+      // No run-id metadata → pass everything (snapshot diff is the truth).
+      if (!md.agentRunId && !md.workflowRunId && !md.handoffId) return true
+      // Items without run-id metadata pass when metadata is set so we
+      // don't break the legacy path that emits without run-id.
+      const itemHas = item.agentRunId || item.workflowRunId || item.handoffId
+      if (!itemHas) return true
+      if (md.agentRunId && item.agentRunId === md.agentRunId) return true
+      if (md.workflowRunId && item.workflowRunId === md.workflowRunId) return true
+      if (md.handoffId && item.handoffId === md.handoffId) return true
+      return false
+    }
+
     try {
       for (const f of readingFindingStore.list()) {
         if (before.findingIds.has(f.id)) continue
+        if (!matchesRun(f, metadata)) continue
         const rewritten =
           metadata.producerProfileId && f.producerAgentId !== metadata.producerProfileId
             ? { ...f, producerAgentId: metadata.producerProfileId }
@@ -191,8 +212,10 @@ export class TaskStateProjector {
       for (const a of readingArtifactStore.list()) {
         if (before.artifactIds.has(a.id)) continue
         if (parent && metadata.handoffId) {
-          // Specialist artifact → physically copy into the parent store
-          // and emit ARTIFACT_ADDED with the parent id.
+          // Specialist artifact path — copy into parent store. We don't
+          // filter by run-id here because the child meta may not yet
+          // carry the handoffId field; the parent copy propagates the
+          // run-id onto the parent's meta for future filtering.
           const parentMeta = this.copyArtifactIntoParent(a, metadata)
           if (!parentMeta) {
             throw new ProjectionError(
@@ -204,6 +227,7 @@ export class TaskStateProjector {
           events.push({ type: 'ARTIFACT_ADDED', artifactId: parentMeta.id })
           continue
         }
+        if (!matchesRun(a, metadata)) continue
         events.push({ type: 'ARTIFACT_ADDED', artifactId: a.id })
         newArtifactIds.push(a.id)
       }
@@ -241,6 +265,11 @@ export class TaskStateProjector {
           producerAgentId: metadata.producerProfileId ?? childMeta.producerAgentId,
           type: childMeta.type,
           mimeType: childMeta.mimeType,
+          // §十三.3 — propagate run-id association onto the parent's
+          // copy so future projections can filter by it.
+          agentRunId: metadata.agentRunId ?? childMeta.agentRunId,
+          workflowRunId: metadata.workflowRunId ?? childMeta.workflowRunId,
+          handoffId: metadata.handoffId ?? childMeta.handoffId,
           source: {
             toolId: childMeta.source?.toolId,
             inputSummary: childMeta.source?.inputSummary,

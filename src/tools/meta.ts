@@ -46,6 +46,10 @@ export interface CTFMetaServices {
   findingStore?: FindingStore
   handoffStore?: HandoffStore
   jobManager?: BackgroundJobManager
+  /** Phase 1.7 §十三.3 — run-id association for emitted findings/artifacts. */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
 }
 
 /** Pull services from the legacy ToolContext (the broker pokes them in). */
@@ -117,6 +121,11 @@ export function makeEmitFindingTool(): Tool {
         artifactIds: Array.isArray(input.artifactIds) ? input.artifactIds.filter((v): v is string => typeof v === 'string') : [],
         recommendedNextActions: Array.isArray(input.recommendedNextActions) ? input.recommendedNextActions.filter((v): v is string => typeof v === 'string') : undefined,
         suggestedAgent: typeof input.suggestedAgent === 'string' ? input.suggestedAgent : undefined,
+        // §十三.3 — propagate run-id so the parent projector can filter
+        // by agentRunId / handoffId instead of relying on snapshot diffs.
+        agentRunId: svc.agentRunId,
+        workflowRunId: svc.workflowRunId,
+        handoffId: svc.handoffId,
       })
       return {
         isError: false,

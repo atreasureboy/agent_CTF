@@ -48,6 +48,10 @@ export interface BrokerToolContext {
   apiConfig?: { apiKey: string; baseURL?: string; model: string }
   taskId: string
   agentId: string
+  /** Phase 1.7 §十三.3 — Run-id association for emitted findings. */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
 }
 
 export interface ToolBrokerOptions {
@@ -282,6 +286,11 @@ export class ToolBroker {
           artifactStore: this.opts.artifactStore,
           findingStore: this.opts.findingStore,
           handoffStore: this.opts.handoffStore,
+          // §十三.3 — propagate run-id so emitted findings/artifacts
+          // can be filtered by agentRunId / workflowRunId / handoffId.
+          agentRunId: ctx.agentRunId,
+          workflowRunId: ctx.workflowRunId,
+          handoffId: ctx.handoffId,
           jobManager: this.opts.jobManager,
         },
       }
@@ -403,6 +412,10 @@ interface ToolCtxAdapter {
     findingStore?: FindingStore
     handoffStore?: HandoffStore
     jobManager?: BackgroundJobManager
+    /** Phase 1.7 §十三.3 — Run-id propagation for emitted findings. */
+    agentRunId?: string
+    workflowRunId?: string
+    handoffId?: string
   }
 }
 

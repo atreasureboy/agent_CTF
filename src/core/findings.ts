@@ -41,6 +41,13 @@ export interface Finding {
   artifactIds: string[]
   recommendedNextActions?: string[]
   suggestedAgent?: string
+  /** Phase 1.7 §十三.3 — Run-id association so the projector can
+   *  filter by agent / workflow / handoff instead of relying on
+   *  global snapshot diffs. All optional so existing emitters
+   *  without explicit run context still work. */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
   createdAt: string
 }
 
@@ -55,6 +62,10 @@ export interface NewFinding {
   artifactIds?: string[]
   recommendedNextActions?: string[]
   suggestedAgent?: string
+  /** Phase 1.7 §十三.3 — Run-id association. */
+  agentRunId?: string
+  workflowRunId?: string
+  handoffId?: string
 }
 
 function makeId(): string {
