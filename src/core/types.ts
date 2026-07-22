@@ -110,6 +110,12 @@ export interface EngineConfig {
    * engine builds one from apiKey/baseURL with retry+timeout defaults.
    */
   client?: OpenAI
+  /**
+   * Phase 1.7 §四.2 — external AbortSignal. When supplied, the per-turn
+   * AbortController listens to this signal so cancelling the parent task
+   * (or any upstream controller) aborts the in-flight LLM call.
+   */
+  signal?: AbortSignal
   maxIterations: number
   cwd: string
   permissionMode: 'auto' | 'ask' | 'deny'

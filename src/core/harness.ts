@@ -366,6 +366,9 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       agentId: currentProfile.id,
       eventLog: undefined,
       systemPrompt,
+      // Phase 1.7 §四.2 — forward the Task-level abort signal into the
+      // engine so cancelling the Task aborts the in-flight LLM call.
+      signal: taskExecutionContext.abortSignal,
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
     return engine.runTurn(userMessage, history)
