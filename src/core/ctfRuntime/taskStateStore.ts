@@ -279,6 +279,23 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'HANDOFF_REQUESTED':
       return { ...state, handoffs: [...state.handoffs, event.handoff] }
 
+    case 'HANDOFF_FAILED': {
+      // §十一.1 — selection / creation / execution / projection failures
+      // route through this distinct event. The handoff transitions to
+      // 'failed' with the stage recorded so audits can distinguish.
+      const next = state.handoffs.map((h) =>
+        h.id === event.handoffId
+          ? {
+              ...h,
+              status: 'failed' as const,
+              error: `${event.stage}: ${event.error}`,
+              completedAt: Date.now(),
+            }
+          : h,
+      )
+      return { ...state, handoffs: next }
+    }
+
     case 'HANDOFF_APPROVED':
     case 'HANDOFF_REJECTED':
     case 'HANDOFF_CANCELLED':

@@ -37,6 +37,12 @@ export type CTFTaskEvent =
   | { type: 'HANDOFF_APPROVED'; handoffId: string; selectedAgentId: string }
   | { type: 'HANDOFF_REJECTED'; handoffId: string; reason: string }
   | { type: 'HANDOFF_CANCELLED'; handoffId: string; reason: string }
+  | {
+      type: 'HANDOFF_FAILED'
+      handoffId: string
+      stage: 'selection' | 'creation' | 'execution' | 'projection'
+      error: string
+    }
   // Per next_goal.md §五 — Specialist events carry the HandoffRecord id so
   // the link between a Handoff and the run it spawned is preserved.
   | { type: 'SPECIALIST_STARTED'; handoffId: string; agentRun: AgentRunRecord }

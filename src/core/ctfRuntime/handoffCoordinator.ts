@@ -13,8 +13,10 @@
  */
 
 import { randomBytes } from 'crypto'
+import { join } from 'path'
 
 import type { CapabilityProfile } from '../capabilityProfile.js'
+import type { ContestScope } from '../contestScope.js'
 
 import type { CTFTaskStateStore } from './taskStateStore.js'
 import type {
@@ -48,6 +50,21 @@ export interface RequestHandoffInput {
   findingIds?: string[]
   constraints?: string[]
   priority?: number
+}
+
+/**
+ * §十一.2 — raised when approveAndRun is called on a handoff that is
+ * already terminal (completed / failed / cancelled / rejected).
+ */
+export class HandoffAlreadyTerminalError extends Error {
+  constructor(
+    readonly handoffId: string,
+    readonly terminalStatus: string,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'HandoffAlreadyTerminalError'
+  }
 }
 
 export interface HandoffCoordinatorDeps {
@@ -171,14 +188,13 @@ export class HandoffCoordinator {
     const h = this.deps.store.getState().handoffs.find((x) => x.id === handoffId)
     if (!h) throw new Error(`Handoff ${handoffId} not found`)
     if (this.isTerminal(h.status)) {
-      return {
-        agentRunId: '',
-        profileId: h.selectedAgentId ?? h.requestedAgentId ?? h.requestedCapability,
-        status: h.status === 'completed' ? 'completed' : 'failed',
-        summary: h.status,
-        producedFindingIds: [],
-        producedArtifactIds: [],
-      }
+      // §十一.2 — terminal handoff re-approve throws a typed error
+      // instead of returning a synthetic empty-result stub.
+      throw new HandoffAlreadyTerminalError(
+        handoffId,
+        h.status,
+        `Handoff ${handoffId} already in terminal state '${h.status}'; re-approval refused.`,
+      )
     }
     if (h.status !== 'requested') {
       throw new Error(`Handoff ${handoffId} is not in 'requested' state (got ${h.status})`)
@@ -190,10 +206,13 @@ export class HandoffCoordinator {
       h.requestedAgentId,
     )
     if (!selection.agentId) {
+      // §十一.1 — selection failure is a HANDOFF_FAILED stage='selection'
+      // event, NOT a SPECIALIST_FAILED with empty agentRunId. This avoids
+      // creating a phantom empty AgentRun record.
       this.deps.store.apply({
-        type: 'SPECIALIST_FAILED',
+        type: 'HANDOFF_FAILED',
         handoffId,
-        agentRunId: '',
+        stage: 'selection',
         error: `No agent available for capability "${h.requestedCapability}": ${selection.reason ?? 'unknown'}`,
       })
       return null
@@ -310,6 +329,15 @@ export class HandoffCoordinator {
       return failedResult(agentId, err)
     }
 
+    // §十一.4 — derive a NARROWED scope for the specialist. The Specialist
+    // only needs access to its subtask workspace + the artifacts inherited
+    // from the parent handoff. We intersect allowedHosts/allowedDomains
+    // with the parent's allowed list and narrow the filesRoot to the
+    // subtask directory.
+    const narrowedScope = this.narrowSpecialistScope(
+      this.deps.parentContext.contestScope,
+      handoffId,
+    )
     const handle = await this.specialistFactory.create({
       parentContext: this.deps.parentContext,
       parentTaskId: this.deps.parentTaskId,
@@ -318,7 +346,7 @@ export class HandoffCoordinator {
       dependencies: this.deps.parentDependencies,
       runtimeRenderer: this.deps.runtimeRenderer,
       parentAbortSignal: this.deps.abort.signal,
-      subtaskScope: this.deps.parentContext.contestScope,
+      subtaskScope: narrowedScope,
       subtaskId: `${this.deps.parentTaskId}/spec_${handoffId.slice(-6)}`,
       cwd: this.deps.cwd,
       sessionsRoot: this.deps.sessionsRoot,
@@ -378,6 +406,21 @@ export class HandoffCoordinator {
         this.cancelAgentRun(agentRunId, handoffId, 'specialist interrupted')
         return failedResult(profile.id, engineOut?.result.error ?? 'specialist interrupted')
       }
+      // §十一.4 — if the specialist's per-handle controller aborted,
+      // map the run to 'cancelled' (not 'completed') regardless of the
+      // engine's reported success. The LLM call was actually interrupted.
+      if (handle.abort.controller.signal.aborted) {
+        const reason = handle.abort.controller.signal.reason ?? 'specialist_cancelled'
+        this.cancelAgentRun(agentRunId, handoffId, reason)
+        return {
+          agentRunId,
+          profileId: profile.id,
+          status: 'cancelled',
+          error: reason,
+          producedFindingIds: [],
+          producedArtifactIds: [],
+        }
+      }
 
       // Project the diff into TaskState. The handoffId is forwarded so
       // artifacts produced by the specialist are physically copied into the
@@ -436,6 +479,25 @@ export class HandoffCoordinator {
       agentRunId,
       reason,
     })
+  }
+
+  /**
+   * §十一.4 — narrow the parent's ContestScope for a specialist. The
+   * specialist sees a scope restricted to:
+   *   - allowedFilesRoot = the specialist's subtask directory
+   *   - allowPublicNetwork = parent (inherited)
+   *   - allowedHosts / allowedDomains / allowedCidrs / allowedPorts =
+   *     inherited as-is (specialist inherits network allow-list)
+   */
+  private narrowSpecialistScope(
+    parentScope: ContestScope,
+    handoffId: string,
+  ): ContestScope {
+    const subtaskDir = join(parentScope.allowedFilesRoot, `spec_${handoffId.slice(-6)}`)
+    return {
+      ...parentScope,
+      allowedFilesRoot: subtaskDir,
+    }
   }
 
   private isTerminal(s: HandoffRecordStatus): boolean {

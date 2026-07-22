@@ -223,15 +223,24 @@ export async function runCtfCli(
   const env = deps.env ?? process.env
   const now = deps.now ?? Date.now
 
-  const args = parseArgs(argv)
-
-  if (args.help) {
+  // Fast-path help/version (no arg parsing required).
+  if (argv.includes('--help') || argv.includes('-h')) {
     printHelp(stdout)
     return 0
   }
-  if (args.version) {
+  if (argv.includes('--version') || argv.includes('-V') || argv.includes('-v')) {
     stdout.write(`${VERSION} (ovogogogo-ctf)\n`)
     return 0
+  }
+
+  // §十四 — parseArgs inside the try block so missing-value / unknown-flag
+  // errors become a clean exit 1 instead of an unhandled throw.
+  let args: CtfArgs
+  try {
+    args = parseArgs(argv)
+  } catch (err) {
+    stderr.write(`${RED}error:${RESET} ${(err as Error).message}\n`)
+    return 1
   }
 
   stdout.write(`${CYAN}${BOLD}ovogogogo-ctf ${VERSION}${RESET}\n`)
@@ -266,6 +275,10 @@ export async function runCtfCli(
   let unregisterSignals: (() => void) | undefined
 
   const createRuntime = deps.createRuntime ?? createCTFTaskRuntime
+
+  // §十四 — parseArgs moved inside the try block so a missing-value
+  // error becomes a clean exit 1 instead of an unhandled throw.
+  // (already done above; remove the duplicate below)
 
   try {
     // ── Workflow-only mode — no client / renderer required.

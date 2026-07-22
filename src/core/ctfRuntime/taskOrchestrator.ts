@@ -36,7 +36,7 @@ import type OpenAI from 'openai'
 import { getBuiltinProfile, PROFILES } from '../../capabilityProfiles/index.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
-import { CTFTaskStateStore } from './taskStateStore.js'
+import { CTFTaskStateStore, TaskAlreadyCompletedError } from './taskStateStore.js'
 import { CTFProfileStore, type ProfileStore } from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
@@ -333,11 +333,11 @@ export class CTFTaskOrchestrator {
           const projection = this.projector.projectDiff(before, {
             producerProfileId: currentProfileId,
           })
-          for (const ev of projection.events) this.store.apply(ev)
+          for (const ev of projection.events) this.safeApply(ev)
           if (r.status === 'cancelled') {
             // §九 — cancel path emits WORKFLOW_CANCELLED so the run record
             // reflects the actual outcome (not 'completed').
-            this.store.apply({
+            this.safeApply({
               type: 'WORKFLOW_CANCELLED',
               workflowRunId: id,
               reason: 'workflow cancelled via parent signal',
@@ -347,13 +347,13 @@ export class CTFTaskOrchestrator {
             // workflow continued. Map to WORKFLOW_COMPLETED with a
             // summary that records the partial status so audits can
             // distinguish "clean success" from "partial".
-            this.store.apply({
+            this.safeApply({
               type: 'WORKFLOW_COMPLETED',
               workflowRunId: id,
               summary: `partial (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
             })
           } else {
-            this.store.apply({
+            this.safeApply({
               type: 'WORKFLOW_COMPLETED',
               workflowRunId: id,
               summary: `${r.status} (${r.stepOutcomes.length} steps, ${projection.newFindingIds.length} new findings, ${projection.newArtifactIds.length} new artifacts)`,
@@ -361,7 +361,7 @@ export class CTFTaskOrchestrator {
           }
           return r
         } catch (err) {
-          this.store.apply({
+          this.safeApply({
             type: 'WORKFLOW_FAILED',
             workflowRunId: id,
             error: (err as Error).message,
@@ -634,6 +634,21 @@ export class CTFTaskOrchestrator {
   private wrapError(userSummary: string, cause: unknown): Error {
     const msg = cause instanceof Error ? cause.message : String(cause)
     return new Error(`${userSummary}: ${msg}`, { cause: cause instanceof Error ? cause : new Error(msg) })
+  }
+
+  /**
+   * Apply an event to the store, swallowing `TaskAlreadyCompletedError`.
+   * This is the common pattern after cancel() — the workflow completes
+   * naturally but the task is already terminal; recording the workflow
+   * outcome is unnecessary and the unguarded apply would throw.
+   */
+  private safeApply(ev: Parameters<CTFTaskStateStore['apply']>[0]): void {
+    try {
+      this.store.apply(ev)
+    } catch (err) {
+      if (err instanceof TaskAlreadyCompletedError) return
+      throw err
+    }
   }
 
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
