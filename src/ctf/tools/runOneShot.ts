@@ -1,19 +1,20 @@
 /**
- * run_one_shot — kick off a single one-shot by id, with explicit argv.
+ * run_one_shot — Phase 2.0 §十一 + §十二.
  *
- * The tool's behaviour:
- *   1. Resolve manifestId against the registry; refuse unknown ids.
- *   2. Route scope-required manifests through ScopeGate.
- *   3. Delegate to Dispatcher.runOne() and return the structured summary.
+ * Tool inputs restricted to: manifestId, inputArtifactIds, options, reason.
+ * Workspace, evidenceRoot, scope, taskId, profileId are sourced from the
+ * runtime-injected `context.taskContext` and CANNOT be overridden by the
+ * model.
  *
- * The tool returns a SHORT string suitable for LLM context — raw output
- * stays on disk.
+ * argv is NOT supplied by the model. The framework resolves it from
+ * `manifest.input.argumentTemplate` and `inputArtifactIds`. Extra args
+ * must pass `manifest.input.optionsSchema` + `allowedExtraArgs`.
  */
 
 import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../../core/types.js'
 import type { Dispatcher } from '../oneshot/dispatcher.js'
 import type { OneShotRegistry } from '../oneshot/registry.js'
-import { ScopeGate, ScopeDeniedError } from '../oneshot/scopeGate.js'
+import { resolveArgumentTemplate } from '../oneshot/argumentResolver.js'
 
 export const RUN_ONE_SHOT_DEFINITION: ToolDefinition = {
   type: 'function',
@@ -25,82 +26,93 @@ export const RUN_ONE_SHOT_DEFINITION: ToolDefinition = {
     parameters: {
       type: 'object',
       properties: {
-        manifestId: { type: 'string', description: 'manifest identifier (e.g. "zsteg", "rsactftool")' },
-        argv: {
+        manifestId: {
+          type: 'string',
+          description: 'manifest identifier (e.g. "zsteg", "rsactftool")',
+        },
+        inputArtifactIds: {
           type: 'array',
           items: { type: 'string' },
-          description: 'arguments appended to manifest.command (e.g. ["/work/INPUT"])',
+          description: 'Artifact IDs from the parent task (resolved by the framework to filesystem paths).',
         },
-        workspace: { type: 'string', description: 'task workspace dir' },
-        evidenceRoot: { type: 'string', description: 'where to write evidence' },
-        scope: {
+        options: {
           type: 'object',
-          properties: {
-            hosts: { type: 'array', items: { type: 'string' } },
-            domains: { type: 'array', items: { type: 'string' } },
-            ports: { type: 'array', items: { type: 'number' } },
-            cidrs: { type: 'array', items: { type: 'string' } },
-          },
+          description: 'Tool-specific options; validated against manifest.input.optionsSchema.',
+          additionalProperties: true,
+        },
+        reason: {
+          type: 'string',
+          description: 'Short reason for the run (audit only).',
         },
       },
-      required: ['manifestId', 'argv', 'workspace'],
+      required: ['manifestId'],
+      additionalProperties: false,
     },
   },
 }
 
-export function makeRunOneShotTool(
-  registry: OneShotRegistry,
-  dispatcher: Dispatcher,
-): Tool {
+export interface RunOneShotToolDeps {
+  registry: OneShotRegistry
+  dispatcher: Dispatcher
+  /**
+   * TaskExecutionContext lookup — used to resolve input artifacts to
+   * filesystem paths. Supplied by the Runtime, not the model.
+   */
+  taskContext: import('../../core/ctfRuntime/taskExecutionContext.js').TaskExecutionContext
+  /** Artifact ID → filesystem path resolver. */
+  resolveArtifactPath?: (artifactId: string) => string | undefined
+}
+
+export function makeRunOneShotTool(deps: RunOneShotToolDeps): Tool {
+  const { registry, dispatcher, taskContext, resolveArtifactPath } = deps
   return {
     name: 'run_one_shot',
     definition: RUN_ONE_SHOT_DEFINITION,
     concurrencySafe: true,
     async execute(
       input: Record<string, unknown>,
-      context: ToolContext,
+      _context: ToolContext,
     ): Promise<ToolResult> {
-      const { manifestId, argv, workspace, evidenceRoot, scope } = input as {
+      const { manifestId, inputArtifactIds, options, reason } = input as {
         manifestId: string
-        argv: string[]
-        workspace: string
-        evidenceRoot?: string
-        scope?: { hosts?: string[]; domains?: string[]; ports?: number[]; cidrs?: string[] }
+        inputArtifactIds?: string[]
+        options?: Record<string, unknown>
+        reason?: string
       }
       if (!manifestId || !registry.has(manifestId)) {
         return { content: `unknown manifestId: ${manifestId}`, isError: true }
       }
       const manifest = registry.get(manifestId)!
-      if (manifest.network.mode !== 'none' && !scope) {
+
+      // §十三 — paths must be authorised. We resolve ${artifact:N} placeholders
+      // before passing argv to the runner; the resolver checks containment.
+      let argv: string[]
+      try {
+        argv = resolveArgumentTemplate(manifest, {
+          artifactIds: inputArtifactIds ?? [],
+          options: options ?? {},
+          resolveArtifactPath,
+          taskWorkspaceDir: taskContext.workspaceDir,
+        })
+      } catch (err) {
         return {
-          content: `${manifestId} requires scope (mode=${manifest.network.mode})`,
+          content: `run_one_shot rejected: ${(err as Error).message}`,
           isError: true,
         }
       }
-      if (scope) {
-        const gate = new ScopeGate({
-          hosts: scope.hosts ?? [],
-          domains: scope.domains ?? [],
-          ports: scope.ports ?? [],
-          cidrs: scope.cidrs ?? [],
-        }, { denyByDefault: true })
-        const last = argv.slice(-1)[0]
-        if (last) {
-          try {
-            gate.assert(last)
-          } catch (err) {
-            if (err instanceof ScopeDeniedError) {
-              return { content: `scope denied for ${last}: ${err.reason}`, isError: true }
-            }
-            throw err
-          }
-        }
-      }
+
+      // §十一 — evidenceRoot is owned by the Runtime, never the model.
+      const evidenceRoot = `${taskContext.artifactDir}/.oneshots`
+
       try {
         const result = await dispatcher.runOne(manifestId, {
           argv,
-          evidenceRoot: evidenceRoot ?? `${workspace}/.oneshots`,
-          signal: (context as { signal?: AbortSignal }).signal ?? new AbortController().signal,
+          evidenceRoot,
+          resolvedInput: {
+            artifactIds: inputArtifactIds,
+            options,
+          },
+          reason,
         })
         return {
           content:

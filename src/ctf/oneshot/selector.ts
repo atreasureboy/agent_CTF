@@ -67,7 +67,13 @@ export function selectManifests(input: SelectionInput, catalog: OneShotCatalog):
     const m = manifest.inputMatchers
     if (m?.extensions || m?.mimeTypes || m?.magicPatterns) {
       const extMatch = m.extensions?.some((e) => input.artifactHints?.some((h) => h.toLowerCase().endsWith(e.toLowerCase()))) ?? false
-      const mimeMatch = m.mimeTypes?.some((t) => input.artifactHints?.some((h) => h.includes(t))) ?? false
+      // §P1 audit fix — match MIME by full equality on `type/subtype` or
+      // by major type prefix. The previous `h.includes(t)` substring
+      // check accepted any hint that contained the MIME as a substring
+      // (e.g. `"image"` would match anything containing the word "image").
+      const mimeMatch = m.mimeTypes?.some((t) =>
+        input.artifactHints?.some((h) => h === t || h.startsWith(`${t.split('/')[0]}/`)),
+      ) ?? false
       const magicMatch = m.magicPatterns?.some((p) => input.taskText.includes(p)) ?? false
       const requiredArtifactMatch = m.requiredArtifacts?.some((r) => input.artifactHints?.some((h) => h.includes(r))) ?? false
       const taskTagMatch = m.taskTags?.some((t) => tags.has(t)) ?? false
@@ -76,9 +82,31 @@ export function selectManifests(input: SelectionInput, catalog: OneShotCatalog):
       }
     }
 
+    // §二十三 / P1 audit fix — `fast-tier` is NOT unconditionally eligible.
+    // Selection must rest on a real match (profile + inputMatchers) or
+    // a recent successful attempt; otherwise the fast tier is rejected
+    // along with everything else.
     let reason = 'profile match'
-    if (manifest.scheduling.costTier === 'fast') reason = 'fast-tier always eligible'
-    if (manifest.inputMatchers?.taskTags?.some((t) => tags.has(t))) reason = 'task-tag match'
+    if (manifest.inputMatchers?.taskTags?.some((t) => tags.has(t))) {
+      reason = 'task-tag match'
+    } else if (manifest.inputMatchers?.extensions ||
+               manifest.inputMatchers?.mimeTypes ||
+               manifest.inputMatchers?.magicPatterns ||
+               manifest.inputMatchers?.requiredArtifacts) {
+      reason = 'input match'
+    }
+
+    // §二十三 / P1 audit fix — skip when an existing finding already covers
+    // the manifest's category/tag (de-duplication across runs).
+    if (input.existingFindingTitles && input.existingFindingTitles.length > 0) {
+      const manifestCategory = manifest.category
+      const covered = input.existingFindingTitles.some((title) =>
+        title.toLowerCase().includes(manifestCategory.toLowerCase()),
+      )
+      if (covered) {
+        continue
+      }
+    }
 
     selected.push({
       manifest,

@@ -6,25 +6,37 @@
   "source": {
     "repository": "https://github.com/pwntools/checksec",
     "license": "MIT",
-    "pinnedRef": "v2.0.1"
+    "pinnedRef": "v2.0.1",
+    "imageDigest": "sha256:1d415b270d13aa699924e2a775c65a034f13868f97893051ced81362cd75478c"
   },
   "maturity": "stable",
   "enabledByDefault": true,
   "inputMatchers": {
-    "taskTags": ["binary"]
+    "taskTags": [
+      "binary"
+    ]
   },
-  "allowedProfiles": ["pwn", "reverse"],
+  "allowedProfiles": [
+    "pwn",
+    "reverse"
+  ],
   "runner": {
     "type": "container",
-    "image": "pwntools/pwntools:latest",
-    "command": ["checksec", "--file=/work/INPUT"]
+    "image": "pwntools/pwntools:v2.0.1",
+    "command": [
+      "checksec",
+      "--file=/work/INPUT"
+    ]
   },
   "resources": {
     "timeoutSeconds": 60,
     "memoryMb": 512,
     "maxOutputBytes": 65536
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
   "output": {
     "parser": "jsonl"
   },
@@ -34,6 +46,13 @@
     "falsePositiveRisk": "low"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "pwntools/pwntools:latest", "checksec", "--help"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "pwntools/pwntools:v2.0.1",
+      "checksec",
+      "--help"
+    ]
   }
 }

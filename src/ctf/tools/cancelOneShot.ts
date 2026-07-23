@@ -1,9 +1,8 @@
 /**
- * cancel_one_shot — stop an in-flight one-shot run by id.
+ * cancel_one_shot — Phase 2.0 §十.
  *
- * Cancellation is cooperative: the dispatcher aborts the parent signal,
- * which the runner interprets as `kill -SIGKILL` (process) or `docker kill`
- * (container).
+ * Per-run cancellation via Dispatcher.cancelRun(runId, reason). Returns
+ * a structured status rather than fire-and-forget.
  */
 
 import type { Tool, ToolDefinition, ToolResult } from '../../core/types.js'
@@ -20,8 +19,10 @@ export const CANCEL_ONE_SHOT_DEFINITION: ToolDefinition = {
       type: 'object',
       properties: {
         runId: { type: 'string', description: 'id returned by run_one_shot' },
+        reason: { type: 'string', description: 'audit reason for cancellation' },
       },
       required: ['runId'],
+      additionalProperties: false,
     },
   },
 }
@@ -32,13 +33,20 @@ export function makeCancelOneShotTool(dispatcher: Dispatcher): Tool {
     definition: CANCEL_ONE_SHOT_DEFINITION,
     concurrencySafe: true,
     async execute(input: Record<string, unknown>): Promise<ToolResult> {
-      const { runId } = input as { runId: string }
+      const { runId, reason } = input as { runId: string; reason?: string }
       if (!runId) return { content: 'runId is required', isError: true }
-      // For simplicity we cancel the whole task; a finer-grained mapping
-      // would track per-run AbortControllers.
-      await dispatcher.cancelTask('parent')
-      void runId
-      return { content: `cancel requested`, isError: false }
+      const r = await dispatcher.cancelRun(runId, reason ?? 'user_cancelled')
+      if (r.ok) {
+        return { content: `cancelled: ${runId}`, isError: false }
+      }
+      switch (r.reason) {
+        case 'unknown_run':
+          return { content: `unknown_run: ${runId}`, isError: true }
+        case 'already_terminal':
+          return { content: `already_terminal: ${runId}`, isError: false }
+        case 'cancel_failed':
+          return { content: `cancel_failed: ${runId}`, isError: true }
+      }
     },
   }
 }

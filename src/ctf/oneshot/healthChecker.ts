@@ -21,11 +21,19 @@ export interface HealthCheckerDeps {
   catalog: OneShotCatalog
   /** Default: true in production, false in tests. */
   execute?: boolean
+  /** §P1 audit fix — sync Doctor needs to know whether the network adapter
+   *  is wired so the `contest-target-only` gate can fire. */
+  networkAdapterPresent?: boolean
+  outboundReadonlyApproved?: boolean
 }
 
 export interface HealthOptions {
   /** Network probes may be enabled here (default false — avoid side effects). */
   enableNetwork?: boolean
+  /** §十四 — set when a network adapter is wired for `contest-target-only`. */
+  networkAdapterPresent?: boolean
+  /** §十四 — set when `outbound-readonly` is operator-approved. */
+  outboundReadonlyApproved?: boolean
 }
 
 const HEAVY_MANIFESTS = new Set([
@@ -66,6 +74,27 @@ export class HealthChecker {
       return row
     }
 
+    // §十五 — container manifests MUST carry imageDigest for
+    // stable/candidate maturity. `:latest` is forbidden.
+    if (manifest.runner.type === 'container' && manifest.maturity !== 'experimental') {
+      if (!manifest.source.imageDigest) {
+        row.status = 'DEGRADED'
+        row.reason = 'image not pinned (imageDigest missing)'
+        return row
+      }
+      // Digest format: sha256:HEX (≥64 hex).
+      if (!/^sha256:[a-f0-9]{64}$/.test(manifest.source.imageDigest)) {
+        row.status = 'DEGRADED'
+        row.reason = `imageDigest format invalid: ${manifest.source.imageDigest}`
+        return row
+      }
+      if (manifest.runner.image && manifest.runner.image.endsWith(':latest')) {
+        row.status = 'DEGRADED'
+        row.reason = 'image uses :latest tag'
+        return row
+      }
+    }
+
     // Network required but no scope → DISABLED_SCOPE_REQUIRED.
     if (
       manifest.network.mode !== 'none' &&
@@ -77,9 +106,24 @@ export class HealthChecker {
       return row
     }
 
+    // §十四 — `contest-target-only` requires a network adapter; without
+    // one we cannot claim "contest-only" isolation.
+    if (manifest.network.mode === 'contest-target-only' && !opts.networkAdapterPresent) {
+      row.status = 'DISABLED_SCOPE_REQUIRED'
+      row.reason = 'contest-target-only requires configured network adapter'
+      return row
+    }
+
+    // §十四 — `outbound-readonly` requires explicit operator opt-in.
+    if (manifest.network.mode === 'outbound-readonly' && !opts.outboundReadonlyApproved) {
+      row.status = 'DISABLED_SCOPE_REQUIRED'
+      row.reason = 'outbound-readonly requires operator approval'
+      return row
+    }
+
     // Custom healthcheck command.
     if (manifest.healthcheck?.command && this.deps.execute !== false) {
-      const res = spawnSync(manifest.healthcheck.command[0]!, manifest.healthcheck.command.slice(1), {
+      const res = spawnSync(manifest.healthcheck.command[0], manifest.healthcheck.command.slice(1), {
         stdio: 'ignore',
       })
       if (res.status !== 0) {
@@ -178,6 +222,44 @@ export class HealthChecker {
       return row
     }
 
+    // §P1 audit fix — sync variant applies the same digest / network
+    // adapter / outbound-readonly gates as the async variant. Previously
+    // checkAll() could wrongly report a container manifest as READY.
+    if (manifest.runner.type === 'container' && manifest.maturity !== 'experimental') {
+      if (!manifest.source.imageDigest) {
+        row.status = 'DEGRADED'
+        row.reason = 'image not pinned (imageDigest missing)'
+        return row
+      }
+      if (!/^sha256:[a-f0-9]{64}$/.test(manifest.source.imageDigest)) {
+        row.status = 'DEGRADED'
+        row.reason = `imageDigest format invalid: ${manifest.source.imageDigest}`
+        return row
+      }
+      if (manifest.runner.image && manifest.runner.image.endsWith(':latest')) {
+        row.status = 'DEGRADED'
+        row.reason = 'image uses :latest tag'
+        return row
+      }
+    }
+
+    if (
+      manifest.network.mode === 'contest-target-only' &&
+      !this.deps.networkAdapterPresent
+    ) {
+      row.status = 'DISABLED_SCOPE_REQUIRED'
+      row.reason = 'contest-target-only requires configured network adapter'
+      return row
+    }
+    if (
+      manifest.network.mode === 'outbound-readonly' &&
+      !this.deps.outboundReadonlyApproved
+    ) {
+      row.status = 'DISABLED_SCOPE_REQUIRED'
+      row.reason = 'outbound-readonly requires operator approval'
+      return row
+    }
+
     if (
       manifest.network.mode !== 'none' &&
       manifest.network.requiresScopeApproval &&
@@ -188,15 +270,41 @@ export class HealthChecker {
       return row
     }
 
+    // §P1 audit fix — for `runner.type === 'process'`, verify the binary
+    // exists on PATH before declaring READY. ENOENT / non-zero exit are
+    // UNAVAILABLE with a specific reason. Same for container manifests.
+    if (manifest.runner.type === 'process' && this.deps.execute !== false) {
+      const head = manifest.runner.command?.[0]
+      if (head) {
+        const probe = spawnSync('sh', ['-c', `command -v ${JSON.stringify(head)} >/dev/null 2>&1`], { stdio: 'ignore' })
+        if (probe.status !== 0) {
+          row.status = 'UNAVAILABLE'
+          row.reason = `binary missing: ${head}`
+          return row
+        }
+      }
+    }
+    if (manifest.runner.type === 'container' && this.deps.execute !== false) {
+      const probe = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: 'ignore' })
+      if (probe.status !== 0) {
+        row.status = 'UNAVAILABLE'
+        row.reason = 'binary missing: docker'
+        return row
+      }
+    }
+
     // Custom healthcheck command (sync). Production uses checkManifest (async).
     if (manifest.healthcheck?.command && this.deps.execute !== false) {
-      const res = spawnSync(manifest.healthcheck.command[0]!, manifest.healthcheck.command.slice(1), {
-        stdio: 'ignore',
-      })
-      if (res.status !== 0) {
-        row.status = 'UNAVAILABLE'
-        row.reason = `healthcheck command exit ${res.status}`
-        return row
+      const head = manifest.healthcheck.command[0]
+      if (head) {
+        const res = spawnSync(head, manifest.healthcheck.command.slice(1), {
+          stdio: 'ignore',
+        })
+        if (res.status !== 0) {
+          row.status = 'UNAVAILABLE'
+          row.reason = `healthcheck command exit ${res.status}`
+          return row
+        }
       }
     }
 

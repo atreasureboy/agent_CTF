@@ -6,28 +6,43 @@
   "source": {
     "repository": "https://github.com/RsaCtfTool/RsaCtfTool",
     "license": "MIT",
-    "pinnedRef": "v0.7.1"
+    "pinnedRef": "v0.7.1",
+    "imageDigest": "sha256:ad3371486bfdf4fa88b7704d8d52ea2331612baca97fd1f6bcc9d0c684caffdc"
   },
   "maturity": "stable",
   "enabledByDefault": true,
   "inputMatchers": {
-    "taskTags": ["rsa"]
+    "taskTags": [
+      "rsa"
+    ]
   },
-  "allowedProfiles": ["crypto"],
+  "allowedProfiles": [
+    "crypto"
+  ],
   "runner": {
     "type": "container",
-    "image": "rsactftool/rsactftool:latest",
-    "command": ["python3", "RsaCtfTool.py", "--private"]
+    "image": "rsactftool/rsactftool:v0.7.1",
+    "command": [
+      "python3",
+      "RsaCtfTool.py",
+      "--private"
+    ]
   },
   "resources": {
     "timeoutSeconds": 600,
     "memoryMb": 2048,
     "maxOutputBytes": 65536
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
   "output": {
     "parser": "flag-regex",
-    "flagPatterns": ["plaintext\\s*=\\s*(\\S+)", "d\\s*=\\s*([0-9]+)"]
+    "flagPatterns": [
+      "plaintext\\s*=\\s*(\\S+)",
+      "d\\s*=\\s*([0-9]+)"
+    ]
   },
   "scheduling": {
     "costTier": "medium",
@@ -35,6 +50,14 @@
     "falsePositiveRisk": "high"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "rsactftool/rsactftool:latest", "python3", "RsaCtfTool.py", "--help"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "rsactftool/rsactftool:v0.7.1",
+      "python3",
+      "RsaCtfTool.py",
+      "--help"
+    ]
   }
 }

@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/base64_multi.txt",
+  "category": "crypto/encoded",
+  "size": 48,
+  "expectedSelectedManifestIds": ["cipher-identifier"],
+  "forbiddenManifestIds": ["nuclei"],
+  "expectedFindingCategories": ["strings", "magic"],
+  "expectedCandidateValues": ["flag{multi_base64}"],
+  "expectedArtifactKinds": [],
+  "maxFalsePositiveFindings": 1,
+  "maxDurationMs": 10000
+}

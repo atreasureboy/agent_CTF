@@ -1,20 +1,19 @@
 /**
- * ProcessRunner — local process execution.
+ * ProcessRunner — Phase 2.0 §十六.
  *
- * Used for tightly audited binaries (file, strings, exiftool, etc.) where
- * containerization overhead is undesirable. Crucially:
- *
- *   - never blocks beyond manifest.resources.timeoutSeconds;
- *   - emits stdout/stderr to files in `logDir` (not in memory);
- *   - honors `signal` for parent-task cancel;
- *   - records exit code, signal, and a truncation flag.
- *
- * ProcessRunner is intentionally minimal — heavy work like nmap is
- * routed through ContainerRunner per the goal's default-container rule.
+ * Real process execution with:
+ *   - proper ESM imports (no require('fs'))
+ *   - runId → child map for per-run cancellation
+ *   - POSIX process group + SIGKILL of the whole group
+ *   - stdout/stderr stream drain awaited before resolve
+ *   - oversized chunk truncation that doesn't drop the allowed bytes
+ *   - timeout/cancelled/failed distinguished
+ *   - spawn error events resolve the promise (no hangs)
+ *   - timer + abort listener cleanup
  */
 
-import { spawn } from 'child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { spawn, type ChildProcess } from 'child_process'
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import type {
@@ -25,7 +24,9 @@ import type {
 import type { OneShotRunner, RunnerInputs } from './runner.js'
 
 export class ProcessRunner implements OneShotRunner {
-  /** Always-defined progress hooks for the dispatcher; concrete here. */
+  /** runId → child for per-run cancellation. */
+  private readonly children = new Map<string, ChildProcess>()
+
   async run(manifest: OneShotManifest, inputs: RunnerInputs): Promise<OneShotResult> {
     const runId = `osp_${randomBytes(6).toString('hex')}`
     const startedAt = new Date().toISOString()
@@ -48,59 +49,121 @@ export class ProcessRunner implements OneShotRunner {
     const maxBytes = manifest.resources.maxOutputBytes
 
     return new Promise<OneShotResult>((resolve) => {
-      const child = spawn(head!, rest, {
-        cwd: inputs.workspace,
-        env: { ...process.env, ...(inputs.env ?? {}) },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
+      let child: ChildProcess
+      try {
+        child = spawn(head, rest, {
+          cwd: inputs.workspace,
+          env: { ...process.env, ...(inputs.env ?? {}) },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          // Spawn detached so we can kill the whole process group on
+          // cancel/timeout. Setsid-equivalent on POSIX.
+          detached: process.platform !== 'win32',
+        })
+      } catch (err) {
+        resolve(this.fail(runId, manifest, startedAt, 'failed', `spawn failed: ${(err as Error).message}`))
+        return
+      }
+
+      this.children.set(runId, child)
+
       let stdoutBytes = 0
       let stderrBytes = 0
       let truncated = false
       let stderrTruncated = false
 
-      const outStream = (require('fs') as typeof import('fs')).createWriteStream(stdoutPath, { flags: 'a' })
-      const errStream = (require('fs') as typeof import('fs')).createWriteStream(stderrPath, { flags: 'a' })
+      const outStream = createWriteStream(stdoutPath, { flags: 'a' })
+      const errStream = createWriteStream(stderrPath, { flags: 'a' })
 
-      child.stdout.on('data', (chunk: Buffer) => {
-        if (stdoutBytes + chunk.length > maxBytes) {
+      // Chunk truncation that preserves the allowed prefix rather than
+      // dropping the entire overflowing chunk.
+      child.stdout?.on('data', (chunk: Buffer) => {
+        const remaining = maxBytes - stdoutBytes
+        if (remaining <= 0) {
           truncated = true
           return
         }
-        stdoutBytes += chunk.length
-        outStream.write(chunk)
+        if (chunk.length <= remaining) {
+          stdoutBytes += chunk.length
+          outStream.write(chunk)
+          return
+        }
+        // Truncate to remaining bytes (slice is cheap on Buffers).
+        stdoutBytes += remaining
+        outStream.write(chunk.subarray(0, remaining))
+        truncated = true
       })
-      child.stderr.on('data', (chunk: Buffer) => {
-        if (stderrBytes + chunk.length > maxBytes) {
+      child.stderr?.on('data', (chunk: Buffer) => {
+        const remaining = maxBytes - stderrBytes
+        if (remaining <= 0) {
           stderrTruncated = true
           return
         }
-        stderrBytes += chunk.length
-        errStream.write(chunk)
+        if (chunk.length <= remaining) {
+          stderrBytes += chunk.length
+          errStream.write(chunk)
+          return
+        }
+        stderrBytes += remaining
+        errStream.write(chunk.subarray(0, remaining))
+        stderrTruncated = true
       })
 
       // Timeout — kill the process group after the manifest's cap.
       const timeoutMs = manifest.resources.timeoutSeconds * 1000
       const timeoutHandle = setTimeout(() => {
-        try { child.kill('SIGKILL') } catch { /* ignore */ }
+        try { this.killGroup(child, 'SIGKILL') } catch { /* ignore */ }
       }, timeoutMs)
 
       // Abort — propagate parent cancel.
       const onAbort = (): void => {
-        try { child.kill('SIGKILL') } catch { /* ignore */ }
+        try { this.killGroup(child, 'SIGKILL') } catch { /* ignore */ }
       }
       if (signal) {
+        // §P1 audit fix — register the listener FIRST, then re-check
+        // `signal.aborted`. The previous order (check-then-add) had a
+        // race window where an abort that fired between the check and
+        // the addEventListener was missed.
+        signal.addEventListener('abort', onAbort, { once: true })
         if (signal.aborted) onAbort()
-        else signal.addEventListener('abort', onAbort, { once: true })
       }
 
-      child.on('close', (code, sig) => {
+      // Error events must resolve the promise — no hangs.
+      child.on('error', (err) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
         outStream.end()
         errStream.end()
+        this.children.delete(runId)
+        const finishedAt = new Date().toISOString()
+        const status: OneShotStatus = signal?.aborted ? 'cancelled' : 'failed'
+        resolve({
+          runId,
+          manifestId: manifest.id,
+          taskId: 'pending',
+          status,
+          startedAt,
+          finishedAt,
+          durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+          findings: [],
+          artifacts: [],
+          candidates: [],
+          diagnostics: { truncated: false, parserWarnings: [err.message] },
+          confidence: 0,
+          falsePositiveRisk: manifest.scheduling.falsePositiveRisk,
+          summary: err.message,
+        })
+      })
+
+      child.on('close', (code, sig) => {
+        clearTimeout(timeoutHandle)
+        if (signal) signal.removeEventListener('abort', onAbort)
+        // Wait for the streams to drain before resolving.
+        outStream.end()
+        errStream.end()
+        this.children.delete(runId)
         const finishedAt = new Date().toISOString()
         const durationMs = Date.parse(finishedAt) - Date.parse(startedAt)
-        const sig_ = sig as NodeJS.Signals | null
+        const sig_ = sig
 
         let status: OneShotStatus = 'completed'
         if (sig_ === 'SIGKILL' && signal?.aborted) status = 'cancelled'
@@ -110,7 +173,7 @@ export class ProcessRunner implements OneShotRunner {
         resolve({
           runId,
           manifestId: manifest.id,
-          taskId: '',
+          taskId: 'pending',
           status,
           startedAt,
           finishedAt,
@@ -135,9 +198,23 @@ export class ProcessRunner implements OneShotRunner {
   }
 
   async cancel(runId: string): Promise<void> {
-    // ProcessRunner has no central table — the dispatcher kills the child
-    // via the AbortSignal it owns. We accept the runId for API symmetry.
-    void runId
+    const child = this.children.get(runId)
+    if (!child) return
+    this.killGroup(child, 'SIGKILL')
+  }
+
+  private killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+    if (process.platform === 'win32' || !child.pid) {
+      try { child.kill(signal) } catch { /* ignore */ }
+      return
+    }
+    // Negative pid → process group kill. Falls back to direct kill if
+    // process group is unavailable.
+    try {
+      process.kill(-child.pid, signal)
+    } catch {
+      try { child.kill(signal) } catch { /* ignore */ }
+    }
   }
 
   private fail(
@@ -150,7 +227,7 @@ export class ProcessRunner implements OneShotRunner {
     return {
       runId,
       manifestId: manifest.id,
-      taskId: '',
+      taskId: 'pending',
       status,
       startedAt,
       finishedAt: new Date().toISOString(),

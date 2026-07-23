@@ -38,6 +38,10 @@ import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
 import { assertLlmDependencies } from './agentRuntimeDependencies.js'
 import type { CTFTaskState } from './taskState.js'
+import {
+  Dispatcher,
+  BackgroundJobRunnerRegistryImpl,
+} from '../../ctf/oneshot/dispatcher.js'
 
 /**
  * Phase 1.7 — explicit runtime mode. `workflow-only` runs only Workflow /
@@ -89,6 +93,9 @@ export interface CTFTaskRuntime {
   abort: LinkedAbortController
   mainHarness: HarnessBundle
   mode: CTFTaskRuntimeMode
+  /** Phase 2.0 §六 — exposed so tests + integrations can register additional
+   *  tool prefixes that route through BackgroundJobManager. */
+  oneShotRunnerRegistry: import('../../ctf/oneshot/dispatcher.js').BackgroundJobRunnerRegistry
   getState(): Readonly<CTFTaskState>
   cancel(reason: string): Promise<void>
   dispose(): Promise<void>
@@ -222,12 +229,62 @@ export async function createCTFTaskRuntime(
     }
   }
 
+  // ── Phase 2.0 §六 — register a BackgroundJobRunnerRegistry that routes
+  // `toolId: oneshot:<manifestId>` to a JobRunner that invokes the
+  // matching OneShot runner. The Dispatcher routes through this registry
+  // in addition to the BackgroundJobManager so lifecycle is unified.
+  const runnerRegistry = new BackgroundJobRunnerRegistryImpl()
+  // Lazy import the runner to avoid circular deps during boot.
+  const { runnerFor } = await import('../../ctf/oneshot/runner.js')
+  const { OneShotRegistry } = await import('../../ctf/oneshot/registry.js')
+  const { OneShotCatalog } = await import('../../ctf/oneshot/catalog.js')
+
+  // §6 audit fix — store the catalog on the jobManager so the registry's
+  // JobRunner can resolve manifests without casting through unknown fields.
+  // Production callers should still prefer `getOneShotRegistry()` over the
+  // attached catalog for thread-safety, but the attached reference is the
+  // single source of truth for `toolId: oneshot:<id>` resolution.
+  // Lazy-built one-shot registry bound to this catalog.
+  const oneShotCatalog = new OneShotCatalog()
+  // Register the catalog on the BackgroundJobManager so the registry
+  // can look it up. We assign to a known symbol-keyed field that the
+  // registry callback reads.
+  ;(harness.jobManager as unknown as { __oneShotCatalog: InstanceType<typeof OneShotCatalog> }).__oneShotCatalog = oneShotCatalog
+  const oneShotRegistry = new OneShotRegistry(oneShotCatalog)
+  // §6 audit fix — actually wire the registry into the BackgroundJobManager
+  // so `toolId: oneshot:<id>` jobs route through the registered JobRunner
+  // instead of the default broker runner.
+  harness.jobManager.setRunnerRegistry(runnerRegistry)
+
+  runnerRegistry.register('oneshot:', async (spec, signal) => {
+    const manifestId = String(spec.toolId).slice('oneshot:'.length)
+    const manifest = oneShotRegistry.get(manifestId)
+    if (!manifest) {
+      return { error: `unknown manifest: ${manifestId}` }
+    }
+    const input = (spec.input ?? {}) as {
+      argv?: string[]
+      workspace?: string
+      logDir?: string
+      evidenceRoot?: string
+    }
+    const runner = runnerFor(manifest)
+    const out = await runner.run(manifest, {
+      argv: input.argv ?? [],
+      workspace: input.workspace ?? cwd,
+      logDir: input.logDir ?? input.evidenceRoot ?? cwd,
+      signal,
+    })
+    return { summary: out.summary }
+  })
+
   return {
     orchestrator,
     dependencies,
     abort,
     mainHarness: harness,
     mode,
+    oneShotRunnerRegistry: runnerRegistry,
     getState: () => orchestrator.getState(),
     async cancel(reason: string): Promise<void> {
       await orchestrator.cancel(reason)

@@ -36,6 +36,10 @@ export interface ToolDefinition {
       type: 'object'
       properties: Record<string, unknown>
       required?: string[]
+      /** §P1 audit fix — defence-in-depth: reject unknown fields. The
+       *  Tool executor doesn't read them, but a strict schema keeps the
+       *  model from supplying extra surface like workspace/argv/scope. */
+      additionalProperties?: boolean
     }
   }
 }
@@ -82,6 +86,13 @@ export interface ToolContext {
   episodicMemory?: EpisodicMemory
   /** Tool names available to this agent — used for skill permission checks */
   availableToolNames?: string[]
+  /**
+   * Phase 2.0 §十一 — when the tool runs under a CTF task, the runtime
+   * injects a `TaskExecutionContext`. Tools MUST source workspace,
+   * evidenceRoot, scope, taskId, profileId, artifactDir, abortSignal
+   * from this — never from model-supplied input.
+   */
+  taskContext?: import('./ctfRuntime/taskExecutionContext.js').TaskExecutionContext
 }
 
 /**
@@ -198,6 +209,13 @@ export interface EngineConfig {
   taskId?: string
   /** Stable agentId for the current run. */
   agentId?: string
+  /**
+   * Phase 2.0 §十一 — when running under a CTF task, the harness injects
+   * the active TaskExecutionContext here so the engine forwards it into
+   * ToolContext.taskContext. Tools use this for workspace/evidenceRoot/
+   * scope/taskId/profileId; model-supplied equivalents are ignored.
+   */
+  taskContext?: import('./ctfRuntime/taskExecutionContext.js').TaskExecutionContext
 }
 
 /** Cumulative token usage across one or more turns, for cost observability. */

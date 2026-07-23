@@ -850,6 +850,10 @@ export class ExecutionEngine {
         model: this.config.model,
       },
       eventLog: this.eventLog,
+      // Phase 2.0 §十一 — forward the active TaskExecutionContext so tools
+      // can read workspace/evidenceRoot/scope/taskId/profileId/artifactDir
+      // from Runtime, never from model-supplied input.
+      taskContext: this.config.taskContext,
       // Module patches override/extend the base context (incl. availableToolNames)
       ...modulePatches,
     }

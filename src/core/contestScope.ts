@@ -17,6 +17,8 @@ export const contestScopeSchema = z
     allowedDomains: z.array(z.string()).optional(),
     allowedFilesRoot: z.string().min(1),
     allowPublicNetwork: z.boolean().default(false),
+    /** Phase 2.0 §二十四 — operator opt-in for heavy one-shots. Default false. */
+    allowHeavyOneShots: z.boolean().default(false),
   })
   .strict()
 

@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/macro.doc",
+  "category": "office/oletools",
+  "size": 4,
+  "expectedSelectedManifestIds": ["oletools", "file"],
+  "forbiddenManifestIds": ["nuclei"],
+  "expectedFindingCategories": ["magic"],
+  "expectedCandidateValues": [],
+  "expectedArtifactKinds": [],
+  "maxFalsePositiveFindings": 1,
+  "maxDurationMs": 12000
+}

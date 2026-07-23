@@ -195,7 +195,7 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       handoffs: [],
       agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now,
       updatedAt: now,
@@ -387,7 +387,7 @@ describe('TaskState — finding/artifact merge', () => {
       challenge: { inputArtifactIds: [] },
       activeProfileId: 'orchestrator',
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], activeJobIds: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -899,7 +899,7 @@ describe('§六 — StateStore guards', () => {
       challenge: { inputArtifactIds: [] },
       activeProfileId: 'orchestrator',
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], activeJobIds: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }

@@ -6,28 +6,50 @@
   "source": {
     "repository": "https://github.com/decalage2/oletools",
     "license": "BSD-2-Clause",
-    "pinnedRef": "v0.60.2"
+    "pinnedRef": "v0.60.2",
+    "imageDigest": "sha256:4e0e43bda3dfdb48155e6e368264066315cbf81905e7e523cd0af017356941f6"
   },
   "maturity": "stable",
   "enabledByDefault": true,
   "inputMatchers": {
-    "extensions": [".doc", ".docm", ".xls", ".xlsm", ".ppt", ".pptm", ".rtf"]
+    "extensions": [
+      ".doc",
+      ".docm",
+      ".xls",
+      ".xlsm",
+      ".ppt",
+      ".pptm",
+      ".rtf"
+    ]
   },
-  "allowedProfiles": ["file-forensics", "triage"],
+  "allowedProfiles": [
+    "file-forensics",
+    "triage"
+  ],
   "runner": {
     "type": "container",
     "image": "python:3.11-slim",
-    "command": ["python3", "-m", "olevba", "/work/INPUT"]
+    "command": [
+      "python3",
+      "-m",
+      "olevba",
+      "/work/INPUT"
+    ]
   },
   "resources": {
     "timeoutSeconds": 120,
     "memoryMb": 512,
     "maxOutputBytes": 131072
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
   "output": {
     "parser": "passthrough",
-    "flagPatterns": ["flag\\{[^}]+\\}"]
+    "flagPatterns": [
+      "flag\\{[^}]+\\}"
+    ]
   },
   "scheduling": {
     "costTier": "fast",
@@ -35,6 +57,14 @@
     "falsePositiveRisk": "low"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "python:3.11-slim", "python3", "-c", "import oletools.olevba"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "python:3.11-slim",
+      "python3",
+      "-c",
+      "import oletools.olevba"
+    ]
   }
 }

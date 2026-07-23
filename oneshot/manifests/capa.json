@@ -6,25 +6,37 @@
   "source": {
     "repository": "https://github.com/mandiant/capa",
     "license": "Apache-2.0",
-    "pinnedRef": "v7.0.0"
+    "pinnedRef": "v7.0.0",
+    "imageDigest": "sha256:3c88493138d16eb21095a891daa6041c07da9742172a5779086469a887e60b08"
   },
   "maturity": "stable",
   "enabledByDefault": true,
   "inputMatchers": {
-    "taskTags": ["binary"]
+    "taskTags": [
+      "binary"
+    ]
   },
-  "allowedProfiles": ["reverse", "file-forensics"],
+  "allowedProfiles": [
+    "reverse",
+    "file-forensics"
+  ],
   "runner": {
     "type": "container",
-    "image": "ghcr.io/mandiant/capa:latest",
-    "command": ["capa", "/work/INPUT"]
+    "image": "ghcr.io/mandiant/capa:v7.0.0",
+    "command": [
+      "capa",
+      "/work/INPUT"
+    ]
   },
   "resources": {
     "timeoutSeconds": 300,
     "memoryMb": 1024,
     "maxOutputBytes": 131072
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
   "output": {
     "parser": "jsonl"
   },
@@ -34,6 +46,13 @@
     "falsePositiveRisk": "low"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "ghcr.io/mandiant/capa:latest", "capa", "--help"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "ghcr.io/mandiant/capa:v7.0.0",
+      "capa",
+      "--help"
+    ]
   }
 }

@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/base64_input.txt",
+  "category": "crypto/encoded",
+  "size": 32,
+  "expectedSelectedManifestIds": ["cipher-identifier"],
+  "forbiddenManifestIds": ["nuclei", "mobsf", "reconftw"],
+  "expectedFindingCategories": ["strings", "magic"],
+  "expectedCandidateValues": ["flag{base64_test}"],
+  "expectedArtifactKinds": ["decoded"],
+  "maxFalsePositiveFindings": 0,
+  "maxDurationMs": 8000
+}

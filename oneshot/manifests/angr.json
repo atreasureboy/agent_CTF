@@ -6,32 +6,53 @@
   "source": {
     "repository": "https://github.com/angr/angr",
     "license": "BSD-2-Clause",
-    "pinnedRef": "v9.2.32"
+    "pinnedRef": "v9.2.32",
+    "imageDigest": "sha256:154710cf352174b176e70c996884b3ed8aa2c2dfc0744e575238f32c56745414"
   },
   "maturity": "candidate",
   "enabledByDefault": false,
   "inputMatchers": {
-    "taskTags": ["binary"]
+    "taskTags": [
+      "binary"
+    ]
   },
-  "allowedProfiles": ["reverse"],
+  "allowedProfiles": [
+    "reverse"
+  ],
   "runner": {
     "type": "container",
-    "image": "angr/angr:latest",
-    "command": ["python3", "/work/INPUT"]
+    "image": "angr/angr:v9.2.32",
+    "command": [
+      "python3",
+      "/work/INPUT"
+    ]
   },
   "resources": {
     "timeoutSeconds": 1800,
     "memoryMb": 8192,
     "maxOutputBytes": 262144
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
-  "output": { "parser": "passthrough" },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
+  "output": {
+    "parser": "passthrough"
+  },
   "scheduling": {
     "costTier": "heavy",
     "estimatedSeconds": 1200,
     "falsePositiveRisk": "medium"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "angr/angr:latest", "python3", "-c", "import angr"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "angr/angr:v9.2.32",
+      "python3",
+      "-c",
+      "import angr"
+    ]
   }
 }

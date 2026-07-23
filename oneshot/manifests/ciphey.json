@@ -6,28 +6,46 @@
   "source": {
     "repository": "https://github.com/Ciphey/Ciphey",
     "license": "MIT",
-    "pinnedRef": "v5.10.2"
+    "pinnedRef": "v5.10.2",
+    "imageDigest": "sha256:f9a16ac74f8f0d98853d20c549ef82f35c4118afe1f0b71414dad2a961a3c43d"
   },
   "maturity": "candidate",
   "enabledByDefault": true,
   "inputMatchers": {
-    "taskTags": ["encoded", "unknown"]
+    "taskTags": [
+      "encoded",
+      "unknown"
+    ]
   },
-  "allowedProfiles": ["crypto", "triage", "orchestrator"],
+  "allowedProfiles": [
+    "crypto",
+    "triage",
+    "orchestrator"
+  ],
   "runner": {
     "type": "container",
-    "image": "ghcr.io/ciphey/ciphey:latest",
-    "command": ["ciphey", "-q", "--text"]
+    "image": "ghcr.io/ciphey/ciphey:v5.10.2",
+    "command": [
+      "ciphey",
+      "-q",
+      "--text"
+    ]
   },
   "resources": {
     "timeoutSeconds": 300,
     "memoryMb": 1024,
     "maxOutputBytes": 131072
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
   "output": {
     "parser": "passthrough",
-    "flagPatterns": ["flag\\{[^}]+\\}", "FLAG\\{[^}]+\\}"]
+    "flagPatterns": [
+      "flag\\{[^}]+\\}",
+      "FLAG\\{[^}]+\\}"
+    ]
   },
   "scheduling": {
     "costTier": "medium",
@@ -35,6 +53,13 @@
     "falsePositiveRisk": "medium"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "ghcr.io/ciphey/ciphey:latest", "ciphey", "--help"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "ghcr.io/ciphey/ciphey:v5.10.2",
+      "ciphey",
+      "--help"
+    ]
   }
 }

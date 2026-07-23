@@ -12,6 +12,7 @@ import {
 import { BackgroundJobManager } from '../../src/core/backgroundJobs.js'
 import type { OneShotRunner, RunnerInputs } from '../../src/ctf/oneshot/index.js'
 import type { OneShotManifest, OneShotResult } from '../../src/ctf/oneshot/index.js'
+import type { TaskExecutionContext } from '../../src/core/ctfRuntime/taskExecutionContext.js'
 
 function raw(): OneShotManifest {
   return {
@@ -31,6 +32,27 @@ function raw(): OneShotManifest {
   }
 }
 
+function makeTaskContext(root: string): TaskExecutionContext {
+  return {
+    taskId: 'task_cancel123',
+    workspaceDir: root,
+    sessionDir: root,
+    artifactDir: `${root}/artifacts`,
+    inputDir: `${root}/input`,
+    eventsFile: `${root}/events.ndjson`,
+    profileId: 'triage',
+    contestScope: {
+      allowedFilesRoot: root,
+      allowPublicNetwork: false,
+      allowHeavyOneShots: false,
+    },
+    contestConfig: { allowedFilesRoot: root, allowPublicNetwork: false, allowHeavyOneShots: false },
+    environment: {},
+    abortSignal: new AbortController().signal,
+    metadata: {},
+  }
+}
+
 describe('cancellation', () => {
   it('cooperative abort cancels the runner', async () => {
     const root = mkdtempSync(join(tmpdir(), 'oneshot-cancel-'))
@@ -43,12 +65,14 @@ describe('cancellation', () => {
         async () => ({}),
       )
       const ctrl = new AbortController()
+      const taskContext = makeTaskContext(root)
       const dispatcher = new Dispatcher({
         registry,
         catalog,
         jobManager,
         workspace: root,
         signal: ctrl.signal,
+        taskContext,
       })
       clearRunnerOverrides()
       setRunnerOverride('demo', {
@@ -60,7 +84,7 @@ describe('cancellation', () => {
           return {
             runId: 'osp_x',
             manifestId: 'demo',
-            taskId: 't',
+            taskId: 'task_cancel123',
             status: 'cancelled',
             startedAt: '',
             finishedAt: '',
@@ -77,7 +101,6 @@ describe('cancellation', () => {
       const promise = dispatcher.runOne('demo', {
         argv: [],
         evidenceRoot: root,
-        signal: ctrl.signal,
       })
       setTimeout(() => ctrl.abort(), 30)
       await expect(promise).rejects.toThrow()

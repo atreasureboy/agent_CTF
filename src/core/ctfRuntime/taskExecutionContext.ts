@@ -154,6 +154,7 @@ export function narrowContestScope(
   return {
     allowedFilesRoot: childFilesRoot,
     allowPublicNetwork: child.allowPublicNetwork,
+    allowHeavyOneShots: child.allowHeavyOneShots,
     allowedHosts: narrowList(parent.allowedHosts, child.allowedHosts),
     allowedCidrs: narrowList(parent.allowedCidrs, child.allowedCidrs),
     allowedDomains: narrowList(parent.allowedDomains, child.allowedDomains),

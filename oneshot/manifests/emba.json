@@ -6,32 +6,54 @@
   "source": {
     "repository": "https://github.com/e-m-b-a/emba",
     "license": "GPL-3.0",
-    "pinnedRef": "1.5.0"
+    "pinnedRef": "1.5.0",
+    "imageDigest": "sha256:b1dc2c3340af25a64d93036972f4b56d581a0d283875db69f1b1658921df8bda"
   },
   "maturity": "candidate",
   "enabledByDefault": false,
   "inputMatchers": {
-    "taskTags": ["firmware", "binary"]
+    "taskTags": [
+      "firmware",
+      "binary"
+    ]
   },
-  "allowedProfiles": ["misc"],
+  "allowedProfiles": [
+    "misc"
+  ],
   "runner": {
     "type": "container",
-    "image": "ghcr.io/emba-community/emba:latest",
-    "command": ["emba", "-Q", "/work/INPUT"]
+    "image": "ghcr.io/emba-community/emba:1.5.0",
+    "command": [
+      "emba",
+      "-Q",
+      "/work/INPUT"
+    ]
   },
   "resources": {
     "timeoutSeconds": 3600,
     "memoryMb": 8192,
     "maxOutputBytes": 1048576
   },
-  "network": { "mode": "none", "requiresScopeApproval": false },
-  "output": { "parser": "jsonl" },
+  "network": {
+    "mode": "none",
+    "requiresScopeApproval": false
+  },
+  "output": {
+    "parser": "jsonl"
+  },
   "scheduling": {
     "costTier": "heavy",
     "estimatedSeconds": 2400,
     "falsePositiveRisk": "medium"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "ghcr.io/emba-community/emba:latest", "emba", "--help"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "ghcr.io/emba-community/emba:1.5.0",
+      "emba",
+      "--help"
+    ]
   }
 }

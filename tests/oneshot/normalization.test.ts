@@ -27,15 +27,18 @@ function tmp(): string {
 }
 
 describe('normalizer', () => {
-  it('passes through raw lines as low-confidence findings', () => {
+  it('passes through raw lines as low-confidence findings (bounded)', () => {
     const dir = tmp()
     try {
       const stdout = join(dir, 'o.log')
       writeFileSync(stdout, 'alpha\nbeta\ngamma\n')
       const m = passthroughManifest()
       const parsed = runParser(m, { stdoutPath: stdout }, 'osp_test')
-      expect(parsed.findings.length).toBe(3)
-      expect(parsed.findings[0].title).toBe('alpha')
+      // §二十 — passthrough is bounded to a preview summary rather than
+      // emitting each line as a Finding.
+      expect(parsed.findings.length).toBe(1)
+      expect(parsed.findings[0].confidence).toBe('low')
+      expect(parsed.findings[0].summary).toContain('alpha')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

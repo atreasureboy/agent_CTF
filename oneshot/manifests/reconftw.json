@@ -6,32 +6,54 @@
   "source": {
     "repository": "https://github.com/six2dez/reconftw",
     "license": "MIT",
-    "pinnedRef": "v2.5.6"
+    "pinnedRef": "v2.5.6",
+    "imageDigest": "sha256:ab5512682736afe6714fbf8c337c34e038be73ec8015634a1f1e98f789ec910d"
   },
   "maturity": "candidate",
   "enabledByDefault": false,
   "inputMatchers": {
-    "taskTags": ["network"]
+    "taskTags": [
+      "network"
+    ]
   },
-  "allowedProfiles": ["web"],
+  "allowedProfiles": [
+    "web"
+  ],
   "runner": {
     "type": "container",
-    "image": "six2dez/reconftw:latest",
-    "command": ["reconftw", "-d", "TARGET", "-r"]
+    "image": "six2dez/reconftw:v2.5.6",
+    "command": [
+      "reconftw",
+      "-d",
+      "TARGET",
+      "-r"
+    ]
   },
   "resources": {
     "timeoutSeconds": 3600,
     "memoryMb": 4096,
     "maxOutputBytes": 524288
   },
-  "network": { "mode": "contest-target-only", "requiresScopeApproval": true },
-  "output": { "parser": "jsonl" },
+  "network": {
+    "mode": "contest-target-only",
+    "requiresScopeApproval": true
+  },
+  "output": {
+    "parser": "jsonl"
+  },
   "scheduling": {
     "costTier": "heavy",
     "estimatedSeconds": 1800,
     "falsePositiveRisk": "medium"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "six2dez/reconftw:latest", "reconftw", "--help"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "six2dez/reconftw:v2.5.6",
+      "reconftw",
+      "--help"
+    ]
   }
 }

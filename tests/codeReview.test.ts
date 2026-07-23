@@ -124,6 +124,7 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
     const scope = new ContestScopeChecker({
       allowedFilesRoot: '/tmp/inside',
       allowPublicNetwork: false,
+      allowHeavyOneShots: false,
     })
     expect(() => scope.assertFile('/etc/passwd')).toThrow(ScopeViolationError)
     try {
@@ -140,6 +141,7 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
     const scope = new ContestScopeChecker({
       allowedFilesRoot: '/tmp',
       allowPublicNetwork: false,
+      allowHeavyOneShots: false,
       allowedHosts: ['safe.example.com'],
     })
     expect(scope.isNetworkAllowed('safe.example.com:80')).toBe(true)

@@ -4,11 +4,13 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   listFixtures,
+  listFixtureSpecs,
   runBenchmark,
   summarizeBenchmark,
   formatBenchmarkSummary,
   synthesizeBenchmarkRow,
   type BenchmarkFixture,
+  type BenchmarkFixtureSpec,
 } from '../../src/ctf/cli/benchmark.js'
 
 describe('benchmark harness', () => {
@@ -80,5 +82,42 @@ describe('benchmark harness', () => {
     expect(text).toContain('A: pure agent')
     expect(text).toContain('B: specialist')
     expect(text).toContain('C: specialist')
+    expect(text).toContain('selection precision')
+    expect(text).toContain('candidate recall')
+    expect(text).toContain('median duration')
+  })
+
+  it('listFixtureSpecs reads JSON specs and applies expected fields', () => {
+    const specsRoot = mkdtempSync(join(tmpdir(), 'bench-specs-'))
+    try {
+      const spec: BenchmarkFixtureSpec = {
+        path: '/x',
+        category: 'crypto/encoded',
+        size: 32,
+        expectedSelectedManifestIds: ['cipher-identifier'],
+        expectedFindingCategories: ['strings'],
+        expectedCandidateValues: ['flag{x}'],
+        expectedArtifactKinds: [],
+        maxFalsePositiveFindings: 0,
+        maxDurationMs: 8000,
+      }
+      writeFileSync(join(specsRoot, 'spec.json'), JSON.stringify(spec))
+      const specs = listFixtureSpecs(specsRoot)
+      expect(specs.length).toBe(1)
+      expect(specs[0].expectedSelectedManifestIds).toEqual(['cipher-identifier'])
+      const row = synthesizeBenchmarkRow(specs[0], 'C')
+      expect(row.selectedManifestIds).toEqual(['cipher-identifier'])
+      expect(row.candidateValues).toEqual(['flag{x}'])
+    } finally {
+      rmSync(specsRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('summarizeBenchmark emits quality metrics', () => {
+    const summary = runBenchmark({ fixturesRoot: root })
+    expect(summary.quality).toBeDefined()
+    expect(summary.quality.medianDurationMs).toBeGreaterThan(0)
+    expect(summary.quality.candidateRecall).toBeGreaterThanOrEqual(0)
+    expect(summary.quality.candidateRecall).toBeLessThanOrEqual(1)
   })
 })

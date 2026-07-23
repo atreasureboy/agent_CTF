@@ -153,6 +153,76 @@ export interface JobRecord {
   summary?: string
 }
 
+/* ─── Phase 2.0 — OneShot first-class execution unit (§三) ─────────────── */
+
+export type OneShotRunStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'partial'
+  | 'timeout'
+  | 'failed'
+  | 'cancelled'
+  | 'unavailable'
+
+export const TERMINAL_ONESHOT_STATUSES: ReadonlyArray<OneShotRunStatus> = [
+  'completed',
+  'partial',
+  'timeout',
+  'failed',
+  'cancelled',
+  'unavailable',
+]
+
+export function isTerminalOneShotStatus(s: OneShotRunStatus): boolean {
+  return TERMINAL_ONESHOT_STATUSES.includes(s)
+}
+
+/**
+ * OneShotRunRecord — formal lifecycle of a single OneShot invocation. Lives
+ * on `CTFTaskState.oneShotRuns` and is updated exclusively via CTFTaskEvents.
+ *
+ * §三 invariants:
+ *   - id is unique within the task.
+ *   - backgroundJobId links 1:1 to a BackgroundJobManager entry.
+ *   - attemptId links 1:1 to a CTFAttempt.
+ *   - status transitions follow the reducer-enforced FSM (no terminal → running).
+ */
+export interface OneShotRunRecord {
+  id: string
+  taskId: string
+
+  manifestId: string
+  profileId: string
+
+  initiatedByAgentRunId?: string
+  initiatedByWorkflowRunId?: string
+  handoffId?: string
+
+  backgroundJobId: string
+  lane: 'fast' | 'medium' | 'heavy'
+  status: OneShotRunStatus
+
+  inputArtifactIds: string[]
+  attemptId: string
+
+  findingIds: string[]
+  artifactIds: string[]
+  flagCandidateIds: string[]
+
+  /** Resolved evidence root (always under the task workspace — §十三). */
+  evidenceRoot: string
+  /** Optional path to the persisted OneShotResult JSON (§九). */
+  resultPath?: string
+
+  queuedAt: number
+  startedAt?: number
+  completedAt?: number
+
+  summary?: string
+  error?: string
+}
+
 export interface FlagCandidate {
   id: string
   taskId: string
@@ -211,6 +281,9 @@ export interface CTFTaskState {
   agentRuns: AgentRunRecord[]
   workflowRuns: WorkflowRunRecord[]
   jobs: JobRecord[]
+  /** Phase 2.0 §三 — OneShot runs as first-class task entities. Filter by
+   *  status for "active" subsets. */
+  oneShotRuns: OneShotRunRecord[]
   /** Convenience: the ids of runs that are currently `running`. Derived
    *  from `agentRuns` / `workflowRuns` / `jobs`. */
   activeAgentRunIds: string[]

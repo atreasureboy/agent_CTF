@@ -1,10 +1,8 @@
 /**
- * inspect_one_shot_result — read structured findings / candidates from a
- * previously-finished run.
+ * inspect_one_shot_result — Phase 2.0 §十.
  *
- * The dispatcher keeps a small per-process registry of run ids so this tool
- * works without a separate persistent store. For longer sessions the Agent
- * is expected to consume results via the run's evidence directory.
+ * Reads from the OneShotResultStore (persistent, restart-safe). Returns
+ * a structured summary with no raw stdout/stderr.
  */
 
 import type { Tool, ToolDefinition, ToolResult } from '../../core/types.js'
@@ -24,11 +22,22 @@ export const INSPECT_ONE_SHOT_RESULT_DEFINITION: ToolDefinition = {
         runId: { type: 'string', description: 'id returned by run_one_shot' },
       },
       required: ['runId'],
+      additionalProperties: false,
     },
   },
 }
 
-export function makeInspectOneShotTool(dispatcher: Dispatcher): Tool {
+export interface MakeInspectOneShotToolOptions {
+  /** Optional path resolver — when present, the tool surfaces the
+   *  on-disk evidence root + result path. */
+  resolvePaths?: (runId: string) => { evidenceRoot: string; resultPath: string }
+}
+
+export function makeInspectOneShotTool(
+  dispatcher: Dispatcher,
+  options: MakeInspectOneShotToolOptions = {},
+): Tool {
+  const resolvePaths = options.resolvePaths
   return {
     name: 'inspect_one_shot_result',
     definition: INSPECT_ONE_SHOT_RESULT_DEFINITION,
@@ -40,10 +49,20 @@ export function makeInspectOneShotTool(dispatcher: Dispatcher): Tool {
       if (!result) {
         return { content: `unknown or evicted runId: ${runId}`, isError: true }
       }
+      const durationMs = (() => {
+        if (!result.startedAt || !result.finishedAt) return 0
+        return Date.parse(result.finishedAt) - Date.parse(result.startedAt)
+      })()
+      const paths = resolvePaths ? resolvePaths(runId) : { evidenceRoot: '<unknown>', resultPath: '<unknown>' }
       return {
         content:
-          `${result.summary}\n` +
-          `Findings: ${result.findings.length}; Candidates: ${result.candidates.length}.`,
+          `manifest=${result.manifestId} status=${result.status}\n` +
+          `summary: ${result.summary}\n` +
+          `findings=${result.findings.length} artifacts=${result.artifacts.length} candidates=${result.candidates.length}\n` +
+          `started=${result.startedAt} finished=${result.finishedAt} durationMs=${durationMs}\n` +
+          `evidenceRoot=${paths.evidenceRoot}\n` +
+          `resultPath=${paths.resultPath}\n` +
+          `parser warnings: ${result.diagnostics.parserWarnings.length}`,
         isError: false,
       }
     },

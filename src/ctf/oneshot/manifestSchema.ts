@@ -23,7 +23,10 @@ export const oneShotManifestSchema = z
         repository: z.string().url(),
         license: z.string().optional(),
         pinnedRef: z.string().optional(),
-        imageDigest: z.string().optional(),
+        // §P1 audit fix — accept only the canonical sha256:hex digest
+        // format. Doctor + ContainerRunner enforce the same regex; the
+        // schema rejects malformed digests at load time.
+        imageDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
         homepage: z.string().optional(),
       })
       .strict(),
@@ -39,6 +42,21 @@ export const oneShotManifestSchema = z
         requiredArtifacts: z.array(z.string()).optional(),
         taskTags: z.array(z.string()).optional(),
         taskCategories: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
+
+    /** Phase 2.0 §十二 — structured input. Manifests declare argumentTemplate;
+     *  the resolver fills placeholders from authorised artifact paths + a
+     *  schema-validated `options` object. The model never supplies raw argv. */
+    input: z
+      .object({
+        artifactKinds: z.array(z.string()).optional(),
+        minArtifacts: nonNegativeInt.optional(),
+        maxArtifacts: positiveInt.optional(),
+        optionsSchema: z.unknown().optional(),
+        argumentTemplate: z.array(z.string()).min(1),
+        allowedExtraArgs: z.array(z.string()).optional(),
       })
       .strict()
       .optional(),

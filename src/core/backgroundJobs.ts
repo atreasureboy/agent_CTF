@@ -56,6 +56,32 @@ export type JobRunner = (spec: JobSpec, signal: AbortSignal) => Promise<{
   error?: string
 }>
 
+/**
+ * Optional runner registry — lets callers route `toolId: prefix:*` jobs to
+ * different runners. When set, `execute` resolves the runner by toolId
+ * prefix; otherwise it falls back to the single `runner` from the
+ * constructor.
+ */
+export interface JobRunnerRegistry {
+  register(prefix: string, runner: JobRunner): void
+  resolve(toolId: string): JobRunner | null
+}
+
+export class JobRunnerRegistryImpl implements JobRunnerRegistry {
+  private readonly map = new Map<string, JobRunner>()
+
+  register(prefix: string, runner: JobRunner): void {
+    this.map.set(prefix, runner)
+  }
+
+  resolve(toolId: string): JobRunner | null {
+    for (const [prefix, runner] of this.map) {
+      if (toolId.startsWith(prefix)) return runner
+    }
+    return null
+  }
+}
+
 /** Lifecycle events emitted by `BackgroundJobManager`. Listeners receive
  *  every transition; the orchestrator mirrors them into CTFTaskState.jobs.
  *  No polling, no monkey-patching of methods — just an EventEmitter-style
@@ -76,6 +102,10 @@ export interface BackgroundJobManagerOptions {
   maxPerTask?: number
   /** Defaults to 4. */
   globalTimeoutMs?: number
+  /** Optional prefix-based runner registry. When set, jobs with toolIds
+   *  matching a registered prefix are routed to that runner instead of
+   *  the default constructor runner. */
+  runnerRegistry?: JobRunnerRegistry
 }
 
 /**
@@ -93,13 +123,27 @@ export class BackgroundJobManager {
   private readonly globalTimeoutMs: number
 
   constructor(
-    private readonly opts: BackgroundJobManagerOptions,
+    private opts: BackgroundJobManagerOptions,
     private readonly runner: JobRunner,
   ) {
     this.maxPerAgent = opts.maxPerAgent ?? 4
     this.maxPerTask = opts.maxPerTask ?? 16
     this.globalTimeoutMs = opts.globalTimeoutMs ?? 3_600_000  // 1h
     mkdirSync(opts.taskWorkspaceDir, { recursive: true })
+  }
+
+  /** Resolve the runner for a given toolId. Prefers the prefix registry;
+   *  falls back to the default constructor runner. */
+  private resolveRunner(toolId: string): JobRunner {
+    const fromRegistry = this.opts.runnerRegistry?.resolve(toolId) ?? null
+    return fromRegistry ?? this.runner
+  }
+
+  /** Attach a runner registry post-construction. Useful when the catalog
+   *  is built after the jobManager (e.g. Phase 2.0 §六 — the OneShot
+   *  registry is wired up after the harness is built). */
+  setRunnerRegistry(registry: JobRunnerRegistry): void {
+    this.opts.runnerRegistry = registry
   }
 
   /**

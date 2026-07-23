@@ -6,25 +6,41 @@
   "source": {
     "repository": "https://github.com/projectdiscovery/nuclei",
     "license": "MIT",
-    "pinnedRef": "v3.1.0"
+    "pinnedRef": "v3.1.0",
+    "imageDigest": "sha256:9fe12a8ba0e964580f98163686fb9174659d160570ba9c05357d5008de2829d4"
   },
   "maturity": "stable",
   "enabledByDefault": false,
   "inputMatchers": {
-    "taskTags": ["network"]
+    "taskTags": [
+      "network"
+    ]
   },
-  "allowedProfiles": ["web"],
+  "allowedProfiles": [
+    "web"
+  ],
   "runner": {
     "type": "container",
-    "image": "projectdiscovery/nuclei:latest",
-    "command": ["nuclei", "-severity", "medium,high,critical", "-t", "cves/", "-t", "vulnerabilities/"]
+    "image": "projectdiscovery/nuclei:v3.1.0",
+    "command": [
+      "nuclei",
+      "-severity",
+      "medium,high,critical",
+      "-t",
+      "cves/",
+      "-t",
+      "vulnerabilities/"
+    ]
   },
   "resources": {
     "timeoutSeconds": 900,
     "memoryMb": 1024,
     "maxOutputBytes": 262144
   },
-  "network": { "mode": "contest-target-only", "requiresScopeApproval": true },
+  "network": {
+    "mode": "contest-target-only",
+    "requiresScopeApproval": true
+  },
   "output": {
     "parser": "jsonl"
   },
@@ -34,6 +50,13 @@
     "falsePositiveRisk": "medium"
   },
   "healthcheck": {
-    "command": ["docker", "run", "--rm", "projectdiscovery/nuclei:latest", "nuclei", "-version"]
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "projectdiscovery/nuclei:v3.1.0",
+      "nuclei",
+      "-version"
+    ]
   }
 }

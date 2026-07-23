@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/tiny.elf",
+  "category": "binary/elf",
+  "size": 8,
+  "expectedSelectedManifestIds": ["file", "strings", "checksec"],
+  "forbiddenManifestIds": ["nuclei"],
+  "expectedFindingCategories": ["magic", "strings", "checksec"],
+  "expectedCandidateValues": [],
+  "expectedArtifactKinds": [],
+  "maxFalsePositiveFindings": 1,
+  "maxDurationMs": 6000
+}

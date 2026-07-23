@@ -10,9 +10,31 @@ import {
   HealthChecker,
   formatDoctor,
   summarizeDoctor,
-  DoctorRow,
 } from '../../src/ctf/oneshot/index.js'
+import type { DoctorRow } from '../../src/ctf/oneshot/index.js'
 import { BackgroundJobManager } from '../../src/core/backgroundJobs.js'
+import type { TaskExecutionContext } from '../../src/core/ctfRuntime/taskExecutionContext.js'
+
+function makeTaskContext(root: string): TaskExecutionContext {
+  return {
+    taskId: 'task_int123',
+    workspaceDir: root,
+    sessionDir: root,
+    artifactDir: `${root}/artifacts`,
+    inputDir: `${root}/input`,
+    eventsFile: `${root}/events.ndjson`,
+    profileId: 'triage',
+    contestScope: {
+      allowedFilesRoot: root,
+      allowPublicNetwork: false,
+      allowHeavyOneShots: false,
+    },
+    contestConfig: { allowedFilesRoot: root, allowPublicNetwork: false, allowHeavyOneShots: false },
+    environment: {},
+    abortSignal: new AbortController().signal,
+    metadata: {},
+  }
+}
 
 describe('oneshot integration', () => {
   let workRoot: string
@@ -61,11 +83,11 @@ describe('oneshot integration', () => {
       jobManager,
       workspace: workRoot,
       signal: new AbortController().signal,
+      taskContext: makeTaskContext(workRoot),
     })
     const result = await dispatcher.runOne('echo', {
       argv: [],
       evidenceRoot: workRoot,
-      signal: new AbortController().signal,
     })
     expect(result.status).toBe('completed')
     expect(existsSync(result.diagnostics.stdoutPath ?? '')).toBe(true)

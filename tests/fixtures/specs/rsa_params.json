@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/rsa_params.txt",
+  "category": "crypto/rsa",
+  "size": 22,
+  "expectedSelectedManifestIds": ["rsactftool"],
+  "forbiddenManifestIds": ["nuclei", "mobsf"],
+  "expectedFindingCategories": ["rsa-params"],
+  "expectedCandidateValues": [],
+  "expectedArtifactKinds": [],
+  "maxFalsePositiveFindings": 0,
+  "maxDurationMs": 30000
+}

@@ -269,7 +269,7 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }
@@ -563,7 +563,7 @@ describe('§十四 — Terminal-phase guard', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }

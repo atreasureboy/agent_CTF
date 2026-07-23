@@ -20,6 +20,8 @@ import type {
   FlagCandidate,
   HandoffRecord,
   JobRecord,
+  OneShotRunRecord,
+  OneShotRunStatus,
   WorkflowRunRecord,
 } from './taskState.js'
 import type { Finding } from '../findings.js'
@@ -74,6 +76,52 @@ export type CTFTaskEvent =
   | { type: 'ATTEMPT_UPDATED'; attemptId: string; patch: Partial<CTFAttempt> }
   | { type: 'JOB_RECORDED'; job: JobRecord }
   | { type: 'JOB_UPDATED'; jobId: string; patch: Partial<JobRecord> }
+  /* ─── Phase 2.0 §四 — OneShot first-class task events ────────────────── */
+  | { type: 'ONESHOT_RUN_QUEUED'; run: OneShotRunRecord }
+  | {
+      type: 'ONESHOT_RUN_STARTED'
+      runId: string
+      backgroundJobId: string
+      startedAt: number
+    }
+  | {
+      type: 'ONESHOT_RUN_COMPLETED'
+      runId: string
+      summary: string
+      findingIds: string[]
+      artifactIds: string[]
+      flagCandidateIds: string[]
+      completedAt: number
+    }
+  | {
+      type: 'ONESHOT_RUN_PARTIAL'
+      runId: string
+      summary: string
+      completedAt: number
+    }
+  | {
+      type: 'ONESHOT_RUN_FAILED'
+      runId: string
+      error: string
+      completedAt: number
+    }
+  | {
+      type: 'ONESHOT_RUN_TIMEOUT'
+      runId: string
+      error?: string
+      completedAt: number
+    }
+  | {
+      type: 'ONESHOT_RUN_CANCELLED'
+      runId: string
+      reason: string
+      completedAt: number
+    }
+  | {
+      type: 'ONESHOT_RUN_UPDATED'
+      runId: string
+      patch: Partial<OneShotRunRecord>
+    }
   | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
 
 /** A subscriber receives every event AFTER it has been applied. */

@@ -175,6 +175,7 @@ export class CTFTaskOrchestrator {
       agentRuns: [],
       workflowRuns: [],
       jobs: [],
+      oneShotRuns: [],
       activeAgentRunIds: [],
       activeWorkflowRunIds: [],
       activeJobIds: [],
@@ -294,6 +295,54 @@ export class CTFTaskOrchestrator {
       jobId: job.id,
       patch: job,
     })
+  }
+
+  // ── Phase 2.0 OneShot lifecycle (§四) ─────────────────────────────────
+  recordOneShotQueued(run: import('./taskState.js').OneShotRunRecord): void {
+    this.safeApply({ type: 'ONESHOT_RUN_QUEUED', run })
+  }
+
+  recordOneShotStarted(runId: string, backgroundJobId: string, startedAt: number): void {
+    this.safeApply({ type: 'ONESHOT_RUN_STARTED', runId, backgroundJobId, startedAt })
+  }
+
+  recordOneShotCompleted(
+    runId: string,
+    summary: string,
+    findingIds: string[],
+    artifactIds: string[],
+    flagCandidateIds: string[],
+    completedAt: number,
+  ): void {
+    this.safeApply({
+      type: 'ONESHOT_RUN_COMPLETED',
+      runId,
+      summary,
+      findingIds,
+      artifactIds,
+      flagCandidateIds,
+      completedAt,
+    })
+  }
+
+  recordOneShotPartial(runId: string, summary: string, completedAt: number): void {
+    this.safeApply({ type: 'ONESHOT_RUN_PARTIAL', runId, summary, completedAt })
+  }
+
+  recordOneShotFailed(runId: string, error: string, completedAt: number): void {
+    this.safeApply({ type: 'ONESHOT_RUN_FAILED', runId, error, completedAt })
+  }
+
+  recordOneShotTimeout(runId: string, error: string | undefined, completedAt: number): void {
+    this.safeApply({ type: 'ONESHOT_RUN_TIMEOUT', runId, error, completedAt })
+  }
+
+  recordOneShotCancelled(runId: string, reason: string, completedAt: number): void {
+    this.safeApply({ type: 'ONESHOT_RUN_CANCELLED', runId, reason, completedAt })
+  }
+
+  updateOneShot(runId: string, patch: Partial<import('./taskState.js').OneShotRunRecord>): void {
+    this.safeApply({ type: 'ONESHOT_RUN_UPDATED', runId, patch })
   }
 
   // ── Workflow runs ────────────────────────────────────────────────────

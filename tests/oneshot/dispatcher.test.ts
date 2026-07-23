@@ -13,6 +13,7 @@ import {
 import { BackgroundJobManager } from '../../src/core/backgroundJobs.js'
 import type { OneShotRunner, RunnerInputs } from '../../src/ctf/oneshot/index.js'
 import type { OneShotManifest, OneShotResult } from '../../src/ctf/oneshot/index.js'
+import type { TaskExecutionContext } from '../../src/core/ctfRuntime/taskExecutionContext.js'
 
 function fakeRunner(behavior: (m: OneShotManifest, argv: string[]) => Promise<OneShotResult>): OneShotRunner {
   return {
@@ -38,12 +39,34 @@ const baseManifest: OneShotManifest = {
   scheduling: { costTier: 'fast', falsePositiveRisk: 'low' },
 }
 
+function makeTaskContext(workRoot: string): TaskExecutionContext {
+  return {
+    taskId: 'task_test123',
+    workspaceDir: workRoot,
+    sessionDir: workRoot,
+    artifactDir: `${workRoot}/artifacts`,
+    inputDir: `${workRoot}/input`,
+    eventsFile: `${workRoot}/events.ndjson`,
+    profileId: 'triage',
+    contestScope: {
+      allowedFilesRoot: workRoot,
+      allowPublicNetwork: false,
+      allowHeavyOneShots: false,
+    },
+    contestConfig: { allowedFilesRoot: workRoot, allowPublicNetwork: false, allowHeavyOneShots: false },
+    environment: {},
+    abortSignal: new AbortController().signal,
+    metadata: {},
+  }
+}
+
 describe('Dispatcher', () => {
   let workRoot: string
   let registry: OneShotRegistry
   let catalog: OneShotCatalog
   let jobManager: BackgroundJobManager
   let dispatcher: Dispatcher
+  let taskContext: TaskExecutionContext
 
   beforeEach(() => {
     workRoot = mkdtempSync(join(tmpdir(), 'oneshot-dis-'))
@@ -53,13 +76,15 @@ describe('Dispatcher', () => {
       { taskWorkspaceDir: workRoot },
       async () => ({}),
     )
+    taskContext = makeTaskContext(workRoot)
     dispatcher = new Dispatcher({
       registry,
       catalog,
       jobManager,
       workspace: workRoot,
-      signal: new AbortController().signal,
+      signal: taskContext.abortSignal ?? new AbortController().signal,
       budget: new BudgetManager(),
+      taskContext,
     })
     clearRunnerOverrides()
   })
@@ -77,7 +102,7 @@ describe('Dispatcher', () => {
     setRunnerOverride('demo', fakeRunner(async () => ({
       runId: 'osp_over',
       manifestId: 'demo',
-      taskId: 't',
+      taskId: 'task_test123',
       status: 'completed',
       startedAt: new Date().toISOString(),
       finishedAt: new Date().toISOString(),
@@ -92,10 +117,10 @@ describe('Dispatcher', () => {
     const out = await dispatcher.runOne('demo', {
       argv: [],
       evidenceRoot: workRoot,
-      signal: new AbortController().signal,
     })
     expect(out.status).toBe('completed')
     expect(out.candidates).toHaveLength(1)
+    expect(out.taskId).toBe('task_test123')
   })
 
   it('emits ONESHOT projection events', async () => {
@@ -105,7 +130,7 @@ describe('Dispatcher', () => {
     setRunnerOverride('demo', fakeRunner(async () => ({
       runId: 'osp_e',
       manifestId: 'demo',
-      taskId: 't',
+      taskId: 'task_test123',
       status: 'completed',
       startedAt: new Date().toISOString(),
       finishedAt: new Date().toISOString(),
@@ -120,7 +145,6 @@ describe('Dispatcher', () => {
     await dispatcher.runOne('demo', {
       argv: [],
       evidenceRoot: workRoot,
-      signal: new AbortController().signal,
     })
     expect(seen).toContain('ONESHOT_QUEUED')
     expect(seen).toContain('ONESHOT_STARTED')
@@ -132,7 +156,6 @@ describe('Dispatcher', () => {
       dispatcher.runOne('no-such', {
         argv: [],
         evidenceRoot: workRoot,
-        signal: new AbortController().signal,
       }),
     ).rejects.toThrow(/unknown manifest/)
   })

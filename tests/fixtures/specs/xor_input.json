@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/xor_input.bin",
+  "category": "crypto/xor",
+  "size": 14,
+  "expectedSelectedManifestIds": ["strings"],
+  "forbiddenManifestIds": [],
+  "expectedFindingCategories": ["strings"],
+  "expectedCandidateValues": ["flag{xor_test}"],
+  "expectedArtifactKinds": [],
+  "maxFalsePositiveFindings": 0,
+  "maxDurationMs": 6000
+}

@@ -1,27 +1,38 @@
 /**
- * ShotgunCoordinator — orchestrates the Shotgun Agent's tool calls into the
- * OneShot Dispatcher.
+ * ShotgunCoordinator — Phase 2.0 §二十五.
  *
- * The Coordinator is intentionally thin: the LLM picks manifest ids + argv,
- * and the Coordinator simply forwards through the Dispatcher, collects
- * normalized results, and dedupes them by candidate value.
+ * Created by the CTFTaskRuntime (or SpecialistFactory). Receives:
+ *   - Dispatcher (with BackgroundJobManager wired)
+ *   - OneShotRegistry
+ *   - TaskExecutionContext (real taskId, profileId, scope, abortSignal)
  *
- * The Coordinator never bypasses scope checks. Network-mode manifests
- * (`contest-target-only`) are rejected here when no scope was supplied.
+ * The Coordinator re-validates Profile / Manifest Health / Input / Scope /
+ * Budget / Duplicate Attempt / Heavy Approval before forwarding to the
+ * Dispatcher. It CANNOT bypass the Orchestrator; if the task is cancelled
+ * the in-flight runs abort.
+ *
+ * LLM-supplied inputs are restricted to:
+ *   - selectedManifestIds
+ *   - argvByManifest (resolved against manifest.input.argumentTemplate)
+ *   - reason
+ *
+ * The Coordinator cannot enlarge scope, supply its own workspace, or override
+ * the task's taskId.
  */
 
-import { Dispatcher } from '../oneshot/dispatcher.js'
-import type { OneShotManifest, OneShotResult } from '../oneshot/types.js'
+import type { Dispatcher } from '../oneshot/dispatcher.js'
 import type { OneShotRegistry } from '../oneshot/registry.js'
-import { ScopeGate } from '../oneshot/scopeGate.js'
+import type { OneShotResult } from '../oneshot/types.js'
+import { resolveArgumentTemplate } from '../oneshot/argumentResolver.js'
+import type { TaskExecutionContext } from '../../core/ctfRuntime/taskExecutionContext.js'
 
 export interface ShotgunCoordinatorInputs {
   selectedManifestIds: string[]
-  argvByManifest: Record<string, string[]>
-  workspace: string
-  evidenceRoot: string
-  scope?: { hosts?: string[]; domains?: string[]; ports?: number[]; cidrs?: string[] }
-  signal: AbortSignal
+  /** Map of manifest id → input artifact ids. The Coordinator resolves paths. */
+  inputArtifactIdsByManifest?: Record<string, string[]>
+  /** Map of manifest id → tool-specific options. */
+  optionsByManifest?: Record<string, Record<string, unknown>>
+  reason?: string
 }
 
 export interface ShotgunReport {
@@ -32,24 +43,32 @@ export interface ShotgunReport {
 }
 
 export class ShotgunCoordinator {
+  /** Optional hook to check manifest health before dispatch (Doctor). */
+  private readonly isManifestReady: (manifestId: string) => boolean
+  /** Optional hook to look up an artifact's filesystem path. */
+  private readonly resolveArtifactPath: (artifactId: string) => string | undefined
+
   constructor(
     private readonly registry: OneShotRegistry,
     private readonly dispatcher: Dispatcher,
-  ) {}
+    private readonly taskContext: TaskExecutionContext,
+    options?: {
+      isManifestReady?: (manifestId: string) => boolean
+      resolveArtifactPath?: (artifactId: string) => string | undefined
+    },
+  ) {
+    this.isManifestReady = options?.isManifestReady ?? (() => true)
+    this.resolveArtifactPath = options?.resolveArtifactPath ?? (() => undefined)
+  }
 
-  /** Multi-manifest dispatch with scope gating. */
+  /** Multi-manifest dispatch with scope gating + budget check. */
   async dispatch(inputs: ShotgunCoordinatorInputs): Promise<ShotgunReport> {
     const results: OneShotResult[] = []
     const rejected: ShotgunReport['rejected'] = []
 
-    const scopeGate = inputs.scope
-      ? new ScopeGate({
-          hosts: inputs.scope.hosts ?? [],
-          domains: inputs.scope.domains ?? [],
-          ports: inputs.scope.ports ?? [],
-          cidrs: inputs.scope.cidrs ?? [],
-        }, { denyByDefault: true })
-      : null
+    // Scope authority (§十四) — only TaskExecutionContext.contestScope.
+    // LLM cannot supply scope; we use it directly.
+    const contestScope = this.taskContext.contestScope
 
     for (const id of inputs.selectedManifestIds) {
       const m = this.registry.get(id)
@@ -57,30 +76,47 @@ export class ShotgunCoordinator {
         rejected.push({ manifestId: id, reason: 'unknown manifest' })
         continue
       }
-      if (m.network.mode !== 'none') {
-        if (!scopeGate) {
-          rejected.push({ manifestId: id, reason: 'network mode requires scope' })
-          continue
-        }
-        if (m.runner.command && m.network.mode === 'contest-target-only') {
-          // Best-effort: pull host from argv (last arg).
-          const last = inputs.argvByManifest[id]?.slice(-1)[0]
-          if (last) {
-            try {
-              scopeGate.assert(last)
-            } catch (err) {
-              rejected.push({ manifestId: id, reason: `scope: ${(err as Error).message}` })
-              continue
-            }
-          }
-        }
+      if (!m.allowedProfiles.includes(this.taskContext.profileId)) {
+        rejected.push({ manifestId: id, reason: `profile ${this.taskContext.profileId} not allowed` })
+        continue
+      }
+      if (!this.isManifestReady(id)) {
+        rejected.push({ manifestId: id, reason: 'manifest not READY' })
+        continue
+      }
+      // Heavy approval — non-default unless explicitly enabled.
+      if (m.scheduling.costTier === 'heavy' && contestScope.allowHeavyOneShots !== true) {
+        rejected.push({ manifestId: id, reason: 'heavy-tier requires operator approval' })
+        continue
+      }
+      // Network mode — must be allowed by contestScope.
+      if (m.network.mode !== 'none' && contestScope.allowPublicNetwork !== true) {
+        rejected.push({ manifestId: id, reason: `network mode ${m.network.mode} not authorised` })
+        continue
+      }
+
+      const inputArtifactIds = inputs.inputArtifactIdsByManifest?.[id] ?? []
+      const options = inputs.optionsByManifest?.[id] ?? {}
+
+      let argv: string[]
+      try {
+        argv = resolveArgumentTemplate(m, {
+          artifactIds: inputArtifactIds,
+          options,
+          resolveArtifactPath: this.resolveArtifactPath,
+          taskWorkspaceDir: this.taskContext.workspaceDir,
+        })
+      } catch (err) {
+        rejected.push({ manifestId: id, reason: (err as Error).message })
+        continue
       }
 
       try {
         const result = await this.dispatcher.runOne(id, {
-          argv: inputs.argvByManifest[id] ?? [],
-          evidenceRoot: inputs.evidenceRoot,
-          signal: inputs.signal,
+          argv,
+          evidenceRoot: `${this.taskContext.artifactDir}/.oneshots`,
+          resolvedInput: { artifactIds: inputArtifactIds, options },
+          reason: inputs.reason,
         })
         results.push(result)
       } catch (err) {
@@ -96,9 +132,11 @@ export class ShotgunCoordinator {
     }
   }
 
-  /** Convenience: pick eligible manifests for a profile + task. */
-  eligible(profileId: string): OneShotManifest[] {
-    return this.registry.list().filter((m) => m.allowedProfiles.includes(profileId))
+  /** Convenience: pick eligible manifests for the active profile. */
+  eligible(): import('../oneshot/types.js').OneShotManifest[] {
+    return this.registry.list().filter((m) =>
+      m.allowedProfiles.includes(this.taskContext.profileId),
+    )
   }
 
   private summarize(results: OneShotResult[]): string {

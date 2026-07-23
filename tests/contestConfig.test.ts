@@ -191,6 +191,7 @@ describe('createHarness — auto-loads .ovogo/contest.json', () => {
       contestScope: {
         allowedFilesRoot: root,
         allowPublicNetwork: false,
+        allowHeavyOneShots: false,
         allowedHosts: ['cli-host'],
       },
     })

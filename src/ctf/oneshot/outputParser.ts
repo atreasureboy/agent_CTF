@@ -39,15 +39,21 @@ builtInParsers['passthrough'] = (_m, files) => {
   if (!files.stdoutPath || !existsSync(files.stdoutPath)) {
     return { findings, artifacts: [], candidates: [], warnings: ['no stdout file'] }
   }
+  // §二十 — passthrough keeps a bounded preview; we no longer emit every
+  // line as a Finding (that would flood the FindingStore with noise).
   const content = readFileSync(files.stdoutPath, 'utf8')
-  for (const line of content.split('\n').filter(Boolean)) {
-    findings.push({
-      category: 'raw',
-      title: line.slice(0, 80),
-      summary: line,
-      confidence: 'low',
-    })
+  const lines = content.split('\n').filter(Boolean)
+  const MAX_LINES = 50
+  const preview = lines.slice(0, MAX_LINES)
+  if (lines.length > MAX_LINES) {
+    warnings.push(`passthrough truncated: ${lines.length - MAX_LINES} additional line(s) not surfaced`)
   }
+  findings.push({
+    category: 'raw',
+    title: `passthrough preview (${preview.length}/${lines.length} lines)`,
+    summary: preview.join('\n'),
+    confidence: 'low',
+  })
   return { findings, artifacts: [], candidates: [], warnings }
 }
 
@@ -92,6 +98,164 @@ builtInParsers['flag-regex'] = (manifest, files, runId) => {
   return { findings, artifacts: [], candidates, warnings }
 }
 
+/* ─── §二十 — Deterministic parsers for the standard tooling ─────────── */
+
+/** `file` — emits a magic-type finding. */
+builtInParsers['file'] = (_m, files, runId) => {
+  const findings: NormalizedFinding[] = []
+  const warnings: string[] = []
+  if (!files.stdoutPath || !existsSync(files.stdoutPath)) {
+    return { findings: [], artifacts: [], candidates: [], warnings: ['file: no stdout file'] }
+  }
+  const content = readFileSync(files.stdoutPath, 'utf8').trim()
+  if (!content) {
+    return { findings: [], artifacts: [], candidates: [], warnings: ['file: empty output'] }
+  }
+  findings.push({
+    category: 'magic',
+    title: `file: ${content.split('\n')[0]?.slice(0, 120) ?? 'unknown'}`,
+    summary: content,
+    confidence: 'high',
+    evidence: [runId],
+  })
+  return { findings, artifacts: [], candidates: [], warnings }
+}
+
+/** `strings` — keep first N printable strings above length threshold. */
+builtInParsers['strings'] = (_m, files, runId) => {
+  const findings: NormalizedFinding[] = []
+  const candidates: CandidateValue[] = []
+  const warnings: string[] = []
+  if (!files.stdoutPath || !existsSync(files.stdoutPath)) {
+    return { findings: [], artifacts: [], candidates: [], warnings: ['strings: no stdout file'] }
+  }
+  const content = readFileSync(files.stdoutPath, 'utf8')
+  const lines = content.split('\n').filter((l) => l.length >= 4)
+  const MAX = 200
+  const keep = lines.slice(0, MAX)
+  if (lines.length > MAX) {
+    warnings.push(`strings: truncated ${lines.length - MAX} lines`)
+  }
+  // Flag candidates — common flag formats.
+  for (const line of keep) {
+    const m = line.match(/flag\{[^}]+\}|CTF\{[^}]+\}|FLAG\{[^}]+\}/)
+    if (m) {
+      candidates.push({
+        value: m[0],
+        sourceRuns: [runId],
+        sourceArtifacts: [],
+        confidence: 0.7,
+        needsVerification: true,
+      })
+    }
+  }
+  findings.push({
+    category: 'strings',
+    title: `strings: ${keep.length} printable string(s)`,
+    summary: keep.join('\n'),
+    confidence: 'medium',
+    evidence: [runId],
+  })
+  return { findings, artifacts: [], candidates, warnings }
+}
+
+/** `binwalk` — each detected signature becomes a finding. */
+builtInParsers['binwalk'] = (_m, files, runId) => {
+  const findings: NormalizedFinding[] = []
+  const artifacts: NormalizedArtifact[] = []
+  const warnings: string[] = []
+  if (!files.stdoutPath || !existsSync(files.stdoutPath)) {
+    return { findings: [], artifacts: [], candidates: [], warnings: ['binwalk: no stdout file'] }
+  }
+  const content = readFileSync(files.stdoutPath, 'utf8')
+  const re = /^(\d+)\s+(0x[0-9a-fA-F]+)\s+(.+)$/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    findings.push({
+      category: 'embedded',
+      title: `binwalk offset ${m[2]}: ${m[3]?.slice(0, 80)}`,
+      summary: m[3] ?? '',
+      confidence: 'high',
+      evidence: [runId],
+    })
+  }
+  // Header line — descriptive summary.
+  const head = content.split('\n')[0]?.trim() ?? ''
+  if (head) {
+    findings.push({
+      category: 'binwalk-summary',
+      title: head.slice(0, 120),
+      summary: head,
+      confidence: 'low',
+    })
+  }
+  if (findings.length === 0) {
+    warnings.push('binwalk: no signatures parsed')
+  }
+  void artifacts
+  return { findings, artifacts, candidates: [], warnings }
+}
+
+/** `zsteg` — each detected channel becomes a finding. */
+builtInParsers['zsteg'] = (_m, files, runId) => {
+  const findings: NormalizedFinding[] = []
+  const candidates: CandidateValue[] = []
+  const warnings: string[] = []
+  if (!files.stdoutPath || !existsSync(files.stdoutPath)) {
+    return { findings: [], artifacts: [], candidates: [], warnings: ['zsteg: no stdout file'] }
+  }
+  const content = readFileSync(files.stdoutPath, 'utf8')
+  // zsteg rows look like:  b1,r,lsb,xy       .. text: "..."
+  const re = /^\s*([\w.,]+)\s+(\.\.|file|text|zip|RGBA)\s*:\s*"([^"]*)"/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    const value = m[3] ?? ''
+    findings.push({
+      category: 'zsteg',
+      title: `zsteg ${m[1]?.slice(0, 40)}: ${m[2]}`,
+      summary: value.slice(0, 200),
+      confidence: 'medium',
+      evidence: [runId],
+    })
+    const fm = value.match(/flag\{[^}]+\}|CTF\{[^}]+\}|FLAG\{[^}]+\}/)
+    if (fm) {
+      candidates.push({
+        value: fm[0],
+        sourceRuns: [runId],
+        sourceArtifacts: [],
+        confidence: 0.7,
+        needsVerification: true,
+      })
+    }
+  }
+  if (findings.length === 0) {
+    warnings.push('zsteg: no channels parsed')
+  }
+  return { findings, artifacts: [], candidates, warnings }
+}
+
+/** `checksec` — emits a structured finding for each binary's protections. */
+builtInParsers['checksec'] = (_m, files, runId) => {
+  const findings: NormalizedFinding[] = []
+  const warnings: string[] = []
+  if (!files.stdoutPath || !existsSync(files.stdoutPath)) {
+    return { findings: [], artifacts: [], candidates: [], warnings: ['checksec: no stdout file'] }
+  }
+  const content = readFileSync(files.stdoutPath, 'utf8')
+  const lines = content.split('\n').filter(Boolean)
+  const MAX = 100
+  const keep = lines.slice(0, MAX)
+  if (lines.length > MAX) warnings.push(`checksec: truncated ${lines.length - MAX} line(s)`)
+  findings.push({
+    category: 'checksec',
+    title: `checksec: ${keep.length} protection row(s)`,
+    summary: keep.join('\n'),
+    confidence: 'high',
+    evidence: [runId],
+  })
+  return { findings, artifacts: [], candidates: [], warnings }
+}
+
 /** JSON-line parser: each line is a JSON object, mapped to a Finding. */
 builtInParsers['jsonl'] = (_m, files, runId) => {
   const findings: NormalizedFinding[] = []
@@ -104,7 +268,7 @@ builtInParsers['jsonl'] = (_m, files, runId) => {
   for (const [i, line] of content.split('\n').filter(Boolean).entries()) {
     try {
       const obj = JSON.parse(line) as Record<string, unknown>
-      const flag = (obj['flag'] ?? obj['candidate']) as unknown
+      const flag = (obj['flag'] ?? obj['candidate'])
       if (typeof flag === 'string') {
         candidates.push({
           value: flag,

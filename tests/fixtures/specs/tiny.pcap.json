@@ -1,0 +1,12 @@
+{
+  "path": "tests/fixtures/tiny.pcap",
+  "category": "network/pcap",
+  "size": 4,
+  "expectedSelectedManifestIds": ["file"],
+  "forbiddenManifestIds": [],
+  "expectedFindingCategories": ["magic"],
+  "expectedCandidateValues": [],
+  "expectedArtifactKinds": [],
+  "maxFalsePositiveFindings": 0,
+  "maxDurationMs": 4000
+}

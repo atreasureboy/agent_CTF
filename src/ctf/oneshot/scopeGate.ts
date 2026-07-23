@@ -35,8 +35,61 @@ export interface ParsedTarget {
   port?: number
 }
 
-const PRIVATE_IPV4 = /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^127\./
-const PRIVATE_HOSTS = new Set(['localhost', 'metadata.google.internal', '169.254.169.254'])
+// §P1 audit fix — expanded coverage. The previous regex missed
+// 169.254.0.0/16 (only 169.254.169.254 in the host set), CGNAT
+// 100.64.0.0/10, benchmark 198.18.0.0/15, 0.0.0.0/8, multicast
+// 224.0.0.0/4, and IPv6 ULA / link-local / mapped.
+const PRIVATE_IPV4_PREFIXES = [
+  '10.', '192.168.', '172.16.', '172.17.', '172.18.', '172.19.',
+  '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.',
+  '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.',
+  '127.', '169.254.', '100.64.', '100.65.', '100.66.', '100.67.',
+  '100.68.', '100.69.', '100.70.', '100.71.', '100.72.', '100.73.',
+  '100.74.', '100.75.', '100.76.', '100.77.', '100.78.', '100.79.',
+  '100.80.', '100.81.', '100.82.', '100.83.', '100.84.', '100.85.',
+  '100.86.', '100.87.', '100.88.', '100.89.', '100.90.', '100.91.',
+  '100.92.', '100.93.', '100.94.', '100.95.', '100.96.', '100.97.',
+  '100.98.', '100.99.', '100.100.', '100.101.', '100.102.', '100.103.',
+  '100.104.', '100.105.', '100.106.', '100.107.', '100.108.', '100.109.',
+  '100.110.', '100.111.', '100.112.', '100.113.', '100.114.', '100.115.',
+  '100.116.', '100.117.', '100.118.', '100.119.', '100.120.', '100.121.',
+  '100.122.', '100.123.', '100.124.', '100.125.', '100.126.', '100.127.',
+  '198.18.', '198.19.', '0.', '224.', '225.', '226.', '227.',
+  '228.', '229.', '230.', '231.', '232.', '233.', '234.', '235.',
+  '236.', '237.', '238.', '239.', '240.', '241.', '242.', '243.',
+  '244.', '245.', '246.', '247.', '248.', '249.', '250.', '251.',
+  '252.', '253.', '254.', '255.',
+]
+const PRIVATE_HOSTS = new Set([
+  'localhost',
+  'metadata.google.internal',
+  // Full link-local — the previous set only covered .169.254.
+  '169.254.169.254', '169.254.169.253', '169.254.169.252',
+])
+
+function isPrivateIPv4(ip: string): boolean {
+  for (const prefix of PRIVATE_IPV4_PREFIXES) {
+    if (ip.startsWith(prefix)) return true
+  }
+  return false
+}
+
+function isPrivateIPv6(ip: string): boolean {
+  const lower = ip.toLowerCase()
+  // ::1 (loopback)
+  if (lower === '::1') return true
+  // fe80::/10 (link-local)
+  if (lower.startsWith('fe8') || lower.startsWith('fe9') ||
+      lower.startsWith('fea') || lower.startsWith('feb')) return true
+  // fc00::/7 (ULA)
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true
+  // ::ffff:0:0/96 (IPv4-mapped — re-check IPv4 portion)
+  if (lower.startsWith('::ffff:')) {
+    const v4 = lower.slice(7)
+    return isPrivateIPv4(v4)
+  }
+  return false
+}
 
 /** Parse a host:port / ip / url string into components. */
 export function parseTarget(target: string): ParsedTarget {
@@ -141,7 +194,7 @@ export class ScopeGate {
       }
       return
     }
-    if (parsed.ip && PRIVATE_IPV4.test(parsed.ip)) {
+    if (parsed.ip && (isPrivateIPv4(parsed.ip) || isPrivateIPv6(parsed.ip))) {
       throw new ScopeDeniedError(`target "${target}" is a private IP`, target, 'private')
     }
     if (this.denyByDefault) {

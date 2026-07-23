@@ -451,7 +451,7 @@ describe('§4 — Abort chain', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -591,7 +591,7 @@ describe('§4 — Abort chain', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -903,7 +903,7 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }
@@ -1013,7 +1013,7 @@ describe('§6 — Reducer invariants', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }

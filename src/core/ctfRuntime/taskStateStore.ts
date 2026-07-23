@@ -22,6 +22,7 @@ import {
   isActiveAgentRun,
   isActiveJob,
   isActiveWorkflowRun,
+  isTerminalOneShotStatus,
   isTerminalPhase,
   type CTFTaskPhase,
   type CTFTaskState,
@@ -48,6 +49,9 @@ export class IllegalAttemptTransitionError extends TaskStateStoreError {}
 export class DuplicateJobError extends TaskStateStoreError {}
 export class UnknownJobError extends TaskStateStoreError {}
 export class IllegalJobTransitionError extends TaskStateStoreError {}
+export class DuplicateOneShotRunError extends TaskStateStoreError {}
+export class UnknownOneShotRunError extends TaskStateStoreError {}
+export class IllegalOneShotRunTransitionError extends TaskStateStoreError {}
 
 export class CTFTaskStateStore {
   private state: CTFTaskState
@@ -167,6 +171,8 @@ export class CTFTaskStateStore {
         'PROFILE_CHANGED',
         'CONTEXT_REPLACED',
         'TASK_COMPLETED',
+        // §四 — no new OneShot runs on a terminal task.
+        'ONESHOT_RUN_QUEUED',
       ]
       if (blockInTerminal.includes(event.type)) {
         throw new TaskAlreadyCompletedError(
@@ -487,6 +493,106 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         jobs,
         activeJobIds: jobs.filter(isActiveJob).map((j) => j.id),
       }
+    }
+
+    case 'ONESHOT_RUN_QUEUED': {
+      // §三 — duplicate run id is a hard error; the reducer is the single
+      // source of truth. taskId must match the parent task.
+      if (event.run.taskId !== state.taskId) {
+        throw new TaskStateStoreError(
+          `OneShot run ${event.run.id} taskId ${event.run.taskId} does not match task ${state.taskId}`,
+        )
+      }
+      if (state.oneShotRuns.some((r) => r.id === event.run.id)) {
+        throw new DuplicateOneShotRunError(
+          `OneShot run ${event.run.id} already recorded`,
+        )
+      }
+      return { ...state, oneShotRuns: [...state.oneShotRuns, event.run] }
+    }
+
+    case 'ONESHOT_RUN_STARTED': {
+      const idx = state.oneShotRuns.findIndex((r) => r.id === event.runId)
+      if (idx < 0) {
+        throw new UnknownOneShotRunError(`OneShot run ${event.runId} not found`)
+      }
+      const prev = state.oneShotRuns[idx]
+      if (prev.status !== 'queued') {
+        throw new IllegalOneShotRunTransitionError(
+          `OneShot run ${event.runId} is ${prev.status}; cannot start`,
+        )
+      }
+      const runs = state.oneShotRuns.map((r, i) =>
+        i === idx ? { ...r, status: 'running' as const, startedAt: event.startedAt, backgroundJobId: event.backgroundJobId } : r,
+      )
+      return { ...state, oneShotRuns: runs }
+    }
+
+    case 'ONESHOT_RUN_COMPLETED':
+    case 'ONESHOT_RUN_PARTIAL':
+    case 'ONESHOT_RUN_FAILED':
+    case 'ONESHOT_RUN_TIMEOUT':
+    case 'ONESHOT_RUN_CANCELLED': {
+      const idx = state.oneShotRuns.findIndex((r) => r.id === event.runId)
+      if (idx < 0) {
+        throw new UnknownOneShotRunError(`OneShot run ${event.runId} not found`)
+      }
+      const prev = state.oneShotRuns[idx]
+      if (isTerminalOneShotStatus(prev.status)) {
+        throw new IllegalOneShotRunTransitionError(
+          `OneShot run ${prev.id} is already terminal (${prev.status}); cannot apply ${event.type}`,
+        )
+      }
+      const nextStatus =
+        event.type === 'ONESHOT_RUN_COMPLETED' ? ('completed' as const)
+          : event.type === 'ONESHOT_RUN_PARTIAL' ? ('partial' as const)
+          : event.type === 'ONESHOT_RUN_FAILED' ? ('failed' as const)
+          : event.type === 'ONESHOT_RUN_TIMEOUT' ? ('timeout' as const)
+          : ('cancelled' as const)
+      const runs = state.oneShotRuns.map((r, i) => {
+        if (i !== idx) return r
+        const patch: Partial<typeof r> = {
+          status: nextStatus,
+          completedAt: event.completedAt,
+        }
+        if (event.type === 'ONESHOT_RUN_COMPLETED') {
+          patch.summary = event.summary
+          patch.findingIds = event.findingIds
+          patch.artifactIds = event.artifactIds
+          patch.flagCandidateIds = event.flagCandidateIds
+        } else if (event.type === 'ONESHOT_RUN_PARTIAL') {
+          patch.summary = event.summary
+        } else if (event.type === 'ONESHOT_RUN_FAILED') {
+          patch.error = event.error
+        } else if (event.type === 'ONESHOT_RUN_TIMEOUT') {
+          patch.error = event.error
+        } else {
+          patch.error = event.reason
+        }
+        return { ...r, ...patch }
+      })
+      return { ...state, oneShotRuns: runs }
+    }
+
+    case 'ONESHOT_RUN_UPDATED': {
+      const idx = state.oneShotRuns.findIndex((r) => r.id === event.runId)
+      if (idx < 0) {
+        throw new UnknownOneShotRunError(`OneShot run ${event.runId} not found`)
+      }
+      const prev = state.oneShotRuns[idx]
+      if (
+        event.patch.status &&
+        isTerminalOneShotStatus(prev.status) &&
+        (event.patch.status === 'running' || event.patch.status === 'queued')
+      ) {
+        throw new IllegalOneShotRunTransitionError(
+          `OneShot run ${prev.id} is ${prev.status}; cannot transition to ${event.patch.status}`,
+        )
+      }
+      const runs = state.oneShotRuns.map((r, i) =>
+        i === idx ? { ...r, ...event.patch } : r,
+      )
+      return { ...state, oneShotRuns: runs }
     }
 
     case 'TASK_COMPLETED':

@@ -435,6 +435,10 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // Phase 1.7 §四.2 — forward the Task-level abort signal into the
       // engine so cancelling the Task aborts the in-flight LLM call.
       signal: taskExecutionContext.abortSignal,
+      // Phase 2.0 §十一 — pass the TaskExecutionContext so the engine can
+      // forward it into ToolContext. Tools read workspace/scope/taskId from
+      // there and refuse model-supplied equivalents.
+      taskContext: taskExecutionContext,
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
     return engine.runTurn(userMessage, history)

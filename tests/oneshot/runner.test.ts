@@ -75,7 +75,10 @@ describe('runners', () => {
     try {
       const runner = new ContainerRunner({ execute: false })
       const result = await runner.run(
-        base({ runner: { type: 'container', command: ['x'], image: 'alpine:latest' } }),
+        base({
+          maturity: 'experimental',
+          runner: { type: 'container', command: ['x'], image: 'alpine:latest' },
+        }),
         {
           logDir: root,
           argv: [],
