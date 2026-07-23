@@ -161,6 +161,7 @@ export type TypedWorkflowStep =
       dependsOn?: string[]
       emit_finding?: false
       description?: string
+      retry?: import('./typedDagExecutor.js').RetryConfig
     }
   | {
       id: string

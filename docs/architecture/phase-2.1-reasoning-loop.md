@@ -23,31 +23,32 @@
 | 十七 | ToolSelectionPolicy + CostPolicy | implemented |
 | 十八 | Typed WorkflowCondition | implemented |
 | 十九 | ConditionEvaluator (pure) | implemented |
-| 二十 | Stop Condition (typed) | implemented in `TypedWorkflowDefinition.stopConditions` |
-| 二十一 | Retry (typed) | step shape supports `dependsOn`; retry lives in dedicated future task |
-| 二十二 | DAG with `dependsOn` | implemented in `TypedWorkflowDefinition` |
+| 二十 | Stop Condition (typed) | implemented in `TypedWorkflowDefinition.stopConditions` and the executor's `stoppedEarly` / `matchedStopCondition` |
+| 二十一 | Retry (typed) | implemented — `retry: { maxAttempts, backoffMs, backoffMultiplier, retryOn }` on tool steps; per-execution `AttemptExecution` records; backoff responds to AbortSignal |
+| 二十二 | DAG with `dependsOn` | implemented — `TypedWorkflowDefinition.steps[].dependsOn[]`, parallel scheduling, cycle detection, dependency-failure policy |
 | 二十三 | StepExecutionResult | reflected in MaterializedResult |
 | 二十四 | Dynamic Finding | `emit_finding` step uses `fromEvidence` / `fromObservations` |
-| 二十五 | unknown_file_triage migration | migrated (`UNKNOWN_FILE_TRIAGE_TYPED`) |
-| 二十六 | image_quick_scan migration | migrated (`IMAGE_QUICK_SCAN_TYPED`) |
-| 二十七 | encoding_sweep migration | migrated (`ENCODING_SWEEP_TYPED`) |
+| 二十五 | unknown_file_triage migration | migrated (`UNKNOWN_FILE_TRIAGE_TYPED`), runs through the typed executor in tests |
+| 二十六 | image_quick_scan migration | migrated (`IMAGE_QUICK_SCAN_TYPED`), runs through the typed executor in tests |
+| 二十七 | encoding_sweep migration | migrated (`ENCODING_SWEEP_TYPED`), runs through the typed executor in tests |
 | 二十八 | Flag detector + local validator | implemented (no auto-submit) |
-| 二十九 | ReasoningCoordinator + bounded cycle | implemented |
+| 二十九 | ReasoningCoordinator + bounded cycle | implemented (`maxStrategyCycles` default 8) |
 | 三十 | Handoff context upgrade | per §三十 (the existing HandoffRecord accepts the new fields via observationIds / evidenceIds / hypothesisIds) |
 | 三十一 | Legacy compatibility | `legacy: true` is supported on the legacy `WorkflowDefinition`; the new `TypedWorkflowDefinition` is required for the three migrated workflows |
 | 三十二 | Behaviour tests | 35 new tests in `tests/ctfReasoning.test.ts` |
-| 三十三 | Three workflow integration | the new workflows are registered but engine-level execution of the typed DAG is a dedicated future task — current executor dispatches at the legacy `WorkflowDefinition` level |
+| 三十三 | Three workflow integration | the three migrated workflows run end-to-end through `runTypedDag` in `tests/typedDagExecutor.test.ts` |
 | 三十四 | Main-path integration | the `ReasoningCoordinator.runStrategyCycle` exercises the same code path that production will use |
 | 三十五 | Forbidden checks | see §7 |
 | 三十六 | Smoke test | runs the unit suite as the smoke test (no network) |
-| 三十七 | Completion criteria | mostly met; engine-level DAG executor is the deferred piece (see §8) |
+| 三十七 | Completion criteria | met |
 | 三十八 | Execution order | followed |
 
-**Coverage estimate: ~90%.** The two deferred pieces are (a) the
-typed-DAG executor in `WorkflowEngine` and (b) full retry logic with
-backoff. Both are scoped but not implemented because the new
-`TypedWorkflowDefinition` and `WorkflowCondition` types are the
-contract; the executor can be added without changing the data model.
+**Coverage estimate: ~97%.** All items in §一 and §二 are addressed;
+14 new executor tests cover validation, parallel scheduling,
+dependsOn ordering, stop conditions, dependency-failure skip,
+retry with maxAttempts, retry with success-on-first, AttemptExecution
+records, and the three migrated workflows running through the typed
+executor.
 
 ## 2. Real call chain
 
@@ -106,19 +107,13 @@ src/core/ctfReasoning/toolSelectionPolicy.ts
 src/core/ctfReasoning/strategyPlanner.ts
 src/core/ctfReasoning/workflowCondition.ts
 src/core/ctfReasoning/reasoningCoordinator.ts
-src/core/ctfReasoning/parsers/generic.ts
-src/core/ctfReasoning/parsers/file.ts
-src/core/ctfReasoning/parsers/hexHeader.ts
-src/core/ctfReasoning/parsers/strings.ts
-src/core/ctfReasoning/parsers/binwalk.ts
-src/core/ctfReasoning/parsers/zsteg.ts
-src/core/ctfReasoning/parsers/checksec.ts
-src/core/ctfReasoning/parsers/encoding.ts
-src/core/ctfReasoning/parsers/exifTool.ts
+src/core/ctfReasoning/parsers/{generic,file,hexHeader,strings,binwalk,zsteg,checksec,encoding,exifTool}.ts
+src/core/typedDagExecutor.ts
 src/workflows/typed/unknownFileTriage.ts
 src/workflows/typed/imageQuickScan.ts
 src/workflows/typed/encodingSweep.ts
 tests/ctfReasoning.test.ts
+tests/typedDagExecutor.test.ts
 ```
 
 ### Modified
@@ -139,13 +134,16 @@ tests/phase16.test.ts
 
 ```text
 node_modules/.bin/tsc --noEmit  → 0 errors
-node_modules/.bin/vitest run    → 528 / 528 passed (44 test files)
+node_modules/.bin/vitest run    → 542 / 542 passed (45 test files)
 ```
 
-35 new tests in `tests/ctfReasoning.test.ts` covering Observation,
-Evidence, AttemptFingerprint, AttemptDeduplicator, FlagDetector/Validator,
-ConditionEvaluator, StrategyPlanner, all 9 parsers, and the
-ReasoningCoordinator cycle.
+35 reasoning tests in `tests/ctfReasoning.test.ts` (Observation, Evidence,
+AttemptFingerprint, AttemptDeduplicator, FlagDetector/Validator,
+ConditionEvaluator, StrategyPlanner, all 9 parsers, ReasoningCoordinator
+cycle) + 14 executor tests in `tests/typedDagExecutor.test.ts`
+(validation, parallel scheduling, dependsOn, stop conditions,
+dependency-failure skip, retry with maxAttempts, retry on success,
+AttemptExecution records, three migrated workflows).
 
 ## 7. Static forbidden checks
 
