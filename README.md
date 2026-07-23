@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%3E%3D20-339933?logo=node.js)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-127%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-577%20passed-brightgreen)]()
 
 > `ovolv999 "任何你需要它完成的任务"`
 
@@ -158,6 +158,39 @@ CLI  (runCtfCli + process.once SIGINT/SIGTERM)
 - **产物投影 + 谱系**：`TaskStateProjector` 通过 `before/after` 快照差把 Findings + Artifacts 投影到父 TaskState；Specialist 的 artifact 通过 `.lineage.jsonl` sidecar 保留 originalArtifactId / handoffId / producerAgentId。
 
 详细审计与阶段报告见 `docs/architecture/phase-1.6-report.md` 和 `docs/architecture/phase-1.6-rubric.md`。
+
+## CTF Reasoning 主路径 (Phase 2.2)
+
+Phase 2.2 把结构化推理闭环正式接入 `CTFTaskOrchestrator` 的主路径，使
+每个执行结果都能更新假设、绑定 Attempt、形成可解释决策并正确继续或停止。
+
+```
+Orchestrator.processReasoningInput({ source, newObservationIds, newEvidenceIds, suggestedActions })
+  → ReasoningCoordinator.processNewReasoningInputs (per-task lock)
+    → HypothesisUpdater       (deterministic rules propose / update hypotheses)
+    → PendingActionStore      (FSM: pending → selected → executed | rejected | expired)
+    → StrategyPlanner          (priority + hypothesisWeight + freshness − cost − duplicates − failures)
+    → StrategyActionExecutor   (adapter per action type, returns ActionExecutionResult)
+    → ResultMaterializer → ResultMerger → ParserConflictResolver
+    → Apply Observation / Evidence / Artifact / FlagCandidate → HypothesisUpdater
+    → ATTEMPT_COMPLETED with observation/evidence/artifact/candidate ids
+    → if stop: exit loop on this cycle with stopReason
+    → if validated Candidate: stop with reason 'validated flag candidate found'
+```
+
+### 不变量 (Phase 2.2)
+
+- **Stop 是真正的循环终止** — 不再被当作 skipped action；`ActionExecutionResult.status === 'stop'` 立即退出。
+- **Attempt 生命周期顺序** — `started → execute → materialize → apply Observation/Evidence/Artifact/Candidate → updateHypothesis → completed`。失败/取消的事件也携带 observation / evidence ids。
+- **Evidence 多来源** — 同一 claim 由不同 parser 产出时合并为一条 Evidence 多个 Sources；指纹排除 producer；置信度按 `1−∏(1−c)` 组合并封顶 0.99。
+- **WorkflowCondition 默认作用域** — 当前 WorkflowRun (`$current` / `producerId` / `stepId`)；`scopeMode: 'task'` 显式跨 Workflow 查询。
+- **`artifact_exists` 真实检查** — 验证 `producedByStepId` / `producedByWorkflowRunId` / `minCreatedAt` 而非全局 `length > 0`。
+- **累计任务预算** — 与并发槽位分离；cheap=1 / normal=3 / expensive=8 单位；持久化在 TaskState；动作失败/取消也不退还。
+- **TaskState 真正不可变** — deepFreeze 阻止外部 `push` / `splice`；reducer 永远返回新对象。
+- **Listener 错误可观测** — `onListenerError` 钩子；critical listener 失败使 runtime 进入 degraded 模式。
+- **每 Task 推理锁** — 同一 Task 的多个推理循环串行；不同 Task 可并行。
+
+完整文档：`docs/architecture/phase-2.2-reasoning-main-path.md`；测试覆盖 `tests/phase22*.test.ts`、`tests/ctfReasoning.test.ts`、`tests/ctfReasoningAudit.test.ts`。
 
 ## 核心概念
 

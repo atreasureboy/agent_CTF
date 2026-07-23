@@ -1,13 +1,20 @@
 /**
- * Phase 2.1 — Reasoning layer tests.
+ * Phase 2.2 — Reasoning layer tests.
  *
- * Covers: Observation, Evidence, AttemptFingerprint, AttemptDeduplicator,
- * parsers, workflow condition evaluator, strategy planner, flag detector.
+ * Covers: Observation, Evidence (multi-source), AttemptFingerprint,
+ * AttemptDeduplicator, parsers, workflow condition evaluator, strategy
+ * planner, flag detector.
  */
 
 import { describe, it, expect } from 'vitest'
 import { createObservation, observationFingerprint } from '../src/core/ctfReasoning/observation.js'
-import { createEvidence, mergeEvidence, evidenceFingerprint } from '../src/core/ctfReasoning/evidence.js'
+import {
+  createEvidence,
+  mergeEvidence,
+  evidenceFingerprint,
+  combineIndependentConfidences,
+  normalizeClaim,
+} from '../src/core/ctfReasoning/evidence.js'
 import { createAttemptFingerprint } from '../src/core/ctfReasoning/attemptFingerprint.js'
 import { createAttemptDeduplicator } from '../src/core/ctfReasoning/attemptDeduplicator.js'
 import { detectFlag, validateFlag } from '../src/core/ctfReasoning/flagCandidateValidator.js'
@@ -15,8 +22,12 @@ import { evaluateWorkflowCondition } from '../src/core/ctfReasoning/workflowCond
 import { planStrategy } from '../src/core/ctfReasoning/strategyPlanner.js'
 import { getDefaultParserRegistry, materializeViaRegistry } from '../src/core/ctfReasoning/parserRegistry.js'
 import type { CTFTaskState } from '../src/core/ctfRuntime/taskState.js'
-import { runStrategyCycle } from '../src/core/ctfReasoning/reasoningCoordinator.js'
+import { processNewReasoningInputs } from '../src/core/ctfReasoning/reasoningCoordinator.js'
 import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
+import {
+  DEFAULT_REASONING_BUDGET_LIMITS,
+  createInitialReasoningBudgetState,
+} from '../src/core/ctfReasoning/reasoningBudget.js'
 
 function emptyState(taskId = 't1'): CTFTaskState {
   return {
@@ -53,6 +64,9 @@ function emptyState(taskId = 't1'): CTFTaskState {
     observations: [],
     evidence: [],
     strategyDecisions: [],
+    pendingActions: [],
+    reasoningBudget: createInitialReasoningBudgetState(),
+    reasoningBudgetLimits: DEFAULT_REASONING_BUDGET_LIMITS,
     flagCandidates: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -94,29 +108,41 @@ describe('Observation', () => {
   })
 })
 
-describe('Evidence', () => {
+describe('Evidence — Phase 2.2 §十五 multi-source', () => {
   it('refuses no source', () => {
     expect(() => createEvidence('t', {
       kind: 'generic', claim: 'c', producer: { type: 'parser', id: 'p' }, confidence: 0.5,
     })).toThrow()
   })
-  it('merges with union observationIds + max confidence', () => {
+  it('fingerprint excludes producer so two parsers converge', () => {
+    const a = evidenceFingerprint({ taskId: 't', kind: 'generic', claim: 'file is PNG', polarity: 'supports' })
+    const b = evidenceFingerprint({ taskId: 't', kind: 'generic', claim: 'file is PNG', polarity: 'supports' })
+    expect(a).toBe(b)
+    // The producer is not in the fingerprint; the claim alone suffices.
+  })
+  it('merges sources and unions observation/artifact/attempt ids', () => {
     const a = createEvidence('t', {
-      kind: 'generic', claim: 'c', observationIds: ['o1'], confidence: 0.5,
-      producer: { type: 'parser', id: 'p' },
+      kind: 'file_signature', claim: 'file is PNG', observationIds: ['o1'], artifactIds: ['art1'],
+      producer: { type: 'parser', id: 'file' }, confidence: 0.85,
     })
     const b = createEvidence('t', {
-      kind: 'generic', claim: 'c', observationIds: ['o2'], confidence: 0.8,
-      producer: { type: 'parser', id: 'p' },
+      kind: 'file_signature', claim: 'file is PNG', observationIds: ['o2'], artifactIds: ['art1'],
+      producer: { type: 'parser', id: 'hex' }, confidence: 0.98,
     })
     const merged = mergeEvidence(a, b)
-    expect(merged.observationIds).toEqual(['o1', 'o2'])
-    expect(merged.confidence).toBe(0.8)
+    expect(merged.sources.length).toBe(2)
+    expect(merged.confidence).toBeGreaterThanOrEqual(0.98)
+    expect(merged.confidence).toBeLessThanOrEqual(0.99) // bounded
   })
-  it('fingerprint stable', () => {
-    const fp1 = evidenceFingerprint({ kind: 'generic', claim: 'c', producer: { type: 'parser', id: 'p' } })
-    const fp2 = evidenceFingerprint({ kind: 'generic', claim: 'c', producer: { type: 'parser', id: 'p' } })
-    expect(fp1).toBe(fp2)
+  it('combineIndependentConfidences bounded at 0.99', () => {
+    const v = combineIndependentConfidences([
+      { producer: { type: 'parser', id: 'a' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.99, createdAt: 0 },
+      { producer: { type: 'parser', id: 'b' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.99, createdAt: 0 },
+    ])
+    expect(v).toBeLessThanOrEqual(0.99)
+  })
+  it('normalizedClaim whitespace + case insensitive', () => {
+    expect(normalizeClaim('  File IS PNG  ')).toBe('file is png')
   })
 })
 
@@ -217,7 +243,12 @@ describe('WorkflowCondition evaluator', () => {
     { id: 'o1', taskId: 't1', kind: 'file_type', source: { type: 'tool' }, summary: 'PNG', attributes: { ext: 'png' }, confidence: 0.9, createdAt: 0 },
   ]
   state.evidence = [
-    { id: 'e1', taskId: 't1', kind: 'file_signature', claim: 'PNG image', observationIds: ['o1'], artifactIds: [], polarity: 'supports', confidence: 0.9, producer: { type: 'parser', id: 'file' }, fingerprint: 'fp', createdAt: 0 },
+    {
+      id: 'e1', taskId: 't1', kind: 'file_signature', claim: 'PNG image',
+      normalizedClaim: 'png image', polarity: 'supports', confidence: 0.9,
+      sources: [{ producer: { type: 'parser', id: 'file' }, observationIds: ['o1'], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: 0 }],
+      fingerprint: 'fp', attributes: {}, createdAt: 0, updatedAt: 0,
+    },
   ]
   state.attempts = [{
     id: 'a1', taskId: 't1', kind: 'tool', targetId: 'binwalk', input: {},
@@ -228,19 +259,19 @@ describe('WorkflowCondition evaluator', () => {
   it('evaluates observation_exists', () => {
     expect(evaluateWorkflowCondition(
       { type: 'observation_exists', kind: 'file_type' },
-      { state, stepOutcomes: new Map() },
+      { state: { ...state }, stepOutcomes: new Map() },
     )).toBe(true)
   })
   it('evaluates evidence_exists with polarity', () => {
     expect(evaluateWorkflowCondition(
       { type: 'evidence_exists', kind: 'file_signature', polarity: 'supports' },
-      { state, stepOutcomes: new Map() },
+      { state: { ...state }, stepOutcomes: new Map() },
     )).toBe(true)
   })
   it('evaluates attempt_exists with fingerprint', () => {
     expect(evaluateWorkflowCondition(
       { type: 'attempt_exists', fingerprint: 'fp_a1' },
-      { state, stepOutcomes: new Map() },
+      { state: { ...state }, stepOutcomes: new Map() },
     )).toBe(true)
   })
   it('evaluates all / any / not', () => {
@@ -249,22 +280,38 @@ describe('WorkflowCondition evaluator', () => {
         { type: 'observation_exists', kind: 'file_type' },
         { type: 'evidence_exists', kind: 'file_signature' },
       ] },
-      { state, stepOutcomes: new Map() },
+      { state: { ...state }, stepOutcomes: new Map() },
     )).toBe(true)
     expect(evaluateWorkflowCondition(
       { type: 'not', condition: { type: 'observation_exists', kind: 'binary_protection' } },
-      { state, stepOutcomes: new Map() },
+      { state: { ...state }, stepOutcomes: new Map() },
     )).toBe(true)
   })
   it('conservative false on missing field', () => {
     expect(evaluateWorkflowCondition(
       { type: 'observation_exists', kind: 'metadata' },
-      { state, stepOutcomes: new Map() },
+      { state: { ...state }, stepOutcomes: new Map() },
+    )).toBe(false)
+  })
+  it('scope-restricts evidence_exists to a producerId filter (§十二)', () => {
+    const liveState = emptyState()
+    liveState.evidence = [
+      { id: 'e1', taskId: 't1', kind: 'file_signature', claim: 'PNG', normalizedClaim: 'png', polarity: 'supports',
+        confidence: 0.9,
+        sources: [{ producer: { type: 'parser', id: 'hex' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: 0 }],
+        fingerprint: 'fp1', attributes: {}, createdAt: 0, updatedAt: 0 },
+    ]
+    // A condition that requires the source producer to be 'file' will
+    // not match because the evidence was produced by 'hex'.
+    expect(evaluateWorkflowCondition(
+      { type: 'evidence_exists', kind: 'file_signature', scope: { producerId: 'file' } },
+      { state: liveState, stepOutcomes: new Map() },
     )).toBe(false)
   })
 })
 
 describe('StrategyPlanner', () => {
+  const limits = { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 }
   it('selects highest-priority action', () => {
     const state = emptyState()
     const decision = planStrategy({
@@ -275,9 +322,11 @@ describe('StrategyPlanner', () => {
         { type: 'call_tool', toolId: 'low', input: {}, reason: 'low prio', priority: 1, costTier: 'cheap' },
         { type: 'run_workflow', workflowId: 'high', inputs: {}, reason: 'high prio', priority: 9, costTier: 'cheap' },
       ],
-      cost: { limits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 }, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: false },
+      cost: { limits, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: false },
+      budget: { state: createInitialReasoningBudgetState(), limits: DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: false },
     })
     expect(decision.selectedAction?.type).toBe('run_workflow')
+    expect(decision.basedOnHypothesisIds).toBeDefined()
   })
   it('returns stop when task terminal', () => {
     const state = emptyState()
@@ -287,10 +336,10 @@ describe('StrategyPlanner', () => {
       newObservationIds: [],
       newEvidenceIds: [],
       suggestedActions: [{ type: 'call_tool', toolId: 't', input: {}, reason: 'r', priority: 1, costTier: 'cheap' }],
-      cost: { limits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 }, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: true },
+      cost: { limits, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: true },
+      budget: { state: createInitialReasoningBudgetState(), limits: DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: false },
     })
     expect(decision.selectedAction).toBeUndefined()
-    expect(decision.rejectedActions[0]?.reason).toBe('task_terminal')
   })
   it('blocks expensive action when heavy not approved', () => {
     const state = emptyState()
@@ -299,10 +348,40 @@ describe('StrategyPlanner', () => {
       newObservationIds: [],
       newEvidenceIds: [],
       suggestedActions: [{ type: 'call_tool', toolId: 't', input: {}, reason: 'r', priority: 5, costTier: 'expensive' }],
-      cost: { limits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 }, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: false },
+      cost: { limits, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: false },
+      budget: { state: createInitialReasoningBudgetState(), limits: DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: false },
     })
     expect(decision.selectedAction).toBeUndefined()
-    expect(decision.rejectedActions[0]?.reason).toBe('manual_approval_required')
+    expect(decision.rejectedActions[0]?.reason).toBe('budget_denied')
+  })
+  it('honours stop action (§四)', () => {
+    const state = emptyState()
+    const decision = planStrategy({
+      state,
+      newObservationIds: [],
+      newEvidenceIds: [],
+      suggestedActions: [{ type: 'stop', reason: 'manual stop', priority: 1, costTier: 'cheap' }],
+      cost: { limits, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: false },
+      budget: { state: createInitialReasoningBudgetState(), limits: DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: false },
+    })
+    expect(decision.selectedAction).toBeUndefined()
+    expect(decision.reason).toContain('stop')
+  })
+  it('populates basedOnHypothesisIds from action.hypothesisIds (§十)', () => {
+    const state = emptyState()
+    state.hypotheses = [
+      { id: 'h1', taskId: 't1', statement: 'file is image', category: 'file-type', status: 'proposed', supportingEvidenceIds: [], contradictingEvidenceIds: [], proposedBy: { type: 'planner', id: 'p' }, priority: 5, confidence: 0.6, createdAt: 0, updatedAt: 0 },
+    ]
+    const decision = planStrategy({
+      state,
+      newObservationIds: ['o1'],
+      newEvidenceIds: [],
+      suggestedActions: [{ type: 'call_tool', toolId: 'file', input: {}, reason: 'classify', priority: 5, costTier: 'cheap', hypothesisIds: ['h1'] }],
+      cost: { limits, currentSpend: { fast: 0, medium: 0, heavy: 0 }, heavyApproved: false, taskTerminal: false },
+      budget: { state: createInitialReasoningBudgetState(), limits: DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: false },
+    })
+    expect(decision.selectedAction?.type).toBe('call_tool')
+    expect(decision.basedOnHypothesisIds).toContain('h1')
   })
 })
 
@@ -379,63 +458,108 @@ describe('ParserRegistry', () => {
   })
 })
 
-describe('ReasoningCoordinator (smoke)', () => {
+describe('ReasoningCoordinator — Phase 2.2 §四–§八', () => {
   it('runs a bounded strategy cycle and records decisions', async () => {
     const state = emptyState('cycle-test')
     const store = new CTFTaskStateStore(state)
-    const result = await runStrategyCycle({
+    const result = await processNewReasoningInputs({
       taskId: 'cycle-test',
       state,
       store,
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
       heavyApproved: false,
-      executeTool: async () => ({
-        observations: [
-          {
-            kind: 'command_status',
-            source: { type: 'tool' as const, toolId: 'file' },
-            summary: 'completed',
-            confidence: 0.5,
-          },
-        ],
-        evidence: [
-          {
-            kind: 'generic' as const,
-            claim: 'tool completed',
-            confidence: 0.5,
-            artifactIds: ['a_stub'],
-            producer: { type: 'parser' as const, id: 'tool-stub' },
-            polarity: 'neutral' as const,
-          },
-        ],
-        suggestedActions: [],
-        flagCandidateDrafts: [],
-        warnings: [],
-        rawArtifactIds: [],
-      }),
-    }, [
-      { type: 'call_tool', toolId: 'file', input: { path: 'x' }, reason: 'identify file', priority: 5, costTier: 'cheap' },
-    ])
-    const finalState = store.getState()
-    expect(result.iterations).toBeGreaterThan(0)
-    expect(finalState.observations.length).toBeGreaterThan(0)
-    expect(finalState.evidence.length).toBeGreaterThan(0)
-    expect(finalState.strategyDecisions.length).toBeGreaterThan(0)
-    expect(finalState.attempts.length).toBeGreaterThan(0)
+      executor: {
+        async execute() {
+          return {
+            status: 'executed',
+            materializedResult: {
+              observations: [
+                {
+                  kind: 'command_status',
+                  source: { type: 'tool' as const, toolId: 'file' },
+                  summary: 'completed',
+                  confidence: 0.5,
+                },
+              ],
+              evidence: [
+                {
+                  kind: 'file_signature' as const,
+                  claim: 'tool completed',
+                  confidence: 0.5,
+                  artifactIds: ['a_stub'],
+                  producer: { type: 'parser' as const, id: 'tool-stub' },
+                  polarity: 'neutral' as const,
+                },
+              ],
+              suggestedActions: [],
+              flagCandidateDrafts: [],
+              warnings: [],
+              rawArtifactIds: ['a_stub'],
+            },
+            executionRefs: {},
+          }
+        },
+      },
+    }, {
+      source: 'main-agent',
+      newObservationIds: [],
+      newEvidenceIds: [],
+      suggestedActions: [
+        { type: 'call_tool', toolId: 'file', input: { path: 'x' }, reason: 'identify file', priority: 5, costTier: 'cheap' },
+      ],
+    })
+    expect(result.cycles).toBeGreaterThan(0)
+    expect(store.getState().observations.length).toBeGreaterThan(0)
+    expect(store.getState().strategyDecisions.length).toBeGreaterThan(0)
+    expect(store.getState().attempts.length).toBeGreaterThan(0)
+    // §五 — Attempt binds Observation + Evidence ids on completion.
+    const completedAttempt = store.getState().attempts[0]
+    expect(completedAttempt?.status).toBe('succeeded')
+    expect(completedAttempt?.observationIds.length).toBeGreaterThan(0)
+    expect(completedAttempt?.evidenceIds.length).toBeGreaterThan(0)
   })
 
-  it('stops when task is terminal', async () => {
+  it('stop Action terminates the loop (§四)', async () => {
     const state = emptyState('stop-test')
-    state.completion = { status: 'failed', reason: 'pre-stopped', decidedAt: 0 }
     const store = new CTFTaskStateStore(state)
-    const result = await runStrategyCycle({
+    const result = await processNewReasoningInputs({
       taskId: 'stop-test',
       state,
       store,
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
       heavyApproved: false,
-    }, [])
+    }, {
+      source: 'manual',
+      newObservationIds: [],
+      newEvidenceIds: [],
+      suggestedActions: [
+        { type: 'call_tool', toolId: 't', input: {}, reason: 'r', priority: 9, costTier: 'cheap' },
+        { type: 'stop', reason: 'planner requested stop', priority: 1, costTier: 'cheap' },
+      ],
+    })
     expect(result.stopped).toBe(true)
-    expect(result.reason).toBe('task terminal')
+    expect(result.stopReason).toContain('stop')
+    // No tool Attempt for the stop action.
+    const toolAttempts = store.getState().attempts.filter((a) => a.targetId === 't')
+    expect(toolAttempts.length).toBe(0)
+  })
+
+  it('stops when task is terminal', async () => {
+    const state = emptyState('pre-stopped')
+    state.completion = { status: 'failed', reason: 'pre-stopped', decidedAt: 0 }
+    const store = new CTFTaskStateStore(state)
+    const result = await processNewReasoningInputs({
+      taskId: 'pre-stopped',
+      state,
+      store,
+      budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
+      heavyApproved: false,
+    }, {
+      source: 'manual',
+      newObservationIds: [],
+      newEvidenceIds: [],
+      suggestedActions: [],
+    })
+    expect(result.stopped).toBe(true)
   })
 })

@@ -19,6 +19,8 @@ import type { TaskExecutionContext } from './taskExecutionContext.js'
 import type { Observation } from '../ctfReasoning/observation.js'
 import type { Evidence } from '../ctfReasoning/evidence.js'
 import type { StrategyDecision } from '../ctfReasoning/strategyDecision.js'
+import type { ReasoningBudgetState, ReasoningBudgetLimits } from '../ctfReasoning/reasoningBudget.js'
+import type { PendingSuggestedAction } from '../ctfReasoning/pendingActionStore.js'
 
 export type CTFTaskPhase =
   | 'created'
@@ -262,6 +264,8 @@ export interface FlagCandidate {
   sourceEvidenceIds: string[]
   sourceArtifactIds: string[]
   sourceRunIds: string[]
+  /** §六 — Attempt ids that participated in producing / transforming this candidate. */
+  sourceAttemptIds: string[]
   transformChain?: Array<{ operation: string; inputHash: string; outputHash: string }>
   confidence: number
   validation: {
@@ -336,6 +340,13 @@ export interface CTFTaskState {
   /** Phase 2.1 §十六 — every Planner action becomes a StrategyDecision
    *  with the chosen + rejected actions and the reason. */
   strategyDecisions: StrategyDecision[]
+  /** Phase 2.2 §二十二 — pending suggested actions awaiting selection. */
+  pendingActions: PendingSuggestedAction[]
+  /** Phase 2.2 §十一 — cumulative reasoning budget per task. Persists
+   *  across restarts so cumulative cost is not refunded. */
+  reasoningBudget: ReasoningBudgetState
+  /** Phase 2.2 §十一 — per-task budget limits (read-only config). */
+  reasoningBudgetLimits: ReasoningBudgetLimits
   /** Convenience: the ids of runs that are currently `running`. Derived
    *  from `agentRuns` / `workflowRuns` / `jobs`. */
   activeAgentRunIds: string[]

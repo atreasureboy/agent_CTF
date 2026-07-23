@@ -29,7 +29,9 @@ import {
   type CTFTaskState,
   type HandoffRecord,
 } from './taskState.js'
+import { combineIndependentConfidences } from '../ctfReasoning/evidence.js'
 import type { CTFTaskEvent, TaskStateListener, Unsubscribe } from './taskEvents.js'
+import { createInitialReasoningBudgetState } from '../ctfReasoning/reasoningBudget.js'
 
 export class TaskStateStoreError extends Error {
   constructor(message: string) {
@@ -54,20 +56,57 @@ export class DuplicateOneShotRunError extends TaskStateStoreError {}
 export class UnknownOneShotRunError extends TaskStateStoreError {}
 export class IllegalOneShotRunTransitionError extends TaskStateStoreError {}
 
+export interface StateListenerError {
+  listenerId: string
+  eventType: CTFTaskEvent['type']
+  error: unknown
+  timestamp: number
+  critical: boolean
+}
+
+export interface StateStoreOptions {
+  /** Hook for listener errors. Receives the StateListenerError. The
+   *  default logs via console.warn when NODE_ENV !== 'test'. */
+  onListenerError?: (err: StateListenerError) => void
+}
+
+/** Listeners can be tagged critical — when a critical listener
+ *  throws, the store still applies the event but the orchestrator
+ *  should observe and may mark the runtime as degraded. */
+export interface TaggedListener {
+  id: string
+  critical?: boolean
+  listener: TaskStateListener
+}
+
 export class CTFTaskStateStore {
   private state: CTFTaskState
-  private readonly listeners = new Set<TaskStateListener>()
+  private readonly listeners = new Set<TaggedListener>()
   /** Monotonically increasing sequence number for subscribers to detect gaps. */
   private seq = 0
   /** Map<event-type, count> for diagnostics. */
   private readonly eventCounts = new Map<string, number>()
+  /** Critical-listener failures observed so far (audit trail). */
+  readonly listenerErrors: StateListenerError[] = []
+  private readonly opts: StateStoreOptions
+  /** When set, the store is considered degraded (a critical listener
+   *  has failed). */
+  private degraded = false
 
-  constructor(initial: CTFTaskState) {
-    this.state = freezeState(initial)
+  constructor(initial: CTFTaskState, opts: StateStoreOptions = {}) {
+    this.state = freezeState({
+      ...initial,
+      reasoningBudget: initial.reasoningBudget ?? createInitialReasoningBudgetState(),
+    })
+    this.opts = opts
   }
 
   getState(): Readonly<CTFTaskState> {
     return this.state
+  }
+
+  isDegraded(): boolean {
+    return this.degraded
   }
 
   /** Diagnostic: how many of each event type have been applied. */
@@ -75,10 +114,15 @@ export class CTFTaskStateStore {
     return Object.fromEntries(this.eventCounts)
   }
 
-  subscribe(listener: TaskStateListener): Unsubscribe {
-    this.listeners.add(listener)
+  subscribe(listener: TaskStateListener, opts?: { id?: string; critical?: boolean }): Unsubscribe {
+    const tagged: TaggedListener = {
+      id: opts?.id ?? `lsn_${this.listeners.size + 1}`,
+      listener,
+      critical: opts?.critical,
+    }
+    this.listeners.add(tagged)
     return () => {
-      this.listeners.delete(listener)
+      this.listeners.delete(tagged)
     }
   }
 
@@ -90,11 +134,37 @@ export class CTFTaskStateStore {
     this.seq++
     this.eventCounts.set(event.type, (this.eventCounts.get(event.type) ?? 0) + 1)
 
-    for (const l of this.listeners) {
+    for (const tagged of this.listeners) {
       try {
-        l(event, this.state)
-      } catch {
-        // Listeners must not break the store — best-effort.
+        tagged.listener(event, this.state)
+      } catch (err) {
+        // §十九 — listeners must NOT roll back the store. Errors are
+        // surfaced via onListenerError and (for critical listeners)
+        // mark the runtime degraded.
+        const listenerErr: StateListenerError = {
+          listenerId: tagged.id,
+          eventType: event.type,
+          error: err,
+          timestamp: Date.now(),
+          critical: !!tagged.critical,
+        }
+        this.listenerErrors.push(listenerErr)
+        if (tagged.critical) this.degraded = true
+        if (this.opts.onListenerError) {
+          try {
+            this.opts.onListenerError(listenerErr)
+          } catch {
+            /* handler failure is swallowed */
+          }
+        } else {
+          // Default — log so the failure is visible in dev/test. Tests
+          // can install their own onListenerError to assert.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[CTFTaskStateStore] listener ${tagged.id} threw on ${event.type}:`,
+            err,
+          )
+        }
       }
     }
     return this.state
@@ -136,6 +206,9 @@ export class CTFTaskStateStore {
         'EVIDENCE_ADDED',
         'EVIDENCE_MERGED',
         'STRATEGY_DECISION_RECORDED',
+        'PENDING_ACTION_ADDED',
+        'PENDING_ACTION_STATUS_CHANGED',
+        'REASONING_BUDGET_CONSUMED',
         'FLAG_CANDIDATE_DETECTED',
         'FLAG_CANDIDATE_VALIDATED',
         'FLAG_CANDIDATE_REJECTED',
@@ -248,13 +321,42 @@ function dedupeStrings(arr: string[]): string[] {
 }
 
 function freezeState<T>(s: T): T {
-  // Audit rounds 6-10 — the previous shallow freeze left arrays
-  // like `artifactIds` and `findings` mutable. We re-shallow-freeze
-  // for now and rely on the TypeScript `Readonly<>` types for static
-  // protection. A future round can switch to a deep-freeze that
-  // does not break the existing test suite (which mutates getState()
-  // arrays in some places for setup).
-  return Object.freeze(s)
+  // §十八 — deep freeze the state tree. The reducer still returns
+  // new objects so external mutation isn't possible. Tests that
+  // mutated the state from getState() must now construct a fresh
+  // state via `createTestTaskState` or by applying events.
+  return deepFreeze(s, new WeakSet()) as T
+}
+
+function deepFreeze<T>(v: T, seen: WeakSet<object>): T {
+  if (v === null || typeof v !== 'object') return v
+  if (seen.has(v as unknown as object)) return v
+  // Skip native objects that are not safe to freeze (AbortSignal, Date,
+  // RegExp, Map, Set, Promise, Buffer, etc.). Recursing into them can
+  // break invariants like the AbortController's internal kAborted flag.
+  if (
+    (typeof AbortSignal !== 'undefined' && v instanceof AbortSignal)
+    || v instanceof Date
+    || v instanceof RegExp
+    || v instanceof Map
+    || v instanceof Set
+    || v instanceof Promise
+    || v instanceof Error
+    || (typeof Buffer !== 'undefined' && v instanceof Buffer)
+    || v instanceof ArrayBuffer
+  ) {
+    return v
+  }
+  seen.add(v as unknown as object)
+  if (Array.isArray(v)) {
+    for (const item of v) deepFreeze(item, seen)
+    return Object.freeze(v)
+  }
+  // Plain object — recurse.
+  for (const k of Object.keys(v as Record<string, unknown>)) {
+    deepFreeze((v as Record<string, unknown>)[k], seen)
+  }
+  return Object.freeze(v)
 }
 
 function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
@@ -519,8 +621,10 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     }
 
     case 'EVIDENCE_MERGED': {
-      // Merge: take the existing record, replace observationIds / artifactIds
-      // with the union, and bump confidence to max.
+      // §十五 — multi-source merge: union the sources and recompute
+      // confidence via bounded 1−∏(1−c), capped at 0.99. Producer info
+      // is preserved across sources so the audit can replay each
+      // witness.
       const existing = state.evidence.find((e) => e.id === event.evidenceId)
       const other = state.evidence.find((e) => e.id === event.mergedFrom)
       if (!existing || !other) {
@@ -528,11 +632,14 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
           `EVIDENCE_MERGED: missing evidence ${!existing ? event.evidenceId : event.mergedFrom}`,
         )
       }
+      const sources = [...existing.sources, ...other.sources]
+      const combined = combineIndependentConfidences(sources)
       const merged = {
         ...existing,
-        observationIds: dedupeStrings([...existing.observationIds, ...other.observationIds]),
-        artifactIds: dedupeStrings([...existing.artifactIds, ...other.artifactIds]),
-        confidence: Math.max(existing.confidence, other.confidence),
+        subject: existing.subject ?? other.subject,
+        sources,
+        confidence: combined,
+        updatedAt: Date.now(),
       }
       return {
         ...state,
@@ -544,6 +651,24 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
 
     case 'STRATEGY_DECISION_RECORDED': {
       return { ...state, strategyDecisions: [...state.strategyDecisions, event.decision] }
+    }
+
+    case 'PENDING_ACTION_ADDED': {
+      // §二十二 — pending actions are deduplicated by id (fingerprint).
+      if (state.pendingActions.some((p) => p.id === event.pending.id)) return state
+      return { ...state, pendingActions: [...state.pendingActions, event.pending] }
+    }
+
+    case 'PENDING_ACTION_STATUS_CHANGED': {
+      const next = state.pendingActions.map((p) =>
+        p.id === event.pendingId ? { ...p, status: event.status, updatedAt: event.at } : p,
+      )
+      if (next.every((p, i) => p === state.pendingActions[i])) return state
+      return { ...state, pendingActions: next }
+    }
+
+    case 'REASONING_BUDGET_CONSUMED': {
+      return { ...state, reasoningBudget: event.snapshot }
     }
 
     case 'ATTEMPT_RECORDED': {
@@ -562,28 +687,94 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
       return { ...state, attempts: [...state.attempts, event.attempt] }
     }
 
-    case 'ATTEMPT_COMPLETED':
-    case 'ATTEMPT_FAILED':
-    case 'ATTEMPT_CANCELLED':
+    case 'ATTEMPT_COMPLETED': {
+      const next = state.attempts.map((a) => {
+        if (a.id !== event.attemptId) return a
+        // §五 — ATTEMPT_COMPLETED writes the produced ids once.
+        // Re-completing a terminal attempt is rejected.
+        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled'
+          || a.status === 'skipped_duplicate' || a.status === 'skipped_policy'
+          || a.status === 'skipped_budget') {
+          throw new IllegalAttemptTransitionError(
+            `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_COMPLETED.`,
+          )
+        }
+        return {
+          ...a,
+          status: event.status,
+          observationIds: dedupeStrings([...a.observationIds, ...event.observationIds]),
+          evidenceIds: dedupeStrings([...a.evidenceIds, ...event.evidenceIds]),
+          artifactIds: dedupeStrings([...a.artifactIds, ...event.artifactIds]),
+          flagCandidateIds: dedupeStrings([...a.flagCandidateIds, ...event.flagCandidateIds]),
+          completedAt: event.completedAt,
+        }
+      })
+      if (next.every((a, i) => a === state.attempts[i])) {
+        throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
+      }
+      return { ...state, attempts: next }
+    }
+
+    case 'ATTEMPT_FAILED': {
+      const next = state.attempts.map((a) => {
+        if (a.id !== event.attemptId) return a
+        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled'
+          || a.status === 'skipped_duplicate' || a.status === 'skipped_policy'
+          || a.status === 'skipped_budget') {
+          throw new IllegalAttemptTransitionError(
+            `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_FAILED.`,
+          )
+        }
+        return {
+          ...a,
+          status: 'failed' as const,
+          error: event.error,
+          observationIds: dedupeStrings([...a.observationIds, ...event.observationIds]),
+          evidenceIds: dedupeStrings([...a.evidenceIds, ...event.evidenceIds]),
+          completedAt: event.completedAt,
+        }
+      })
+      if (next.every((a, i) => a === state.attempts[i])) {
+        throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
+      }
+      return { ...state, attempts: next }
+    }
+
+    case 'ATTEMPT_CANCELLED': {
+      const next = state.attempts.map((a) => {
+        if (a.id !== event.attemptId) return a
+        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled') {
+          throw new IllegalAttemptTransitionError(
+            `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_CANCELLED.`,
+          )
+        }
+        return {
+          ...a,
+          status: 'cancelled' as const,
+          error: { message: event.reason },
+          completedAt: event.completedAt,
+        }
+      })
+      if (next.every((a, i) => a === state.attempts[i])) {
+        throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
+      }
+      return { ...state, attempts: next }
+    }
+
     case 'ATTEMPT_SKIPPED': {
       const next = state.attempts.map((a) => {
         if (a.id !== event.attemptId) return a
-        if (event.type === 'ATTEMPT_COMPLETED') {
-          return { ...a, status: event.status, completedAt: event.completedAt }
+        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled') {
+          throw new IllegalAttemptTransitionError(
+            `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_SKIPPED.`,
+          )
         }
-        if (event.type === 'ATTEMPT_FAILED') {
-          return { ...a, status: 'failed' as const, error: event.error, completedAt: Date.now() }
-        }
-        if (event.type === 'ATTEMPT_CANCELLED') {
-          return { ...a, status: 'cancelled' as const, error: { message: event.reason }, completedAt: Date.now() }
-        }
-        // ATTEMPT_SKIPPED
         const skipStatus = event.reason === 'duplicate'
           ? 'skipped_duplicate' as const
-          : event.reason === 'policy'
+          : event.reason === 'policy' || event.reason === 'profile' || event.reason === 'scope' || event.reason === 'unavailable' || event.reason === 'approval'
             ? 'skipped_policy' as const
             : 'skipped_budget' as const
-        return { ...a, status: skipStatus, completedAt: Date.now() }
+        return { ...a, status: skipStatus, completedAt: event.completedAt }
       })
       if (next.every((a, i) => a === state.attempts[i])) {
         throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
@@ -708,7 +899,9 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
           `OneShot run ${event.run.id} already recorded`,
         )
       }
-      return { ...state, oneShotRuns: [...state.oneShotRuns, event.run] }
+      // §十八 — shallow-clone so the caller's local copy remains
+      // mutable; deepFreeze will lock down the store's copy only.
+      return { ...state, oneShotRuns: [...state.oneShotRuns, { ...event.run }] }
     }
 
     case 'ONESHOT_RUN_STARTED': {

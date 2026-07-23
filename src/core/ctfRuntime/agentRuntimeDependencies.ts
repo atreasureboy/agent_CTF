@@ -21,6 +21,7 @@ import type OpenAI from 'openai'
 import type { Renderer } from '../../ui/renderer.js'
 import type { EventLog } from '../eventLog.js'
 import type { Logger } from '../logger.js'
+import type { BudgetLimits } from '../../ctf/oneshot/types.js'
 
 export interface ModelConfig {
   model: string
@@ -39,6 +40,8 @@ export interface AgentRuntimeDependencies {
   eventLog?: EventLog
   /** Logger destination (optional). */
   logger?: Logger
+  /** §十一 — concurrency budget for tools/oneshots (parallel limit). */
+  budgetLimits?: BudgetLimits
 }
 
 /**

@@ -1,51 +1,15 @@
 /**
- * Phase 2.1 round-5 audit follow-up tests.
+ * Phase 2.2 round-5 audit follow-up tests.
  */
 
 import { describe, it, expect } from 'vitest'
 import { CTFTaskStateStore, TaskStateStoreError } from '../src/core/ctfRuntime/taskStateStore.js'
-import type { CTFTaskState, CTFHypothesis } from '../src/core/ctfRuntime/taskState.js'
+import type { CTFHypothesis } from '../src/core/ctfRuntime/taskState.js'
 import { redactSecrets } from '../src/core/ctfReasoning/redaction.js'
+import { createTestTaskState } from './fixtures/createTestTaskState.js'
 
-function emptyState(): CTFTaskState {
-  return {
-    taskId: 't1',
-    phase: 'triage',
-    context: {
-      taskId: 't1',
-      workspaceDir: '/tmp/ctf',
-      sessionDir: '/tmp/ctf/s',
-      artifactDir: '/tmp/ctf/a',
-      inputDir: '/tmp/ctf/i',
-      eventsFile: '/tmp/ctf/e.ndjson',
-      profileId: 'triage',
-      contestScope: { allowedFilesRoot: '/tmp/ctf', allowPublicNetwork: false, allowHeavyOneShots: false },
-      contestConfig: { allowedFilesRoot: '/tmp/ctf', allowPublicNetwork: false, allowHeavyOneShots: false },
-      environment: {},
-      abortSignal: new AbortController().signal,
-      metadata: {},
-    },
-    challenge: { inputArtifactIds: [] },
-    activeProfileId: 'triage',
-    findings: [],
-    artifactIds: [],
-    hypotheses: [],
-    attempts: [],
-    handoffs: [],
-    agentRuns: [],
-    workflowRuns: [],
-    jobs: [],
-    oneShotRuns: [],
-    activeAgentRunIds: [],
-    activeWorkflowRunIds: [],
-    activeJobIds: [],
-    observations: [],
-    evidence: [],
-    strategyDecisions: [],
-    flagCandidates: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  }
+function emptyState() {
+  return createTestTaskState({ taskId: 't1' })
 }
 
 function makeHypothesis(status: CTFHypothesis['status']): CTFHypothesis {

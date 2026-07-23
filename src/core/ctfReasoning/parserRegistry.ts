@@ -1,19 +1,28 @@
 /**
- * ParserRegistry — Phase 2.1 §十二.
+ * ParserRegistry — Phase 2.2 §十七.
  *
  * Centralised registry for `ResultParser`s. Parsers are matched by
  * `ParserSelectionInput` (toolId / manifestId / workflowId / stepId).
  * When no parser matches, the registry falls back to `GenericParser`.
  *
- * The Registry is the canonical place; legacy `outputParser.ts` (used
- * by OneShot today) is exposed via a thin adapter so we keep one
- * parser taxonomy.
+ * Pipeline (§十七):
+ *   1. Resolve parsers matching the selection
+ *   2. Run each parser (failures → `parser_failure` warnings, do not
+ *      stop other parsers)
+ *   3. GenericParser always runs as fallback
+ *   4. ResultMerger dedupes Observations, merges Evidence, dedupes
+ *      SuggestedActions, merges FlagCandidates
+ *   5. ParserConflictResolver enforces the priority order
+ *      (magic > specialized > file > generic) and surfaces partial
+ *      successes
  */
 
 import type { ObservationSource, ObservationDraft } from './observation.js'
 import type { EvidenceDraft } from './evidence.js'
 import type { SuggestedAction } from './suggestedAction.js'
 import type { FlagCandidateDraft } from './flagCandidate.js'
+import { createResultMerger } from './resultMerger.js'
+import { resolveParserConflicts, parserFailureWarning, withPartialWarning } from './parserConflictResolver.js'
 
 export interface ParserSelectionInput {
   toolId?: string
@@ -77,51 +86,58 @@ export class ParserRegistry {
     durationMs?: number,
   ): Promise<MaterializedResult> {
     const matches = this.resolve(selection)
-    if (matches.length === 0) {
-      return genericParser.parse(input)
+    const perParser: Array<{ parserId: string; result: MaterializedResult }> = []
+    const allWarnings: string[] = []
+
+    for (const p of matches) {
+      try {
+        let out = await p.parse(input)
+        if (input.isError || (typeof input.exitCode === 'number' && input.exitCode !== 0)) {
+          out = withPartialWarning(out, p.id)
+        }
+        perParser.push({ parserId: p.id, result: out })
+      } catch (err) {
+        allWarnings.push(parserFailureWarning(p.id, err))
+      }
     }
-    // Compose outputs from all matches. GenericParser is the
-    // universal fallback for any failed parser; we run matches first.
-    const aggregate: MaterializedResult = {
-      observations: [],
-      evidence: [],
-      suggestedActions: [],
-      flagCandidateDrafts: [],
-      warnings: [],
+
+    // Always run the GenericParser last as a fallback. Its outputs are
+    // included but lower priority — conflict resolution still applies.
+    try {
+      const g = await genericParser.parse(input)
+      perParser.push({ parserId: 'generic', result: g })
+    } catch (err) {
+      allWarnings.push(parserFailureWarning('generic', err))
+    }
+
+    // Conflict resolution — observations kept verbatim; evidence
+    // filtered by parser priority.
+    const conflict = resolveParserConflicts(perParser)
+
+    // ResultMerger — dedupe observations, merge evidence, dedupe
+    // suggested actions, merge flag candidates. We start from the
+    // conflict-resolved Observations and Evidence so the merger only
+    // has to handle intra-kind duplicates.
+    const merged = createResultMerger().merge([
+      {
+        observations: conflict.observations,
+        evidence: conflict.evidence,
+        suggestedActions: perParser.flatMap((p) => p.result.suggestedActions),
+        flagCandidateDrafts: perParser.flatMap((p) => p.result.flagCandidateDrafts),
+        warnings: [],
+        rawArtifactIds: input.artifactIds,
+      },
+    ])
+
+    return {
+      observations: merged.observations,
+      evidence: merged.evidence,
+      suggestedActions: merged.suggestedActions,
+      flagCandidateDrafts: merged.flagCandidateDrafts,
+      warnings: dedupe([...allWarnings, ...merged.warnings, ...conflict.warnings]),
       rawArtifactIds: input.artifactIds,
       metrics: { durationMs },
     }
-    for (const p of matches) {
-      try {
-        const out = await p.parse(input)
-        aggregate.observations.push(...out.observations)
-        aggregate.evidence.push(...out.evidence)
-        aggregate.suggestedActions.push(...out.suggestedActions)
-        aggregate.flagCandidateDrafts.push(...out.flagCandidateDrafts)
-        aggregate.warnings.push(...out.warnings)
-        if (out.metrics) aggregate.metrics = { ...aggregate.metrics, ...out.metrics }
-      } catch (err) {
-        aggregate.warnings.push(`parser ${p.id} failed: ${(err as Error).message}`)
-      }
-    }
-    // §round-3 audit fix — always append a command_status observation
-    // from the GenericParser so downstream `observation_exists { kind:
-    // 'command_status' }` predicates fire on success paths too. The
-    // tool-failure Evidence still only appears in the error branch.
-    {
-      const g = await genericParser.parse(input)
-      // Avoid duplicating the command_status observation when a parser
-      // already produced one (e.g. file-parser's success path).
-      if (!aggregate.observations.some((o) => o.kind === 'command_status')) {
-        aggregate.observations.unshift(...g.observations)
-      }
-      aggregate.warnings.push(...g.warnings.filter((w) => !aggregate.warnings.includes(w)))
-    }
-    if (input.isError || (typeof input.exitCode === 'number' && input.exitCode !== 0)) {
-      const g = await genericParser.parse(input)
-      aggregate.evidence.push(...g.evidence)
-    }
-    return aggregate
   }
 }
 
@@ -134,6 +150,10 @@ import { zstegParser } from './parsers/zsteg.js'
 import { checksecParser } from './parsers/checksec.js'
 import { encodingParser } from './parsers/encoding.js'
 import { exifToolParser } from './parsers/exifTool.js'
+
+function dedupe<T>(arr: T[]): T[] {
+  return [...new Set(arr)]
+}
 
 let _defaultRegistry: ParserRegistry | null = null
 export function getDefaultParserRegistry(): ParserRegistry {

@@ -21,6 +21,10 @@
 import { randomBytes } from 'crypto'
 
 import type { TaskStateListener } from './taskEvents.js'
+import {
+  DEFAULT_REASONING_BUDGET_LIMITS,
+  createInitialReasoningBudgetState,
+} from '../ctfReasoning/reasoningBudget.js'
 
 import type { CapabilityProfile } from '../capabilityProfile.js'
 import type { ContestScope } from '../contestScope.js'
@@ -182,6 +186,9 @@ export class CTFTaskOrchestrator {
       observations: [],
       evidence: [],
       strategyDecisions: [],
+      pendingActions: [],
+      reasoningBudget: createInitialReasoningBudgetState(),
+      reasoningBudgetLimits: DEFAULT_REASONING_BUDGET_LIMITS,
       flagCandidates: [],
       createdAt: now,
       updatedAt: now,
@@ -346,6 +353,35 @@ export class CTFTaskOrchestrator {
 
   updateOneShot(runId: string, patch: Partial<import('./taskState.js').OneShotRunRecord>): void {
     this.safeApply({ type: 'ONESHOT_RUN_UPDATED', runId, patch })
+  }
+
+  // ── Phase 2.2 §七 — ReasoningCoordinator main-path integration ─────
+  /**
+   * Inject a result (Observation/Evidence/SuggestedAction set) from
+   * Main Agent / Workflow / OneShot / Specialist into the structured
+   * reasoning loop. Returns the ReasoningResult.
+   */
+  async processReasoningInput(input: import('../ctfReasoning/reasoningCoordinator.js').ProcessReasoningInputsInput): Promise<import('../ctfReasoning/actionExecutionResult.js').ReasoningResult> {
+    const { processNewReasoningInputs } = await import('../ctfReasoning/reasoningCoordinator.js')
+    const budgetLimits = this.dependencies.budgetLimits ?? {
+      fastConcurrency: 4,
+      mediumConcurrency: 2,
+      heavyConcurrency: 1,
+      perTaskMaxRuns: 32,
+      perTaskHeavyRuns: 4,
+    }
+    const heavyApproved = this.store.getState().context.contestScope.allowHeavyOneShots === true
+    return processNewReasoningInputs(
+      {
+        taskId: this.store.getState().taskId,
+        state: this.store.getState(),
+        store: this.store,
+        budgetLimits,
+        heavyApproved,
+        abortSignal: this.abort.signal,
+      },
+      input,
+    )
   }
 
   // ── Workflow runs ────────────────────────────────────────────────────

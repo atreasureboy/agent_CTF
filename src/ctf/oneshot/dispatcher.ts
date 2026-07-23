@@ -495,8 +495,11 @@ export class Dispatcher {
       // emitting the terminal event so observers never see terminal
       // status without a durable Result.
       await this.resultStore.save(finalResult)
-      record.resultPath = this.resultStore.resolvePath(record.id)
-      this.deps.orchestrator?.updateOneShot(record.id, { resultPath: record.resultPath })
+      // §十八 — TaskState is deep-frozen; build a new record rather
+      // than mutating the frozen one. updateOneShot projects the
+      // immutable patch into the store.
+      const resultPath = this.resultStore.resolvePath(record.id)
+      this.deps.orchestrator?.updateOneShot(record.id, { resultPath })
       this.projectTerminalStatus(record, attempt, status, message, finishedAt)
       this.emitTerminalEvent(status, record.id, manifestId, lane, finishedAt, message)
       throw err
@@ -524,8 +527,10 @@ export class Dispatcher {
 
     // §二十二 — persist BEFORE projecting TaskState and emitting events.
     await this.resultStore.save(normalized)
-    record.resultPath = this.resultStore.resolvePath(record.id)
-    this.deps.orchestrator?.updateOneShot(record.id, { resultPath: record.resultPath })
+    // §十八 — TaskState is deep-frozen; project the resultPath through
+    // the orchestrator instead of mutating the dispatcher's record.
+    const resultPath = this.resultStore.resolvePath(record.id)
+    this.deps.orchestrator?.updateOneShot(record.id, { resultPath })
 
     const completedAt = Date.now()
     const finalStatus: OneShotRunStatus =

@@ -451,7 +451,7 @@ describe('§4 — Abort chain', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -591,7 +591,7 @@ describe('§4 — Abort chain', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -903,7 +903,7 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }
@@ -1013,7 +1013,7 @@ describe('§6 — Reducer invariants', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }

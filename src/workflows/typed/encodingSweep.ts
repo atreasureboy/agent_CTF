@@ -1,5 +1,5 @@
 /**
- * encoding_sweep — Phase 2.1 §二十七.
+ * encoding_sweep — Phase 2.1 §二十七 / Phase 2.2 §十四.
  *
  * Bounded decode tree. Limits:
  *   - maxDepth: 4
@@ -15,9 +15,16 @@
  *   - candidate-extraction (depends on decode-tree)
  *   - emit-summary (depends on candidate-extraction)
  *
- * Stop Conditions:
+ * Stop Conditions (§十四):
  *   - flag_candidate_exists (validated)
- *   - decode-tree reached maxDepth without new outputHash
+ *   - decode-tree reported no new unique outputs (specific evidence
+ *     kind=negative_result, attributes.reason=no_new_unique_output,
+ *     scoped to current workflowRunId / stepId=decode-tree)
+ *   - decode-tree reached maxDepth (specific evidence
+ *     attributes.reason=max_depth_reached, same scope)
+ *
+ * These conditions MUST scope to the current workflow run; older
+ * runs' negative_result Evidence cannot trigger this workflow's stop.
  */
 
 import type { TypedWorkflowDefinition } from '../../core/workflowDefinition.js'
@@ -27,11 +34,15 @@ const flagValidated: WorkflowCondition = { type: 'flag_candidate_exists', valida
 const noNewOutputs: WorkflowCondition = {
   type: 'evidence_exists',
   kind: 'negative_result',
+  scope: { workflowRunId: '$current', stepId: 'decode-tree' },
+  where: { reason: 'no_new_unique_output' },
   minConfidence: 0.5,
 }
 const maxDepthReached: WorkflowCondition = {
   type: 'evidence_exists',
-  kind: 'generic',
+  kind: 'negative_result',
+  scope: { workflowRunId: '$current', stepId: 'decode-tree' },
+  where: { reason: 'max_depth_reached' },
   minConfidence: 0.6,
 }
 

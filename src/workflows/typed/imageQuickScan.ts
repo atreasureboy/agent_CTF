@@ -1,5 +1,5 @@
 /**
- * image_quick_scan — Phase 2.1 §二十六.
+ * image_quick_scan — Phase 2.1 §二十六 / Phase 2.2 §十三.
  *
  * Typed DAG. Steps in parallel where independent.
  *
@@ -13,18 +13,28 @@
  *   conditional-zsteg-decision (depends on zsteg, binwalk)
  *   emit-summary (depends on materialize AND conditional-zsteg-decision)
  *
- * Stop Conditions:
+ * Stop Conditions (§十三):
  *   - flag_candidate_exists (validated)
- *   - artifact_exists (binwalk extracted an archive)
- *   - evidence_exists of kind 'negative_result' from zsteg → handoff
+ *   - artifact_exists (binwalk extracted an archive THIS workflow run,
+ *     producedByStepId='binwalk-extract', after the workflow started)
+ *   - step_succeeded 'request-image-stego-handoff'
+ *
+ * The previous `artifact_exists` (no fields) was too wide — any
+ * artifact in state would stop the workflow, including the input
+ * image. The new condition requires the artifact to come from
+ * `binwalk-extract` in the current run.
  */
 
 import type { TypedWorkflowDefinition } from '../../core/workflowDefinition.js'
 import type { WorkflowCondition } from '../../core/ctfReasoning/workflowCondition.js'
 
 const flagValidated: WorkflowCondition = { type: 'flag_candidate_exists', validated: true }
-const archiveExtracted: WorkflowCondition = { type: 'artifact_exists' }
-const zstegNegative: WorkflowCondition = { type: 'evidence_exists', kind: 'negative_result', minConfidence: 0.5 }
+const archiveExtracted: WorkflowCondition = {
+  type: 'artifact_exists',
+  producedByStepId: 'binwalk-extract',
+  producedByWorkflowRunId: '$current',
+  minCreatedAt: '$workflowStartedAt',
+}
 const handoffRequested: WorkflowCondition = { type: 'step_succeeded', stepId: 'request-image-stego-handoff' }
 
 export const IMAGE_QUICK_SCAN_TYPED: TypedWorkflowDefinition = {
@@ -58,7 +68,7 @@ export const IMAGE_QUICK_SCAN_TYPED: TypedWorkflowDefinition = {
     {
       id: 'conditional-zsteg-decision',
       kind: 'if',
-      condition: zstegNegative,
+      condition: { type: 'evidence_exists', kind: 'negative_result', scope: { workflowRunId: '$current', stepId: 'zsteg' }, minConfidence: 0.5 },
       then: [{ id: 'request-image-stego-handoff', kind: 'request_handoff', capability: 'image-stego', dependsOn: [], emit_finding: false }],
       else: [],
       dependsOn: ['zsteg'],

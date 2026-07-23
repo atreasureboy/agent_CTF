@@ -293,7 +293,7 @@ export async function runTypedDag(
           // if/emit_finding/request_handoff end as 'failed'.
           const start = Date.now()
           const cond = evaluateWorkflowCondition(step.condition, {
-            state: {
+            state: { taskId: ctx.taskId,
               attempts: [],
               hypotheses: [],
               observations: [],
@@ -443,7 +443,7 @@ export async function runTypedDag(
     // After each wave, evaluate stop conditions.
     if (!stoppedEarly) {
       const condCtx: Parameters<typeof evaluateWorkflowCondition>[1] = {
-        state: {
+        state: { taskId: ctx.taskId,
           attempts: [],
           hypotheses: [],
           observations: [],
