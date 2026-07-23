@@ -15,7 +15,7 @@
  *   - maxActionsPerCycle: 1
  */
 
-import { materialize, type MaterializedResult } from './resultMaterializer.js'
+import { type MaterializedResult } from './resultMaterializer.js'
 import { planStrategy, type StrategyPlanningInput } from './strategyPlanner.js'
 import { createObservation, type Observation } from './observation.js'
 import { createEvidence } from './evidence.js'
@@ -162,18 +162,17 @@ export async function runStrategyCycle(
       status: 'succeeded',
       completedAt: Date.now(),
     })
-    // The executor may return either a fully-materialized result or
-    // a raw materializable (which we then run through the registry).
-    const mat: MaterializedResult = execResult.materialized ?? (execResult.result
-      ? await materialize(options.taskId, execResult.result)
-      : {
-          observations: [],
-          evidence: [],
-          suggestedActions: [],
-          flagCandidateDrafts: [],
-          warnings: [],
-          rawArtifactIds: [],
-        })
+    // The executor returns a fully-materialized result. The
+    // MaterializableResult → MaterializedResult path is the
+    // caller's responsibility (use `materializeViaRegistry`).
+    const mat: MaterializedResult = execResult.materialized ?? {
+      observations: [],
+      evidence: [],
+      suggestedActions: [],
+      flagCandidateDrafts: [],
+      warnings: [],
+      rawArtifactIds: [],
+    }
     for (const draft of mat.observations) {
       const obs: Observation = createObservation(options.taskId, draft)
       store.apply({ type: 'OBSERVATION_ADDED', observation: obs })
@@ -268,7 +267,11 @@ function actionToAttempt(state: CTFTaskState, action: SuggestedAction): Omit<CTF
         flagCandidateIds: [],
       }
   }
-  void state
+  // §round-5 audit fix — exhaustive default branch. Adding a new
+  // SuggestedAction type without updating this switch would have
+  // silently returned `undefined` and corrupted the Attempt.
+  const exhaustive: never = action
+  throw new Error(`unhandled action type: ${(exhaustive as SuggestedAction).type}`)
 }
 
 interface SelectedExecResult {

@@ -64,4 +64,8 @@ function idOf(a: SuggestedAction): string {
     case 'verify_flag': return a.candidateId
     case 'stop': return 'stop'
   }
+  // §round-5 audit fix — exhaustive default. Adding a new action
+  // type without updating this switch would have returned undefined.
+  const exhaustive: never = a
+  return (exhaustive as SuggestedAction).type
 }

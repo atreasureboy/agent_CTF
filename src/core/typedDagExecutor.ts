@@ -464,7 +464,23 @@ export async function runTypedDag(
     }
   }
 
-  const allOk = outcomes.length > 0 && outcomes.every((o) => o.status === 'succeeded' || o.status === 'skipped')
+  // §round-5 audit fix — an empty workflow is `success` (no work to
+  // do, no failure). Previously fell through to `failed` because
+  // `allOk` was false (empty array doesn't satisfy `.every`).
+  if (workflow.steps.length === 0) {
+    return {
+      workflowId: workflow.id,
+      status: 'success',
+      startedAt,
+      endedAt: new Date().toISOString(),
+      stepOutcomes: outcomes,
+      stoppedEarly: false,
+      observationIds,
+      evidenceIds,
+      strategyDecisionIds,
+    }
+  }
+  const allOk = outcomes.every((o) => o.status === 'succeeded' || o.status === 'skipped')
   const anyFailed = outcomes.some((o) => o.status === 'failed')
   const anySucceeded = outcomes.some((o) => o.status === 'succeeded')
   const anyCancelled = outcomes.some((o) => o.status === 'cancelled')

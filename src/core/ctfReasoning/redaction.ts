@@ -10,7 +10,7 @@ const PATTERNS: Array<{ re: RegExp; label: string }> = [
   // AWS access key id (long-term) + ASIA STS temporary credentials.
   { re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, label: 'aws_access_key_id' },
   // GitHub tokens
-  { re: /\bghp_[A-Za-z0-9]{36}\b/g, label: 'github_pat' },
+  { re: /ghp_[A-Za-z0-9]{36,}/g, label: 'github_pat' },
   { re: /gh[opsu]_[A-Za-z0-9]{36,}/g, label: 'github_token' },
   // Slack
   { re: /\bxox[baprs]-[A-Za-z0-9-]+\b/g, label: 'slack_token' },
@@ -19,7 +19,7 @@ const PATTERNS: Array<{ re: RegExp; label: string }> = [
   // PEM private key block
   { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, label: 'pem_private_key' },
   // password= / token= assignments
-  { re: /\b(password|passwd|token|api[_-]?key|secret|signature)\s*=\s*([^\s&"']+)/gi, label: 'kv_secret' },
+  { re: /\b(password|passwd|pass|pwd|token|api[_-]?key|secret|signature)\s*=\s*([^\s&"']+)/gi, label: 'kv_secret' },
   // Authorization: Bearer ... — stop at trailing punctuation by
   // excluding `.` and only matching word chars + `-` + `_`.
   { re: /(Authorization:\s*Bearer\s+)([A-Za-z0-9_-]+)/gi, label: 'bearer_token' },
@@ -47,15 +47,24 @@ export function redactSecrets(input: string): string {
   return out
 }
 
+const MAX_REDACT_DEPTH = 32
+
 export function redactSecretsDeep<T>(v: T): T {
-  if (typeof v === 'string') return redactSecrets(v) as unknown as T
-  if (Array.isArray(v)) return v.map((x) => redactSecretsDeep(x)) as unknown as T
-  if (v && typeof v === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = redactSecretsDeep(val)
+  const seen = new WeakSet<object>()
+  const visit = (val: unknown, depth: number): unknown => {
+    if (depth > MAX_REDACT_DEPTH) return val
+    if (typeof val === 'string') return redactSecrets(val)
+    if (Array.isArray(val)) return val.map((x) => visit(x, depth + 1))
+    if (val && typeof val === 'object') {
+      if (seen.has(val as object)) return val
+      seen.add(val as object)
+      const out: Record<string, unknown> = {}
+      for (const [k, x] of Object.entries(val as Record<string, unknown>)) {
+        out[k] = visit(x, depth + 1)
+      }
+      return out
     }
-    return out as unknown as T
+    return val
   }
-  return v
+  return visit(v, 0) as T
 }

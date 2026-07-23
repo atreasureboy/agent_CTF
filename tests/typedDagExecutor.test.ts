@@ -283,4 +283,49 @@ describe('TypedDagExecutor — three migrated workflows', () => {
     const r = await runTypedDag(ENCODING_SWEEP_TYPED, ctx, runner)
     expect(['success', 'partial']).toContain(r.status)
   })
+
+  it('empty workflow returns success (round-5 audit fix)', async () => {
+    const wf: TypedWorkflowDefinition = {
+      id: 'empty', displayName: 'empty', description: 'empty', executionMode: 'dag', inputs: [],
+      stopConditions: [], steps: [],
+    }
+    const { runner } = makeRunner()
+    const ctx = makeContext()
+    const r = await runTypedDag(wf, ctx, runner)
+    expect(r.status).toBe('success')
+    expect(r.stepOutcomes.length).toBe(0)
+    expect(r.stoppedEarly).toBe(false)
+  })
+
+  it('if step with non-empty then/else executes branch', async () => {
+    let toolCalls = 0
+    const { runner } = makeRunner({
+      tools: {
+        branch_tool: async () => {
+          toolCalls++
+          return { content: 'ok', isError: false, artifactIds: [] }
+        },
+      },
+    })
+    const wf: TypedWorkflowDefinition = {
+      id: 'if-test', displayName: 'if', description: 'if', executionMode: 'dag', inputs: [],
+      stopConditions: [],
+      steps: [
+        {
+          id: 'pick',
+          kind: 'if',
+          condition: { type: 'artifact_exists' },
+          then: [{ id: 'branch-tool-then', kind: 'tool', toolId: 'branch_tool', dependsOn: [], emit_finding: false }],
+          else: [{ id: 'branch-tool-else', kind: 'tool', toolId: 'branch_tool', dependsOn: [], emit_finding: false }],
+          dependsOn: [],
+        },
+      ],
+    }
+    const ctx = makeContext()
+    const r = await runTypedDag(wf, ctx, runner)
+    // Tool ran once (the else branch). Parent 'if' is recorded as succeeded.
+    expect(toolCalls).toBe(1)
+    expect(r.stepOutcomes.find((o) => o.stepId === 'pick')?.status).toBe('succeeded')
+    expect(r.stepOutcomes.find((o) => o.stepId === 'pick:branch-tool-else')?.status).toBe('succeeded')
+  })
 })
