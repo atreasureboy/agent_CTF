@@ -249,47 +249,47 @@ export class CTFTaskOrchestrator {
   setPhase(to: CTFTaskPhase, reason?: string): void {
     const from = this.store.getState().phase
     if (from === to) return
-    this.store.apply({ type: 'PHASE_CHANGED', from, to, reason })
+    this.safeApply({ type: 'PHASE_CHANGED', from, to, reason })
   }
 
   // ── Findings / Artifacts / Flag candidates / Hypothesis / Attempt ────
   addFinding(f: Finding): void {
     if (this.store.getState().findings.some((x) => x.id === f.id)) return
-    this.store.apply({ type: 'FINDING_ADDED', finding: f })
+    this.safeApply({ type: 'FINDING_ADDED', finding: f })
   }
 
   addArtifact(meta: ArtifactMeta): void {
-    this.store.apply({ type: 'ARTIFACT_ADDED', artifactId: meta.id })
+    this.safeApply({ type: 'ARTIFACT_ADDED', artifactId: meta.id })
   }
 
   addFlagCandidate(c: FlagCandidate): void {
-    this.store.apply({ type: 'FLAG_CANDIDATE_ADDED', candidate: c })
+    this.safeApply({ type: 'FLAG_CANDIDATE_ADDED', candidate: c })
   }
 
   addHypothesis(h: CTFHypothesis): void {
-    this.store.apply({ type: 'HYPOTHESIS_ADDED', hypothesis: h })
+    this.safeApply({ type: 'HYPOTHESIS_ADDED', hypothesis: h })
   }
 
   updateHypothesis(id: string, patch: Partial<CTFHypothesis>): void {
-    this.store.apply({ type: 'HYPOTHESIS_UPDATED', hypothesisId: id, patch })
+    this.safeApply({ type: 'HYPOTHESIS_UPDATED', hypothesisId: id, patch })
   }
 
   recordAttempt(a: CTFAttempt): void {
-    this.store.apply({ type: 'ATTEMPT_RECORDED', attempt: a })
+    this.safeApply({ type: 'ATTEMPT_RECORDED', attempt: a })
   }
 
   updateAttempt(id: string, patch: Partial<CTFAttempt>): void {
-    this.store.apply({ type: 'ATTEMPT_UPDATED', attemptId: id, patch })
+    this.safeApply({ type: 'ATTEMPT_UPDATED', attemptId: id, patch })
   }
 
   /** Mirror a BackgroundJob lifecycle event into the TaskState. Called by
    *  the projector wired up in `createCTFTaskRuntime`. */
   recordJobStarted(job: JobRecord): void {
-    this.store.apply({ type: 'JOB_RECORDED', job })
+    this.safeApply({ type: 'JOB_RECORDED', job })
   }
 
   recordJobUpdated(job: JobRecord): void {
-    this.store.apply({
+    this.safeApply({
       type: 'JOB_UPDATED',
       jobId: job.id,
       patch: job,
@@ -342,7 +342,7 @@ export class CTFTaskOrchestrator {
         stepOutcomeIds: [],
         profileId: currentProfileId,
       }
-      this.store.apply({ type: 'WORKFLOW_STARTED', workflowRun: record })
+      this.safeApply({ type: 'WORKFLOW_STARTED', workflowRun: record })
 
       // §八.5 — Phase 1.7 deletes the per-run no-op subscription. The
       // global projector subscription in createCTFTaskRuntime already
@@ -454,9 +454,9 @@ export class CTFTaskOrchestrator {
         producedFindingIds: [],
         producedArtifactIds: [],
       }
-      this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
+      this.safeApply({ type: 'AGENT_RUN_STARTED', agentRun })
       const msg = 'runMainAgent requires a renderer + OpenAI client; workflow-only mode cannot run LLM tasks'
-      this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
+      this.safeApply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
       return {
         agentRunId,
         profileId,
@@ -479,7 +479,7 @@ export class CTFTaskOrchestrator {
       producedFindingIds: [],
       producedArtifactIds: [],
     }
-    this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
+    this.safeApply({ type: 'AGENT_RUN_STARTED', agentRun })
     const before = this.projector.captureSnapshot()
     // Phase 1.7 §八.2 — track this Main Agent run so cancel() and dispose()
     // can await its settlement.
@@ -492,7 +492,7 @@ export class CTFTaskOrchestrator {
         // 'completed' so the run reflects reality.
         if (this.abort.signal.aborted) {
           const msg = `main agent turn cancelled by ${this.abort.signal.reason ?? 'task_abort'}`
-          this.store.apply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason: msg })
+          this.safeApply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason: msg })
           return {
             agentRunId,
             profileId,
@@ -507,15 +507,15 @@ export class CTFTaskOrchestrator {
           // §十三.3 — pass agentRunId so the projector filters by it.
           agentRunId,
         })
-        for (const ev of projection.events) this.store.apply(ev)
-        this.store.apply({
+        for (const ev of projection.events) this.safeApply(ev)
+        this.safeApply({
           type: 'AGENT_RUN_OUTPUT_RECORDED',
           agentRunId,
           producedFindingIds: projection.newFindingIds,
           producedArtifactIds: projection.newArtifactIds,
         })
         const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
-        this.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
+        this.safeApply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
         return {
           agentRunId,
           profileId,
@@ -529,7 +529,7 @@ export class CTFTaskOrchestrator {
         // Phase 1.7 §十七 — map abort to cancelled rather than failed so
         // the run reflects the actual termination reason.
         if (this.abort.signal.aborted) {
-          this.store.apply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason: msg })
+          this.safeApply({ type: 'AGENT_RUN_CANCELLED', agentRunId, reason: msg })
           return {
             agentRunId,
             profileId,
@@ -539,7 +539,7 @@ export class CTFTaskOrchestrator {
             producedArtifactIds: [],
           }
         }
-        this.store.apply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
+        this.safeApply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
         return {
           agentRunId,
           profileId,
@@ -559,7 +559,7 @@ export class CTFTaskOrchestrator {
   }
 
   recordMainAgentRun(agentRun: AgentRunRecord): void {
-    this.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
+    this.safeApply({ type: 'AGENT_RUN_STARTED', agentRun })
   }
 
   // ── Handoff lifecycle ────────────────────────────────────────────────

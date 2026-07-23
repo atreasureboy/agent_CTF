@@ -12,7 +12,7 @@
  * Storage: ~/.ovogo/projects/{slug}/memory/semantic.jsonl
  */
 
-import { appendFileSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, mkdirSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createHash, randomUUID } from 'crypto'
 
@@ -136,13 +136,20 @@ export class SemanticMemory {
     return full
   }
 
-  /** Persist all entries to disk (rewrite entire file for consistency) */
+  /** Persist all entries to disk (rewrite entire file for consistency).
+   *  Phase 1.7 audit — atomic write via temp + rename. A crash mid-rewrite
+   *  previously could leave the file empty; readers tolerate either the
+   *  old content or the new content, never a partial. Trims any dangling
+   *  partial trailing line on the way in so the recovered file is valid
+   *  JSONL on the next read. */
   private persistAll(): void {
     try {
       const lines = Array.from(this.entries.values())
         .map((e) => JSON.stringify(e))
         .join('\n')
-      writeFileSync(this.filePath, lines + '\n', 'utf8')
+      const tmp = `${this.filePath}.tmp.${process.pid}`
+      writeFileSync(tmp, lines + '\n', 'utf8')
+      renameSync(tmp, this.filePath)
     } catch {
       /* best-effort */
     }

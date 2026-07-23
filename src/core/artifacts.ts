@@ -23,6 +23,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from 'fs'
@@ -121,6 +122,39 @@ export class ArtifactStore {
     mkdirSync(this.artifactsDir, { recursive: true })
   }
 
+  /** Atomic append the meta entry for a freshly-persisted artifact.
+   *  The meta index is append-only NDJSON; a mid-write crash previously
+   *  left a half-written trailing line. We now write the new line plus
+   *  the existing content into a temp file, then rename over the
+   *  original. Phase 1.7 audit — mirrors the patterns in SessionStore,
+   *  BackgroundJobManager, SemanticMemory.persistAll, and
+   *  EpisodicMemory.write. */
+  private appendMeta(line: string): void {
+    try {
+      if (existsSync(this.metaPath)) {
+        let existing = ''
+        try {
+          existing = readFileSync(this.metaPath, 'utf8')
+        } catch {
+          /* file unreadable — fall back to fresh line */
+        }
+        // Trim any dangling partial line from a previous crash.
+        const lastNl = existing.lastIndexOf('\n')
+        if (lastNl >= 0 && existing.length - lastNl > 1) {
+          existing = existing.slice(0, lastNl + 1)
+        }
+        const tmp = `${this.metaPath}.tmp.${process.pid}`
+        writeFileSync(tmp, existing + line, 'utf8')
+        renameSync(tmp, this.metaPath)
+      } else {
+        // First write — direct appendFileSync is safe (creates the file).
+        appendFileSync(this.metaPath, line, 'utf8')
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
   /** Persist a buffer (e.g. raw tool output) as an artifact and return its metadata. */
   async write(
     input: ArtifactInput,
@@ -152,7 +186,7 @@ export class ArtifactStore {
       workflowRunId: input.workflowRunId,
       handoffId: input.handoffId,
     }
-    appendFileSync(this.metaPath, JSON.stringify(meta) + '\n', 'utf8')
+    this.appendMeta(JSON.stringify(meta) + '\n')
     return meta
   }
 
@@ -187,7 +221,7 @@ export class ArtifactStore {
       source: input.source,
     }
     mkdirSync(dirname(this.metaPath), { recursive: true })
-    appendFileSync(this.metaPath, JSON.stringify(meta) + '\n', 'utf8')
+    this.appendMeta(JSON.stringify(meta) + '\n')
     return meta
   }
 
@@ -231,7 +265,7 @@ export class ArtifactStore {
       source: input.source,
     }
     mkdirSync(dirname(this.metaPath), {recursive: true})
-    appendFileSync(this.metaPath, JSON.stringify(meta) + '\n', 'utf8')
+    this.appendMeta(JSON.stringify(meta) + '\n')
     return meta
   }
 

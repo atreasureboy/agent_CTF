@@ -61,6 +61,37 @@ describe('ArtifactStore', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('survives a partial trailing line on the next write (atomic-recover)', async () => {
+    // Phase 1.7 audit — atomic write must trim any dangling partial line
+    // from a previous crash so the recovered file is valid JSONL.
+    const fs = await import('fs/promises')
+    const root = tmpRoot()
+    try {
+      const s = new ArtifactStore(root)
+      s.writeSync(
+        { taskId: 't1', producerAgentId: 'triage', type: 'first' },
+        'first payload',
+        'txt',
+      )
+      const metaPath = join(root, 'artifacts', 'index.jsonl')
+      // Inject a dangling partial line as if a crash mid-write had
+      // interrupted the original second append.
+      await fs.appendFile(metaPath, '{"id":"art_partial","taskId":"t1"')
+      s.writeSync(
+        { taskId: 't1', producerAgentId: 'triage', type: 'second' },
+        'second payload',
+        'txt',
+      )
+      // Both valid entries are present; the dangling partial line is dropped.
+      const all = s.list()
+      expect(all.length).toBe(2)
+      const types = all.map((a) => a.type).sort()
+      expect(types).toEqual(['first', 'second'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('FindingStore', () => {

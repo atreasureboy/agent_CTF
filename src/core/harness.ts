@@ -376,7 +376,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   function runTurn(
     userMessage: string,
     history: import('./types.js').OpenAIMessage[],
-    options: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }> } = {},
+    options: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>; handoffId?: string } = {},
   ): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
     // §十三.3 — issue an agent run id at the start of each main turn so
@@ -426,6 +426,12 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // so tool calls emitted during this turn carry the right run
       // attribution, and the orchestrator's projector can filter by it.
       agentRunId,
+      // §十三.3 — propagate the surrounding handoff id (if any) so tools
+      // emitted from a Specialist carry the handoffId into the broker's
+      // __ctf context and the projector can match against
+      // projectDiff({...handoffId}) without inventing a synthetic match.
+      handoffId: options.handoffId
+        ?? (taskExecutionContext.metadata?.['fromHandoff'] as string | undefined),
       // Phase 1.7 §四.2 — forward the Task-level abort signal into the
       // engine so cancelling the Task aborts the in-flight LLM call.
       signal: taskExecutionContext.abortSignal,

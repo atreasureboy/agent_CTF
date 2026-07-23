@@ -120,12 +120,12 @@ export class HandoffCoordinator {
       status: 'requested',
       createdAt: Date.now(),
     }
-    this.deps.store.apply({ type: 'HANDOFF_REQUESTED', handoff: record })
+    this.tryApply({ type: 'HANDOFF_REQUESTED', handoff: record })
     return record
   }
 
   reject(handoffId: string, reason: string): void {
-    this.deps.store.apply({ type: 'HANDOFF_REJECTED', handoffId, reason })
+    this.tryApply({ type: 'HANDOFF_REJECTED', handoffId, reason })
   }
 
   cancel(handoffId: string, reason: string): void {
@@ -210,7 +210,7 @@ export class HandoffCoordinator {
       // §十一.1 — selection failure is a HANDOFF_FAILED stage='selection'
       // event, NOT a SPECIALIST_FAILED with empty agentRunId. This avoids
       // creating a phantom empty AgentRun record.
-      this.deps.store.apply({
+      this.tryApply({
         type: 'HANDOFF_FAILED',
         handoffId,
         stage: 'selection',
@@ -219,7 +219,7 @@ export class HandoffCoordinator {
       return null
     }
 
-    this.deps.store.apply({
+    this.tryApply({
       type: 'HANDOFF_APPROVED',
       handoffId,
       selectedAgentId: selection.agentId,
@@ -321,7 +321,7 @@ export class HandoffCoordinator {
     const profile = resolveProfile(agentId)
     if (!profile) {
       const err = `No profile for agent "${agentId}"`
-      this.deps.store.apply({
+      this.tryApply({
         type: 'SPECIALIST_FAILED',
         handoffId,
         agentRunId: '',
@@ -371,8 +371,8 @@ export class HandoffCoordinator {
       producedFindingIds: [],
       producedArtifactIds: [],
     }
-    this.deps.store.apply({ type: 'AGENT_RUN_STARTED', agentRun })
-    this.deps.store.apply({
+    this.tryApply({ type: 'AGENT_RUN_STARTED', agentRun })
+    this.tryApply({
       type: 'SPECIALIST_STARTED',
       handoffId,
       agentRun: { ...agentRun, status: 'running' },
@@ -441,16 +441,16 @@ export class HandoffCoordinator {
         handoffId,
         agentRunId,
       })
-      for (const ev of projection.events) this.deps.store.apply(ev)
+      for (const ev of projection.events) this.tryApply(ev)
       const summary = `inherited ${handoffRec.findingIds.length} findings, ${handoffRec.artifactIds.length} artifacts; produced ${projection.newFindingIds.length} findings + ${projection.newArtifactIds.length} artifacts; turn finished`
-      this.deps.store.apply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
-      this.deps.store.apply({
+      this.tryApply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
+      this.tryApply({
         type: 'AGENT_RUN_OUTPUT_RECORDED',
         agentRunId,
         producedFindingIds: projection.newFindingIds,
         producedArtifactIds: projection.newArtifactIds,
       })
-      this.deps.store.apply({
+      this.tryApply({
         type: 'SPECIALIST_COMPLETED',
         handoffId,
         agentRunId,

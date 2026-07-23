@@ -211,6 +211,80 @@ describe('ExecutionEngine runTurn — bad-args self-heal', () => {
   })
 })
 
+describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
+  // Phase 1.7 audit — `module.onToolCall(...)` and `module.onIteration(...)`
+  // hooks could crash the engine loop with an unhandled throw. The fix
+  // wraps each call in try/catch and logs to eventLog so an upstream
+  // bug never poisons the agent run.
+
+  it('onToolCall throws → engine still completes the turn', async () => {
+    const rec = makeRecordingTool()
+    const eventLog = new EventLog(workDir)
+    const faultyModule = {
+      name: 'faulty',
+      boot: () => ({}),
+      onToolCall: () => {
+        throw new Error('boom from onToolCall')
+      },
+    }
+    const config: EngineConfig = {
+      model: 'test-model',
+      apiKey: 'test-key',
+      maxIterations: 5,
+      cwd: workDir,
+      permissionMode: 'auto',
+      sessionDir: workDir,
+      eventLog,
+      extraTools: [rec.tool],
+      client: createMockClient([
+        toolCallResponse([{ name: 'Recorder', arguments: { input: 'x' } }]),
+        textResponse('done'),
+      ]),
+    }
+    const engine = new ExecutionEngine(config, new Renderer())
+    // Register the faulty module directly on the engine.
+    ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]
+    const { result } = await engine.runTurn('do it', [])
+    expect(result.reason).toBe('stop_sequence')
+    expect(rec.calls).toHaveLength(1)
+    const errs = eventLog
+      .readAll()
+      .filter((e) => e.type === 'module_error' && (e.detail as { hook?: string }).hook === 'onToolCall')
+    expect(errs.length).toBeGreaterThan(0)
+    expect(String(errs[0].detail.error)).toContain('boom from onToolCall')
+  })
+
+  it('onIteration throws → engine still completes the turn', async () => {
+    const eventLog = new EventLog(workDir)
+    const faultyModule = {
+      name: 'faulty-iter',
+      boot: () => ({}),
+      onIteration: () => {
+        throw new Error('iteration boom')
+      },
+    }
+    const config: EngineConfig = {
+      model: 'test-model',
+      apiKey: 'test-key',
+      maxIterations: 5,
+      cwd: workDir,
+      permissionMode: 'auto',
+      sessionDir: workDir,
+      eventLog,
+      client: createMockClient([textResponse('hello')]),
+    }
+    const engine = new ExecutionEngine(config, new Renderer())
+    ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]
+    const { result } = await engine.runTurn('go', [])
+    expect(result.reason).toBe('stop_sequence')
+    const errs = eventLog
+      .readAll()
+      .filter((e) => e.type === 'module_error' && (e.detail as { hook?: string }).hook === 'onIteration')
+    expect(errs.length).toBeGreaterThan(0)
+    expect(String(errs[0].detail.error)).toContain('iteration boom')
+  })
+})
+
 describe('ExecutionEngine runTurn — concurrency actually executes in parallel', () => {
   /** A tool that stays "active" for a few ms so we can detect execution overlap. */
   function makeOverlapTool(name: string, tracker: { active: number; max: number }): Tool {

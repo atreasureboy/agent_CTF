@@ -88,11 +88,20 @@ export class BashTool implements Tool {
       return { content: 'Error: command is required and must be a string', isError: true }
     }
 
-    // Surface the LLM-supplied description (now actually used; was silently
-    // dropped pre-audit). Without a renderer wired we just acknowledge it via
-    // the structured ToolResult prefix so observability consumers see the
-    // intent. Renderer hookup is intentionally out-of-scope here.
-    void description
+    // Surface the LLM-supplied description (Phase 1.7 audit — was
+    // silently dropped before). When the Broker wired an eventLog, we
+    // record the intent so audit consumers can correlate the command
+    // with the model's rationale. Renderer hookup is intentionally
+    // out-of-scope here (the existing observer surface remains the
+    // eventLog + ToolResult).
+    if (description) {
+      const ev = (context as unknown as { __ctf?: { eventLog?: { append: (type: string, source: string, detail: Record<string, unknown>) => unknown } } }).__ctf?.eventLog
+      ev?.append('tool_call', 'Bash', {
+        tool: 'Bash',
+        description,
+        intent: description,
+      })
+    }
 
     // ── CapabilityProfile + ContestScope short-circuit ─────────────────
     // The CTF Harness injects `__ctf` into ToolContext via the ToolBroker.

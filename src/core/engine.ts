@@ -389,6 +389,24 @@ export class ExecutionEngine {
     }
   }
 
+  private runOnContextOverflowHook(
+    tokensBefore: number,
+    tokensAfter: number,
+  ): void {
+    if (!this.config.hookRunner?.runOnContextOverflow) return
+    try {
+      this.config.hookRunner.runOnContextOverflow(tokensBefore, tokensAfter)
+    } catch (err) {
+      this.eventLog?.append('error', 'hookRunner', {
+        hook: 'OnContextOverflow',
+        stage: 'onContextOverflow',
+        error: (err as Error).message,
+        tokens_before: tokensBefore,
+        tokens_after: tokensAfter,
+      })
+    }
+  }
+
   /** Translate an aborted signal's reason to a TurnResult reason. */
   private abortReasonFromSignal(
     signal: AbortSignal,
@@ -439,8 +457,9 @@ export class ExecutionEngine {
           tokens_after: compactResult.summaryTokens,
           reduction: compactResult.originalTokens - compactResult.summaryTokens,
         })
-        // Lifecycle hook: OnContextOverflow
-        this.config.hookRunner?.runOnContextOverflow?.(
+        // Lifecycle hook: OnContextOverflow. Wrap so a buggy hook cannot
+        // crash the engine loop mid-compaction.
+        this.runOnContextOverflowHook(
           compactResult.originalTokens,
           compactResult.summaryTokens,
         )
@@ -621,7 +640,16 @@ export class ExecutionEngine {
       })
       const out: ToolResult = brokerResult.result
       for (const module of this.modules) {
-        module.onToolCall?.(toolName, input, out, turnNumber)
+        try {
+          module.onToolCall?.(toolName, input, out, turnNumber)
+        } catch (err) {
+          this.eventLog?.append('module_error', module.name, {
+            hook: 'onToolCall',
+            tool: toolName,
+            stage: 'post',
+            error: (err as Error).message,
+          })
+        }
       }
       return out
     }
@@ -651,9 +679,19 @@ export class ExecutionEngine {
 
     const result = await tool.execute(input, context)
 
-    // Notify modules of tool execution (e.g. episodic memory write)
+    // Notify modules of tool execution (e.g. episodic memory write).
+    // Wrap each call so a buggy module hook cannot poison the engine loop.
     for (const module of this.modules) {
-      module.onToolCall?.(toolName, input, result, turnNumber)
+      try {
+        module.onToolCall?.(toolName, input, result, turnNumber)
+      } catch (err) {
+        this.eventLog?.append('module_error', module.name, {
+          hook: 'onToolCall',
+          tool: toolName,
+          stage: 'post',
+          error: (err as Error).message,
+        })
+      }
     }
 
     return result
@@ -933,15 +971,26 @@ export class ExecutionEngine {
         // Context budget + auto-compact
         await this.evaluateContextBudget(messages, turnAbortController.signal)
 
-        // Module iteration hooks (critic, etc.)
+        // Module iteration hooks (critic, etc.). Wrap each call so a
+        // buggy module hook cannot crash the engine loop.
         for (const module of this.modules) {
           if (!module.onIteration) continue
-          const iterResult = await module.onIteration({
-            iteration: iterations,
-            messages,
-            abortSignal: turnAbortController.signal,
-            eventLog: this.eventLog,
-          })
+          let iterResult: Awaited<ReturnType<NonNullable<AgentModule['onIteration']>>> | undefined
+          try {
+            iterResult = await module.onIteration({
+              iteration: iterations,
+              messages,
+              abortSignal: turnAbortController.signal,
+              eventLog: this.eventLog,
+            })
+          } catch (err) {
+            this.eventLog?.append('module_error', module.name, {
+              hook: 'onIteration',
+              iteration: iterations,
+              error: (err as Error).message,
+            })
+            continue
+          }
           if (iterResult?.injectMessage) {
             const msg = iterResult.injectMessage
             this.renderer.warn(`[${module.name}] ${msg.split('\n')[0]}`)

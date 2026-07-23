@@ -5,16 +5,40 @@
  *   const registry = new ModuleRegistry()
  *   registry.register('memory', (ctx) => new MemoryModule(ctx.config.semanticMemory!, ...))
  *   const modules = registry.resolve(['memory', 'critic'], moduleCtx)
+ *
+ * Resolution order is "leaves → right":
+ *   - A module's declared `dependencies` are resolved (and pushed onto
+ *     the resolved list) BEFORE the module itself is constructed.
+ *   - To resolve dependencies before constructing the consumer, callers
+ *     should declare dependencies via `registerWithDeps(name, deps, factory)`.
+ *     The fallback path (legacy `register(name, factory)`) reads deps
+ *     from the constructed module's `dependencies` field — order is
+ *     still correct (deps appear before the consumer in the resolved
+ *     list) but the consumer's constructor runs before the deps' ctors.
  */
 
 import type { AgentModule, ModuleFactory, ModuleContext } from './module.js'
 
 export class ModuleRegistry {
   private factories = new Map<string, ModuleFactory>()
+  private declaredDeps = new Map<string, string[]>()
 
   /** Register a module factory by name */
   register(name: string, factory: ModuleFactory): void {
     this.factories.set(name, factory)
+  }
+
+  /**
+   * Register a module factory with pre-declared dependencies. The registry
+   * resolves dependencies BEFORE invoking the factory so a module whose
+   * constructor consults sibling modules' state observes the correct order.
+   *
+   * The module's `dependencies` field, if set, is still respected when this
+   * overload is used (the union of declared deps + module-level deps).
+   */
+  registerWithDeps(name: string, deps: string[], factory: ModuleFactory): void {
+    this.factories.set(name, factory)
+    this.declaredDeps.set(name, deps)
   }
 
   /** Check if a module is registered */
@@ -54,11 +78,24 @@ export class ModuleRegistry {
         return
       }
 
+      // Pre-declared deps (from registerWithDeps) are resolved BEFORE the
+      // factory runs so the consumer module's constructor observes the
+      // correct resolution order. Module.dependencies (post-construction) is
+      // still respected for the legacy `register(name, factory)` path.
+      const preDeps = this.declaredDeps.get(name) ?? []
+
       inProgress.add(name)
+      // Resolve pre-declared deps first (leaves → right)
+      for (const dep of preDeps) {
+        resolveOne(dep, [...chain, name])
+      }
+
       const module = factory(ctx)
 
-      // Resolve dependencies first
+      // Resolve the module's own declared dependencies (legacy path). The
+      // push order remains correct: deps are pushed before the consumer.
       for (const dep of module.dependencies ?? []) {
+        if (seen.has(dep) || preDeps.includes(dep)) continue
         resolveOne(dep, [...chain, name])
       }
 

@@ -80,6 +80,18 @@ describe('SemanticMemory', () => {
     expect(mem2.readAll()).toHaveLength(1)
     expect(mem2.readAll()[0].content).toBe('persisted entry')
   })
+
+  it('updates use atomic persistAll (no temp file left behind)', () => {
+    // Phase 1.7 audit — duplicate source-priority case triggers persistAll.
+    // After the rewrite the temp file must be renamed away.
+    mem.write({ content: 'override target', tags: [], source: 'agent_inferred', confidence: 0.5, timestamp: '' })
+    mem.write({ content: 'override target', tags: [], source: 'user_stated', confidence: 0.9, timestamp: '' })
+    const fs = require('fs') as typeof import('fs')
+    const tmpFiles = fs.readdirSync(join(tmpDir, 'memory')).filter((f) => f.startsWith('semantic.jsonl.tmp.'))
+    expect(tmpFiles).toEqual([])
+    expect(mem.readAll()).toHaveLength(1)
+    expect(mem.readAll()[0].source).toBe('user_stated')
+  })
 })
 
 // ── EpisodicMemory ───────────────────────────────────────────────────────────
@@ -118,6 +130,21 @@ describe('EpisodicMemory', () => {
       mem.write({ turn: i, toolName: 'Bash', inputSummary: '', resultSummary: '', outcome: 'success', timestamp: '' })
     }
     expect(mem.recent(5)).toHaveLength(5)
+  })
+
+  it('survives a partial trailing line on the next write (atomic-recover)', () => {
+    // Audit P0 deferred — Phase 1.7 audit documented that a mid-write crash
+    // left a half-written line. Atomic write + trim-partial must drop the
+    // dangling line and keep going.
+    const fs = require('fs') as typeof import('fs')
+    const filePath = join(tmpDir, 'memory', 'episodes.jsonl')
+    mem.write({ turn: 1, toolName: 'Bash', inputSummary: 'a', resultSummary: 'b', outcome: 'success', timestamp: '' })
+    fs.appendFileSync(filePath, '{"id":"epi_partial","turn":2,"toolName":"Bash",') // dangling
+    mem.write({ turn: 3, toolName: 'Bash', inputSummary: 'c', resultSummary: 'd', outcome: 'success', timestamp: '' })
+    const all = mem.readAll()
+    // Both valid entries survive; the dangling partial line is dropped.
+    expect(all.length).toBe(2)
+    expect(all.map((e) => e.turn).sort()).toEqual([1, 3])
   })
 })
 
@@ -188,5 +215,41 @@ describe('ModuleRegistry', () => {
     reg.register('a', () => makeModule('a'))
     expect(reg.has('a')).toBe(true)
     expect(reg.has('b')).toBe(false)
+  })
+
+  it('registerWithDeps resolves dependencies before factory runs', () => {
+    // Capture the order of factory invocations and module push order.
+    const calls: string[] = []
+    const reg = new ModuleRegistry()
+    // `child` declares `parent` as a pre-declared dep. The factory must
+    // observe that `parent` has already been constructed even though the
+    // factory has no `dependencies` field on the returned module.
+    reg.registerWithDeps('child', ['parent'], () => {
+      calls.push(`child:factory`)
+      return {
+        name: 'child',
+        boot: (): ModuleBootResult => {
+          calls.push(`child:boot`)
+          return {}
+        },
+      }
+    })
+    reg.register('parent', () => {
+      calls.push(`parent:factory`)
+      return {
+        name: 'parent',
+        boot: (): ModuleBootResult => {
+          calls.push(`parent:boot`)
+          return {}
+        },
+      }
+    })
+    const modules = reg.resolve(['child'], makeCtx())
+    expect(modules.map((m) => m.name)).toEqual(['parent', 'child'])
+    // The pre-declared dep must be resolved BEFORE the factory is called.
+    // The factory shouldn't have to call `module.dependencies` to claim deps.
+    const parentFactoryIdx = calls.indexOf('parent:factory')
+    const childFactoryIdx = calls.indexOf('child:factory')
+    expect(parentFactoryIdx).toBeLessThan(childFactoryIdx)
   })
 })
