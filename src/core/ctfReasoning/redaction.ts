@@ -7,11 +7,11 @@
  */
 
 const PATTERNS: Array<{ re: RegExp; label: string }> = [
-  // AWS access key id
-  { re: /\bAKIA[0-9A-Z]{16}\b/g, label: 'aws_access_key_id' },
+  // AWS access key id (long-term) + ASIA STS temporary credentials.
+  { re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, label: 'aws_access_key_id' },
   // GitHub tokens
   { re: /\bghp_[A-Za-z0-9]{36}\b/g, label: 'github_pat' },
-  { re: /\bgh[osu]_[A-Za-z0-9]{36,}\b/g, label: 'github_token' },
+  { re: /gh[opsu]_[A-Za-z0-9]{36,}/g, label: 'github_token' },
   // Slack
   { re: /\bxox[baprs]-[A-Za-z0-9-]+\b/g, label: 'slack_token' },
   // JWT (header.payload.signature)
@@ -20,8 +20,9 @@ const PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, label: 'pem_private_key' },
   // password= / token= assignments
   { re: /\b(password|passwd|token|api[_-]?key|secret|signature)\s*=\s*([^\s&"']+)/gi, label: 'kv_secret' },
-  // Authorization: Bearer ...
-  { re: /(Authorization:\s*Bearer\s+)([A-Za-z0-9_.-]+)/gi, label: 'bearer_token' },
+  // Authorization: Bearer ... — stop at trailing punctuation by
+  // excluding `.` and only matching word chars + `-` + `_`.
+  { re: /(Authorization:\s*Bearer\s+)([A-Za-z0-9_-]+)/gi, label: 'bearer_token' },
 ]
 
 const REDACTED = '<redacted>'

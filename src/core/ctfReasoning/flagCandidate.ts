@@ -31,7 +31,7 @@ export function buildFlagCandidateId(): string {
  *  ASCII letters, drop zero-width chars. */
 export function normalizeFlagValue(v: string): string {
   return v
-    .replace(/[​-‍﻿]/g, '')
+    .replace(/[​‌‍﻿]/g, '')
     .trim()
 }
 

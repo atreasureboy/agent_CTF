@@ -112,18 +112,33 @@ export class CTFTaskStateStore {
         )
       }
     } else if (this.state.completion) {
-      // §round-2 audit fix — include the _UPDATED bookkeeping events so
-      // post-completion reflection / audit code can update hypothesis
-      // fields, attempt summaries, and job records without tripping the
-      // TaskAlreadyCompletedError guard.
+      // §round-4 audit fix — post-completion reflection / audit
+      // code applies these events. The FSM-changing events
+      // (WORKFLOW_*, HANDOFF_*, SPECIALIST_*, AGENT_RUN_*,
+      // PHASE_CHANGED, PROFILE_CHANGED, CONTEXT_REPLACED,
+      // ONESHOT_RUN_*, TASK_COMPLETED, ATTEMPT_RECORDED,
+      // JOB_RECORDED) remain blocked — they would add new mutable
+      // records to the state, which contradicts §六.4.
       const bookkeepingOnly: CTFTaskEvent['type'][] = [
         'FINDING_ADDED',
         'ARTIFACT_ADDED',
         'FLAG_CANDIDATE_ADDED',
         'HYPOTHESIS_ADDED',
         'HYPOTHESIS_UPDATED',
+        'HYPOTHESIS_STATUS_CHANGED',
         'ATTEMPT_UPDATED',
+        'ATTEMPT_COMPLETED',
+        'ATTEMPT_FAILED',
+        'ATTEMPT_CANCELLED',
+        'ATTEMPT_SKIPPED',
         'JOB_UPDATED',
+        'OBSERVATION_ADDED',
+        'EVIDENCE_ADDED',
+        'EVIDENCE_MERGED',
+        'STRATEGY_DECISION_RECORDED',
+        'FLAG_CANDIDATE_DETECTED',
+        'FLAG_CANDIDATE_VALIDATED',
+        'FLAG_CANDIDATE_REJECTED',
       ]
       if (!bookkeepingOnly.includes(event.type)) {
         throw new TaskAlreadyCompletedError(
@@ -454,6 +469,22 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         inconclusive: ['testing'],
         supported: [], // terminal — new evidence creates a revision
         rejected: [],  // terminal — new evidence creates a revision
+      }
+      // §round-4 audit fix — also verify the current status matches
+      // `event.from`. Stale or out-of-order events whose `from` field
+      // is a legal predecessor of `to` would otherwise pass the
+      // guard and silently regress terminal states (e.g. supported
+      // → testing).
+      const target = state.hypotheses.find((h) => h.id === event.hypothesisId)
+      if (!target) {
+        throw new UnknownHypothesisError(`Hypothesis ${event.hypothesisId} not found`)
+      }
+      if (target.status !== event.from) {
+        // Idempotent: if the target is already in `to`, no-op.
+        if (target.status === event.to) return state
+        throw new TaskStateStoreError(
+          `Hypothesis ${event.hypothesisId} expected from=${event.from} but is ${target.status}`,
+        )
       }
       if (!allowed[event.from].includes(event.to)) {
         throw new TaskStateStoreError(

@@ -23,14 +23,29 @@ const MAGIC: Array<{ magic: number[]; label: string }> = [
 ]
 
 function detectFromHex(hex: string): string | null {
-  const bytes = hex.trim().split(/\s+/).map((b) => Number.parseInt(b, 16)).filter((b) => Number.isFinite(b))
-  for (const m of MAGIC) {
-    if (bytes.length < m.magic.length) continue
-    let ok = true
-    for (let i = 0; i < m.magic.length; i++) {
-      if (bytes[i] !== m.magic[i]) { ok = false; break }
+  // §round-4 audit fix — xxd / hexdump output starts with an
+  // offset column (e.g. `00000000 8950 4e47 ...`). We split into
+  // rows and treat the hex bytes AFTER the offset as the magic
+  // window. The first 8 hex bytes per row are enough to identify
+  // the most common signatures.
+  const rows = hex.split(/\r?\n/)
+  for (const row of rows) {
+    // Drop optional leading offset (8-hex-digit run).
+    const offsetMatch = /^\s*([0-9a-fA-F]{6,8})?\s*(.*)$/.exec(row)
+    const body = offsetMatch?.[2] ?? row
+    // Drop ASCII column (anything after a `|` marker or run of
+    // printable ASCII at the end separated by a space).
+    const asciiSplit = body.split('|')
+    const hexSide = (asciiSplit[0] ?? body).trim()
+    const bytes = hexSide.split(/\s+/).map((b) => Number.parseInt(b, 16)).filter((b) => Number.isFinite(b))
+    for (const m of MAGIC) {
+      if (bytes.length < m.magic.length) continue
+      let ok = true
+      for (let i = 0; i < m.magic.length; i++) {
+        if (bytes[i] !== m.magic[i]) { ok = false; break }
+      }
+      if (ok) return m.label
     }
-    if (ok) return m.label
   }
   return null
 }

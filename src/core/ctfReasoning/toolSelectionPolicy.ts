@@ -26,14 +26,21 @@ export function shouldRunTool(
   state: Readonly<CTFTaskState>,
   alternatives: SuggestedAction[] = [],
 ): ToolSelectionDecision {
-  // If a satisfied attempt exists for the same target, refuse.
+  // If a satisfied attempt exists for the same target + kind, refuse.
   const targetId = action.type === 'run_oneshot' ? action.manifestId
     : action.type === 'run_workflow' ? action.workflowId
     : action.type === 'call_tool' ? action.toolId
     : null
-  if (targetId) {
+  const expectedKind = action.type === 'run_oneshot' ? 'oneshot'
+    : action.type === 'run_workflow' ? 'workflow'
+    : action.type === 'call_tool' ? 'tool'
+    : null
+  if (targetId && expectedKind) {
+    // §round-4 audit fix — also match `kind`. A succeeded
+    // `run_workflow` with workflowId='file' previously blocked a
+    // `call_tool` with toolId='file'.
     const completed = state.attempts.find(
-      (a) => a.targetId === targetId && a.status === 'succeeded',
+      (a) => a.targetId === targetId && a.kind === expectedKind && a.status === 'succeeded',
     )
     if (completed) {
       return { allowed: false, reason: 'already_completed' }

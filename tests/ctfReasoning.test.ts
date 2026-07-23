@@ -345,7 +345,7 @@ describe('ParserRegistry', () => {
       { taskId: 't', source: { type: 'tool', toolId: 'checksec' }, content: 'RELRO:    Full RELRO\nNX:        Enabled\nPIE:       PIE enabled\n', artifactIds: [], isError: false },
     )
     const obs = r.observations.find((o) => o.kind === 'binary_protection')
-    expect(obs?.attributes?.['relro']).toBe('Full')
+    expect(obs?.attributes?.['relro']).toBe('Full RELRO')
     expect(obs?.attributes?.['nx']).toBe('Enabled')
   })
   it('encoding parser classifies base64', async () => {

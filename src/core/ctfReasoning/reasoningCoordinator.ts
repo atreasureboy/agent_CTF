@@ -63,7 +63,10 @@ export async function runStrategyCycle(
   let reason = 'no eligible action'
   // §round-3 audit fix — track in-flight attempts per cost tier so
   // the CostPolicy is actually consulted, not silently always 0/0/0.
+  // §round-4 audit fix — also include a monotonic cycle counter for
+  // stable, unique attempt ids across cycles in the same ms.
   const inFlight: { fast: number; medium: number; heavy: number } = { fast: 0, medium: 0, heavy: 0 }
+  let cycleCounter = 0
 
   for (let i = 0; i < maxCycles; i++) {
     if (options.abortSignal?.aborted) {
@@ -78,6 +81,7 @@ export async function runStrategyCycle(
       break
     }
     iterations++
+    cycleCounter++
     const decision = planStrategy({
       state: liveState,
       newObservationIds: executedObservations,
@@ -97,6 +101,12 @@ export async function runStrategyCycle(
       reason = decision.reason
       break
     }
+    // §round-4 audit fix — actually increment the in-flight counter
+    // before the runner starts, decrement in a finally. Without this
+    // the CostPolicy was always 0/0/0 and budget enforcement was
+    // silently dead.
+    const tier = selected.costTier === 'expensive' ? 'heavy' : selected.costTier === 'normal' ? 'medium' : 'fast'
+    inFlight[tier]++
     // Execute the selected action.
     const attemptBase = actionToAttempt(state, selected)
     // §round-3 audit fix — include inputArtifactIds in the fingerprint
@@ -106,7 +116,10 @@ export async function runStrategyCycle(
     const fingerprintInputArtifactIds =
       selected.type === 'run_oneshot' ? selected.inputArtifactIds : undefined
     const attempt: CTFAttempt = {
-      id: `att_${iterations}_${Date.now().toString(36)}`,
+      // §round-4 audit fix — include a per-cycle counter and a random
+      // suffix so two cycles started in the same millisecond don't
+      // produce identical attempt ids.
+      id: `att_${cycleCounter}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       taskId: options.taskId,
       ...attemptBase,
       fingerprint: createAttemptFingerprint({
@@ -118,7 +131,15 @@ export async function runStrategyCycle(
       createdAt: Date.now(),
     }
     store.apply({ type: 'ATTEMPT_STARTED', attempt })
-    const execResult = await executeSelectedAction(options, selected)
+    // §round-4 audit fix — wrap the run in try/finally so the
+    // in-flight counter is decremented on every exit path
+    // (success, error, abort, skip).
+    let execResult: Awaited<ReturnType<typeof executeSelectedAction>>
+    try {
+      execResult = await executeSelectedAction(options, selected)
+    } finally {
+      inFlight[tier]--
+    }
     if (execResult.skipped) {
       store.apply({
         type: 'ATTEMPT_SKIPPED',

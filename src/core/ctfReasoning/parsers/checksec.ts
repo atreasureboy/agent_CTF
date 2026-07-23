@@ -7,7 +7,7 @@
 
 import type { ResultParser, ParserInput, MaterializedResult } from '../parserRegistry.js'
 
-const ATTR_RE = /^\s*(RELRO|STACK CANARY|NX|PIE|RPATH|RUNPATH|FORTIFY|STRIPPED|ARCH|CANARY)\s*[:=]\s*(\S+)/i
+const ATTR_RE = /^\s*(RELRO|STACK CANARY|NX|PIE|RPATH|RUNPATH|FORTIFY|STRIPPED|ARCH|CANARY)\s*[:=]\s*(.+?)\s*$/i
 
 const ATTR_MAP: Record<string, string> = {
   RELRO: 'relro',
