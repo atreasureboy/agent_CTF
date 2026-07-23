@@ -104,12 +104,22 @@ export class ParserRegistry {
         aggregate.warnings.push(`parser ${p.id} failed: ${(err as Error).message}`)
       }
     }
-    // Always append a command_status observation from the GenericParser
-    // so downstream steps can see whether the underlying tool succeeded.
+    // §round-3 audit fix — always append a command_status observation
+    // from the GenericParser so downstream `observation_exists { kind:
+    // 'command_status' }` predicates fire on success paths too. The
+    // tool-failure Evidence still only appears in the error branch.
+    {
+      const g = await genericParser.parse(input)
+      // Avoid duplicating the command_status observation when a parser
+      // already produced one (e.g. file-parser's success path).
+      if (!aggregate.observations.some((o) => o.kind === 'command_status')) {
+        aggregate.observations.unshift(...g.observations)
+      }
+      aggregate.warnings.push(...g.warnings.filter((w) => !aggregate.warnings.includes(w)))
+    }
     if (input.isError || (typeof input.exitCode === 'number' && input.exitCode !== 0)) {
       const g = await genericParser.parse(input)
-      aggregate.observations.unshift(...g.observations)
-      aggregate.warnings.unshift(...g.warnings)
+      aggregate.evidence.push(...g.evidence)
     }
     return aggregate
   }

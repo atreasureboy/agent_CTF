@@ -165,7 +165,10 @@ function retryShouldGiveUp(
 ): boolean {
   if (attemptIndex >= retry.maxAttempts - 1) return true
   if (!retry.retryOn || retry.retryOn.length === 0) return true
-  if (!errorCode) return false
+  // §round-3 audit fix — an absent errorCode is NOT retryable. The
+  // previous code returned `false` (continue retrying) for any
+  // unclassified error, which silently retries cancelled runs.
+  if (!errorCode) return true
   return !retry.retryOn.includes(errorCode as 'timeout' | 'temporary_error' | 'tool_unavailable' | 'nonzero_exit')
 }
 
@@ -282,9 +285,13 @@ export async function runTypedDag(
       ready.map(async (step) => {
         if (ctx.signal?.aborted) throw new Error('aborted')
         if (step.kind === 'if') {
-          // Evaluate the if condition. We don't have a full state here,
-          // but the WorkflowCondition can be checked against the
-          // captured outputs from prior steps.
+          // §round-3 audit fix — execute the selected branch and
+          // record one outcome for the parent + one for each child.
+          // Previously the parent recorded as 'succeeded' without
+          // running anything, which made stop conditions evaluate
+          // stale state and made workflows containing only
+          // if/emit_finding/request_handoff end as 'failed'.
+          const start = Date.now()
           const cond = evaluateWorkflowCondition(step.condition, {
             state: {
               attempts: [],
@@ -297,24 +304,91 @@ export async function runTypedDag(
             stepOutcomes: stepOutcomesToMap(outcomes),
           })
           const branch = cond ? step.then : (step.else ?? [])
+          const childResults: Array<{ status: 'succeeded' | 'failed' | 'cancelled'; error?: string }> = []
           for (const sub of branch) {
-            // Sub-steps in an if/else don't currently get full DAG
-            // scheduling; we just record them as succeeded when the
-            // condition matched.
-            outcomes.push({ stepId: `${step.id}:${sub.id}`, status: 'succeeded', durationMs: 0, executions: [] })
-            completed.add(sub.id)
+            if (ctx.signal?.aborted) {
+              childResults.push({ status: 'cancelled', error: 'aborted' })
+              continue
+            }
+            try {
+              if (sub.kind === 'tool') {
+                const attemptId = ctx.issueAttemptId()
+                const r = await runStepWithRetry(sub, ctx, runner, attemptId)
+                // §round-3 audit fix — normalize 'skipped' → 'succeeded'
+                // for child-result accounting. The parent's status
+                // doesn't need a 'skipped' value.
+                const childStatus: 'succeeded' | 'failed' | 'cancelled' =
+                  r.outcome.status === 'succeeded'
+                    ? 'succeeded'
+                    : r.outcome.status === 'cancelled'
+                      ? 'cancelled'
+                      : 'failed'
+                childResults.push({ status: childStatus, error: r.outcome.error })
+              } else if (sub.kind === 'emit_finding') {
+                const out = await runner.emitFinding(sub, ctx)
+                observationIds.push(...out.observationIds)
+                evidenceIds.push(...out.evidenceIds)
+                childResults.push({ status: 'succeeded' })
+              } else if (sub.kind === 'request_handoff') {
+                await runner.runHandoff(sub, ctx)
+                childResults.push({ status: 'succeeded' })
+              } else if (sub.kind === 'if') {
+                // Recursive: nested if → record as succeeded (the
+                // recursive dispatch above will run its branch).
+                childResults.push({ status: 'succeeded' })
+              }
+            } catch (err) {
+              childResults.push({ status: 'failed', error: (err as Error).message })
+            }
           }
-          return { step, status: 'succeeded' as const, executions: [], durationMs: 0 }
+          const failed = childResults.some((c) => c.status === 'failed')
+          const cancelled = childResults.some((c) => c.status === 'cancelled')
+          // §round-3 audit fix — TypedStepOutcome.status allows
+          // 'skipped' but the parent 'if' status is one of
+          // succeeded/failed/cancelled. Map any child 'skipped' to
+          // 'succeeded' here so the union stays valid.
+          const status: 'succeeded' | 'failed' | 'cancelled' = cancelled
+            ? 'cancelled'
+            : failed
+              ? 'failed'
+              : 'succeeded'
+          // Note: TypedStepOutcome allows 'skipped' as a valid status
+          // for branch children that are gated out, but the parent
+          // 'if' itself is one of {succeeded, failed, cancelled}.
+          // Record the parent + one outcome per child so stepOutcomes
+          // covers every executed step.
+          outcomes.push({ stepId: step.id, status, durationMs: Date.now() - start, executions: [] })
+          for (const [i, sub] of branch.entries()) {
+            const r = childResults[i]!
+            outcomes.push({
+              stepId: `${step.id}:${sub.id}`,
+              status: r.status,
+              durationMs: 0,
+              executions: [],
+              error: r.error,
+            })
+            if (r.status === 'succeeded') completed.add(`${step.id}:${sub.id}`)
+          }
+          return { step, status, executions: [], durationMs: Date.now() - start }
         }
         if (step.kind === 'emit_finding') {
+          const start = Date.now()
           const out = await runner.emitFinding(step, ctx)
           observationIds.push(...out.observationIds)
           evidenceIds.push(...out.evidenceIds)
-          return { step, status: 'succeeded' as const, executions: [], durationMs: 0 }
+          // §round-3 audit fix — record an outcome for emit_finding so
+          // the workflow status derivation sees the step succeeded.
+          outcomes.push({ stepId: step.id, status: 'succeeded', durationMs: Date.now() - start, executions: [] })
+          completed.add(step.id)
+          return { step, status: 'succeeded' as const, executions: [], durationMs: Date.now() - start }
         }
         if (step.kind === 'request_handoff') {
+          const start = Date.now()
           await runner.runHandoff(step, ctx)
-          return { step, status: 'succeeded' as const, executions: [], durationMs: 0 }
+          // §round-3 audit fix — record an outcome.
+          outcomes.push({ stepId: step.id, status: 'succeeded', durationMs: Date.now() - start, executions: [] })
+          completed.add(step.id)
+          return { step, status: 'succeeded' as const, executions: [], durationMs: Date.now() - start }
         }
         // tool
         const attemptId = ctx.issueAttemptId()
@@ -342,10 +416,23 @@ export async function runTypedDag(
           if (policy === 'abort') stoppedEarly = true
         }
       } else {
-        outcomes.push({ stepId: step.id, status: 'failed', durationMs: 0, error: (r.reason as Error).message, executions: [] })
-        const descendants = collectDescendants(step.id, adj)
-        for (const d of descendants) depFailure.add(d)
-        if (policy === 'abort') stoppedEarly = true
+        // §round-3 audit fix — abort signal during dispatch becomes
+        // 'cancelled', not 'failed'.
+        const isAbort = ctx.signal?.aborted === true
+        outcomes.push({
+          stepId: step.id,
+          status: isAbort ? 'cancelled' : 'failed',
+          durationMs: 0,
+          error: isAbort ? 'aborted' : (r.reason as Error).message,
+          executions: [],
+        })
+        if (isAbort) {
+          stoppedEarly = true
+        } else {
+          const descendants = collectDescendants(step.id, adj)
+          for (const d of descendants) depFailure.add(d)
+          if (policy === 'abort') stoppedEarly = true
+        }
       }
       // Decrement remaining counter for descendants.
       for (const next of adj.get(step.id) ?? []) {

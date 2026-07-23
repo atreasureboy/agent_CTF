@@ -197,11 +197,17 @@ describe('FlagDetector / Validator', () => {
     expect(r.detected).toBe(false)
   })
   it('validator: requires all three gates', () => {
-    const v = validateFlag({ pattern: 'flag\\{[^}]+\\}', provenanceComplete: true, sourceArtifactExists: true, locallyVerified: true })
+    const v = validateFlag({ pattern: 'flag\\{[^}]+\\}', candidate: 'flag{ok}', provenanceComplete: true, sourceArtifactExists: true, locallyVerified: true })
     expect(v.validated).toBe(true)
-    const v2 = validateFlag({ pattern: 'flag\\{[^}]+\\}', provenanceComplete: false, sourceArtifactExists: true, locallyVerified: true })
+    const v2 = validateFlag({ pattern: 'flag\\{[^}]+\\}', candidate: 'flag{ok}', provenanceComplete: false, sourceArtifactExists: true, locallyVerified: true })
     expect(v2.validated).toBe(false)
     expect(v2.errors).toContain('provenance incomplete')
+  })
+
+  it('validator: pattern mismatch flags an error', () => {
+    const v = validateFlag({ pattern: 'ctf\\{[^}]+\\}', candidate: 'flag{ok}', provenanceComplete: true, sourceArtifactExists: true, locallyVerified: true })
+    expect(v.validated).toBe(false)
+    expect(v.errors).toContain('pattern mismatch')
   })
 })
 
@@ -338,7 +344,7 @@ describe('ParserRegistry', () => {
       { toolId: 'checksec' },
       { taskId: 't', source: { type: 'tool', toolId: 'checksec' }, content: 'RELRO:    Full RELRO\nNX:        Enabled\nPIE:       PIE enabled\n', artifactIds: [], isError: false },
     )
-    const obs = r.observations[0]
+    const obs = r.observations.find((o) => o.kind === 'binary_protection')
     expect(obs?.attributes?.['relro']).toBe('Full')
     expect(obs?.attributes?.['nx']).toBe('Enabled')
   })
@@ -347,7 +353,7 @@ describe('ParserRegistry', () => {
       { toolId: 'encoding-detect' },
       { taskId: 't', source: { type: 'tool', toolId: 'encoding-detect' }, content: 'SGVsbG8gd29ybGQ=', artifactIds: [], isError: false },
     )
-    expect(r.observations[0]?.attributes?.['codec']).toBe('base64')
+    expect(r.observations.find((o) => o.kind === 'encoding_result')?.attributes?.['codec']).toBe('base64')
   })
   it('exiftool flags long fields', async () => {
     const longVal = 'x'.repeat(500)
@@ -362,7 +368,7 @@ describe('ParserRegistry', () => {
       { toolId: 'hex' },
       { taskId: 't', source: { type: 'tool', toolId: 'hex' }, content: '89 50 4e 47 0d 0a 1a 0a', artifactIds: [], isError: false },
     )
-    expect(r.observations[0]?.summary).toBe('PNG')
+    expect(r.observations.find((o) => o.kind === 'file_magic')?.summary).toBe('PNG')
   })
   it('generic parser handles arbitrary input', async () => {
     const r = await materializeViaRegistry(

@@ -6,6 +6,7 @@
  */
 
 import type { ResultParser, ParserInput, MaterializedResult } from '../parserRegistry.js'
+import { redactSecrets } from '../redaction.js'
 
 const SUSPECT_KEYS = ['Comment', 'Description', 'UserComment', 'Software', 'Author', 'Creator', 'Artist', 'Copyright']
 const LONG_VALUE_THRESHOLD = 256
@@ -50,13 +51,14 @@ export const exifToolParser: ResultParser = {
       }
     }
     for (const s of suspect) {
+      const safeValue = redactSecrets(s.value)
       observations.push({
         kind: 'metadata',
         source: input.source,
-        summary: `${s.key}: ${s.value.slice(0, 80)}`,
+        summary: redactSecrets(`${s.key}: ${s.value.slice(0, 80)}`),
         attributes: { key: s.key, valueLength: s.value.length },
         confidence: 0.6,
-        rawExcerpt: s.value.slice(0, 512),
+        rawExcerpt: safeValue.slice(0, 512),
       })
       if (s.value.length > LONG_VALUE_THRESHOLD) {
         evidence.push({

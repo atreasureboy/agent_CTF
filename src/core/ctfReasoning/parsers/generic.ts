@@ -7,9 +7,14 @@
  *   - tool_unavailable / tool_failure Evidence on error paths
  *
  * Never produces high-confidence Evidence or FlagCandidate.
+ *
+ * §round-3 audit fix — every observable string is run through
+ * `redactSecrets` so we never echo API keys, GitHub PATs, JWTs, or
+ * PEM blocks into the LLM context.
  */
 
 import type { ResultParser, ParserInput, MaterializedResult } from '../parserRegistry.js'
+import { redactSecrets } from '../redaction.js'
 
 const MAX_PREVIEW_BYTES = 2048
 
@@ -43,20 +48,23 @@ export const genericParser: ResultParser = {
       if (input.content.length > MAX_PREVIEW_BYTES) {
         warnings.push(`generic: preview truncated from ${input.content.length} to ${MAX_PREVIEW_BYTES} bytes`)
       }
+      // §round-3 audit fix — redact secrets before exposing the preview.
+      const safePreview = redactSecrets(preview)
       observations.push({
         kind: 'printable_text',
         source: input.source,
-        summary: preview.split('\n')[0]?.slice(0, 200) ?? '',
-        attributes: { previewLength: preview.length },
-        rawExcerpt: preview,
+        summary: safePreview.split('\n')[0]?.slice(0, 200) ?? '',
+        attributes: { previewLength: safePreview.length },
+        rawExcerpt: safePreview,
         confidence: 0.3,
       })
     }
 
     if (input.isError || exitCode !== 0) {
+      const toolLabel = input.source.toolId ?? input.source.workflowId ?? 'tool'
       evidence.push({
         kind: input.isError ? 'tool_failure' : 'tool_unavailable',
-        claim: `${input.source.toolId ?? input.source.workflowId ?? 'tool'} exit=${exitCode}`,
+        claim: redactSecrets(`${toolLabel} exit=${exitCode}`),
         confidence: 0.5,
         producer: { type: 'parser', id: 'generic' },
         polarity: 'neutral',

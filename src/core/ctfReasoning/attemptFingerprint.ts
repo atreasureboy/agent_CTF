@@ -26,13 +26,27 @@ function redactValue(v: unknown): unknown {
   return '<redacted>'
 }
 
+function normalizeValue(v: unknown): unknown {
+  if (v === null || v === undefined) return v
+  if (Array.isArray(v)) {
+    // Arrays: preserve order for ordered semantics; for set-like
+    // arrays (e.g. artifactIds) the caller passes already-sorted
+    // arrays. We map elements but do NOT sort the array itself.
+    return v.map(normalizeValue)
+  }
+  if (typeof v === 'object') {
+    return normalizeObject(v as Record<string, unknown>)
+  }
+  return v
+}
+
 function normalizeObject(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key of Object.keys(obj).sort()) {
     if (SENSITIVE_KEY_RE.test(key)) {
       out[key] = redactValue(obj[key])
     } else {
-      out[key] = obj[key]
+      out[key] = normalizeValue(obj[key])
     }
   }
   return out

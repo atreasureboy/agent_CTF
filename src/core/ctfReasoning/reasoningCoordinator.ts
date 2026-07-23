@@ -61,6 +61,9 @@ export async function runStrategyCycle(
   let actions = suggestedActions
   let stopped = false
   let reason = 'no eligible action'
+  // §round-3 audit fix — track in-flight attempts per cost tier so
+  // the CostPolicy is actually consulted, not silently always 0/0/0.
+  const inFlight: { fast: number; medium: number; heavy: number } = { fast: 0, medium: 0, heavy: 0 }
 
   for (let i = 0; i < maxCycles; i++) {
     if (options.abortSignal?.aborted) {
@@ -82,7 +85,7 @@ export async function runStrategyCycle(
       suggestedActions: actions,
       cost: {
         limits: options.budgetLimits,
-        currentSpend: { fast: 0, medium: 0, heavy: 0 },
+        currentSpend: { ...inFlight },
         heavyApproved: options.heavyApproved,
         taskTerminal: false,
       },
@@ -96,6 +99,12 @@ export async function runStrategyCycle(
     }
     // Execute the selected action.
     const attemptBase = actionToAttempt(state, selected)
+    // §round-3 audit fix — include inputArtifactIds in the fingerprint
+    // so the coordinator's persisted Attempt matches the planner's
+    // dedup check. Without this, equivalent actions would not be
+    // recognised as duplicates across cycles.
+    const fingerprintInputArtifactIds =
+      selected.type === 'run_oneshot' ? selected.inputArtifactIds : undefined
     const attempt: CTFAttempt = {
       id: `att_${iterations}_${Date.now().toString(36)}`,
       taskId: options.taskId,
@@ -104,7 +113,7 @@ export async function runStrategyCycle(
         kind: attemptBase.kind,
         targetId: attemptBase.targetId,
         parameters: attemptBase.input,
-        inputArtifactIds: undefined,
+        inputArtifactIds: fingerprintInputArtifactIds,
       }),
       createdAt: Date.now(),
     }

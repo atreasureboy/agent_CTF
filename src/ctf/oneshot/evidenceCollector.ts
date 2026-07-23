@@ -97,15 +97,28 @@ export async function collectEvidence(
   if (!existsSync(item.srcPath)) {
     throw new Error(`evidence source missing: ${item.srcPath}`)
   }
-  // §round-2 audit fix — containment check uses the contest boundary
-  // (`allowedFilesRoot`) when supplied; otherwise falls back to
-  // `workspaceDir`. The narrowest of the two is the effective root.
-  const realSrc = await fsp.realpath(item.srcPath)
-  const candidateRoots = [
-    await fsp.realpath(workspaceDir).catch(() => workspaceDir),
-  ]
+  // §round-3 audit fix — on realpath failure (workspace removed,
+  // symlink loop, race), REFUSE explicitly. The previous code
+  // silently disabled containment by comparing a resolved path
+  // against an unresolved root.
+  let realSrc: string
+  try {
+    realSrc = await fsp.realpath(item.srcPath)
+  } catch (err) {
+    throw new Error(`evidence source unresolvable: ${(err as Error).message}`)
+  }
+  const candidateRoots: string[] = []
+  try {
+    candidateRoots.push(await fsp.realpath(workspaceDir))
+  } catch (err) {
+    throw new Error(`workspace unresolvable: ${(err as Error).message}`)
+  }
   if (allowedFilesRoot) {
-    candidateRoots.push(await fsp.realpath(allowedFilesRoot).catch(() => allowedFilesRoot))
+    try {
+      candidateRoots.push(await fsp.realpath(allowedFilesRoot))
+    } catch (err) {
+      throw new Error(`allowedFilesRoot unresolvable: ${(err as Error).message}`)
+    }
   }
   // Pick the longest realpath — that's the most specific boundary.
   const realRoot = candidateRoots.sort((a, b) => b.length - a.length)[0] ?? workspaceDir

@@ -60,6 +60,10 @@ export function detectFlag(input: FlagDetectionInput): FlagDetectionResult {
 
 export interface FlagValidationInput {
   pattern: string
+  /** The actual candidate value to test the pattern against. §round-3
+   *  audit fix — without this, `patternMatched` was a smoke test of
+   *  the regex against its own pattern string, not the candidate. */
+  candidate: string
   provenanceComplete: boolean
   sourceArtifactExists: boolean
   locallyVerified?: boolean
@@ -76,12 +80,12 @@ export function validateFlag(input: FlagValidationInput): FlagValidationResult {
   const errors: string[] = []
   let patternMatched = false
   try {
-    patternMatched = new RegExp(input.pattern, 'i').test(input.pattern)
+    // §round-3 audit fix — apply the pattern to the actual candidate.
+    patternMatched = new RegExp(input.pattern, 'i').test(input.candidate)
   } catch {
     errors.push('invalid pattern')
   }
-  // self-check: the pattern must be reachable. We treat this as a smoke
-  // test only — real pattern is applied against the candidate.
+  if (!patternMatched) errors.push('pattern mismatch')
   if (!input.provenanceComplete) errors.push('provenance incomplete')
   if (!input.sourceArtifactExists) errors.push('source artifact missing')
   const locallyVerified = input.locallyVerified ?? errors.length === 0

@@ -57,27 +57,21 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
       if (!cand) reasons.push('missing_input')
     }
     if (action.type === 'run_oneshot' || action.type === 'run_workflow' || action.type === 'call_tool') {
-      const fingerprint = createAttemptFingerprint({
-        kind: action.type === 'run_oneshot' ? 'oneshot' : action.type === 'run_workflow' ? 'workflow' : 'tool',
-        targetId: action.type === 'run_oneshot' ? action.manifestId : action.type === 'run_workflow' ? action.workflowId : action.toolId,
-        parameters: action.type === 'run_oneshot'
-          ? { options: action.options ?? {} }
-          : action.type === 'run_workflow'
-            ? { inputs: action.inputs }
-            : { input: action.input },
-        inputArtifactIds: action.type === 'run_oneshot' ? action.inputArtifactIds : undefined,
-      })
+      // §round-3 audit fix — same parameters + same targetId must
+      // hash to the same fingerprint regardless of how the planner
+      // builds the object. We extract a single canonical descriptor
+      // here and reuse it for both the dedup check and the hash.
+      const kind = action.type === 'run_oneshot' ? 'oneshot' : action.type === 'run_workflow' ? 'workflow' : 'tool'
+      const targetId = action.type === 'run_oneshot' ? action.manifestId : action.type === 'run_workflow' ? action.workflowId : action.toolId
+      const parameters = action.type === 'run_oneshot'
+        ? { options: action.options ?? {} }
+        : action.type === 'run_workflow'
+          ? { inputs: action.inputs }
+          : { input: action.input }
+      const inputArtifactIds = action.type === 'run_oneshot' ? action.inputArtifactIds : undefined
+      const fingerprint = createAttemptFingerprint({ kind, targetId, parameters, inputArtifactIds })
       const decision = dedup.check(
-        {
-          kind: action.type === 'run_oneshot' ? 'oneshot' : action.type === 'run_workflow' ? 'workflow' : 'tool',
-          targetId: action.type === 'run_oneshot' ? action.manifestId : action.type === 'run_workflow' ? action.workflowId : action.toolId,
-          input: action.type === 'run_oneshot'
-            ? { options: action.options ?? {} }
-            : action.type === 'run_workflow'
-              ? { inputs: action.inputs }
-              : { input: action.input },
-          inputArtifactIds: action.type === 'run_oneshot' ? action.inputArtifactIds : undefined,
-        },
+        { kind, targetId, input: parameters, inputArtifactIds },
         input.state,
       )
       if (!decision.allowed && !decision.overrideRecorded) {

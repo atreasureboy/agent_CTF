@@ -67,12 +67,16 @@ export const zstegParser: ResultParser = {
       }
       if (value.length >= 8 && /^[A-Za-z0-9 _.,!?'"-]+$/.test(value)) {
         highQuality++
+        // §round-3 audit fix — confidence 0.4 (was 0.7). The
+        // text-only check is too lenient; high confidence must
+        // come from a flag-like detection or a real flag candidate.
+        const isFlag = detectFlagLike(value)
         observations.push({
           kind: 'printable_text',
           source: input.source,
           summary: `zsteg ${channel} ${kind}: ${value.slice(0, 80)}`,
           attributes: { channel, kind, value },
-          confidence: 0.7,
+          confidence: isFlag ? 0.8 : 0.4,
         })
         const flag = detectFlagLike(value)
         if (flag) {

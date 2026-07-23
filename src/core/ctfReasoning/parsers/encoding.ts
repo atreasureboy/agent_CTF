@@ -34,7 +34,18 @@ function classify(s: string): string | null {
   }
   if (RE.base85.test(s)) return 'base85'
   if (RE.urlEnc.test(s)) return 'url'
-  if (RE.rot13.test(s) && s.length > 8) return 'rot13'
+  // §round-3 audit fix — rot13 is too permissive: any long English
+  // sentence matches. Require absence of common English digraphs
+  // (th, he, in, er, an, re) before flagging, AND require the
+  // candidate to NOT contain a flag-like value.
+  if (RE.rot13.test(s) && s.length > 12 && !/flag\{|ctf\{|flag=|ctf=/i.test(s)) {
+    const lower = s.toLowerCase()
+    const englishDigraphs = ['th', 'he', 'in', 'er', 'an', 're', 'on', 'at', 'es', 'or', 'te', 'of']
+    let englishHits = 0
+    for (const dg of englishDigraphs) if (lower.includes(dg)) englishHits++
+    // If 2+ English digraphs appear, it's likely English, not rot13.
+    if (englishHits < 2) return 'rot13'
+  }
   return null
 }
 
@@ -69,12 +80,12 @@ export const encodingParser: ResultParser = {
         source: input.source,
         summary: `looks like ${codec}`,
         attributes: { codec },
-        confidence: 0.7,
+        confidence: 0.5,
       }],
       evidence: [{
         kind: 'encoding_layer',
         claim: `input is ${codec} encoded`,
-        confidence: 0.7,
+        confidence: 0.5,
         producer: { type: 'parser', id: 'encoding' },
         polarity: 'supports',
       }],

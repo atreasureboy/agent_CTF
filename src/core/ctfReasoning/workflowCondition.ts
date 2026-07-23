@@ -59,12 +59,15 @@ export interface WorkflowConditionContext {
 }
 
 function attrMatches(
-  attrs: Record<string, unknown>,
+  attrs: Record<string, unknown> | undefined,
   where: Record<string, unknown> | undefined,
 ): boolean {
   if (!where) return true
+  // §round-3 audit fix — treat null/undefined attrs as `{}` so the
+  // gate is conservative (false) instead of crashing.
+  const a = attrs ?? {}
   for (const [k, v] of Object.entries(where)) {
-    if (attrs[k] !== v) return false
+    if (a[k] !== v) return false
   }
   return true
 }
