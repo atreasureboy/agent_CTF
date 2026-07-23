@@ -1,0 +1,36 @@
+{
+  "id": "mobsf",
+  "displayName": "MobSF",
+  "category": "mobile",
+  "description": "Mobile Security Framework — static APK/IPA analysis via local service.",
+  "source": {
+    "repository": "https://github.com/MobSF/Mobile-Security-Framework-MobSF",
+    "license": "GPL-3.0",
+    "pinnedRef": "v3.7.6"
+  },
+  "maturity": "candidate",
+  "enabledByDefault": false,
+  "inputMatchers": {
+    "extensions": [".apk", ".ipa", ".appx"]
+  },
+  "allowedProfiles": ["misc"],
+  "runner": {
+    "type": "service",
+    "endpoint": "http://localhost:8000/api/v1"
+  },
+  "resources": {
+    "timeoutSeconds": 1800,
+    "memoryMb": 4096,
+    "maxOutputBytes": 524288
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": { "parser": "jsonl" },
+  "scheduling": {
+    "costTier": "heavy",
+    "estimatedSeconds": 600,
+    "falsePositiveRisk": "low"
+  },
+  "healthcheck": {
+    "endpoint": "http://localhost:8000/api/v1/status"
+  }
+}

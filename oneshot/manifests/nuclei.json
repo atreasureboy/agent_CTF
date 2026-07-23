@@ -1,0 +1,39 @@
+{
+  "id": "nuclei",
+  "displayName": "nuclei (limited templates)",
+  "category": "web",
+  "description": "Run a restricted nuclei template set against a single approved target.",
+  "source": {
+    "repository": "https://github.com/projectdiscovery/nuclei",
+    "license": "MIT",
+    "pinnedRef": "v3.1.0"
+  },
+  "maturity": "stable",
+  "enabledByDefault": false,
+  "inputMatchers": {
+    "taskTags": ["network"]
+  },
+  "allowedProfiles": ["web"],
+  "runner": {
+    "type": "container",
+    "image": "projectdiscovery/nuclei:latest",
+    "command": ["nuclei", "-severity", "medium,high,critical", "-t", "cves/", "-t", "vulnerabilities/"]
+  },
+  "resources": {
+    "timeoutSeconds": 900,
+    "memoryMb": 1024,
+    "maxOutputBytes": 262144
+  },
+  "network": { "mode": "contest-target-only", "requiresScopeApproval": true },
+  "output": {
+    "parser": "jsonl"
+  },
+  "scheduling": {
+    "costTier": "medium",
+    "estimatedSeconds": 600,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "projectdiscovery/nuclei:latest", "nuclei", "-version"]
+  }
+}

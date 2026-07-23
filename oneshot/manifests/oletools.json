@@ -1,0 +1,40 @@
+{
+  "id": "oletools",
+  "displayName": "oletools",
+  "category": "forensics",
+  "description": "Analyze Microsoft Office documents (OLE, VBA macros, DDE).",
+  "source": {
+    "repository": "https://github.com/decalage2/oletools",
+    "license": "BSD-2-Clause",
+    "pinnedRef": "v0.60.2"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "extensions": [".doc", ".docm", ".xls", ".xlsm", ".ppt", ".pptm", ".rtf"]
+  },
+  "allowedProfiles": ["file-forensics", "triage"],
+  "runner": {
+    "type": "container",
+    "image": "python:3.11-slim",
+    "command": ["python3", "-m", "olevba", "/work/INPUT"]
+  },
+  "resources": {
+    "timeoutSeconds": 120,
+    "memoryMb": 512,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "passthrough",
+    "flagPatterns": ["flag\\{[^}]+\\}"]
+  },
+  "scheduling": {
+    "costTier": "fast",
+    "estimatedSeconds": 30,
+    "falsePositiveRisk": "low"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "python:3.11-slim", "python3", "-c", "import oletools.olevba"]
+  }
+}

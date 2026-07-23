@@ -1,0 +1,37 @@
+{
+  "id": "reconftw",
+  "displayName": "reconftw",
+  "category": "web",
+  "description": "Automated recon — multiple tools chained. Heavy lane, network-bound.",
+  "source": {
+    "repository": "https://github.com/six2dez/reconftw",
+    "license": "MIT",
+    "pinnedRef": "v2.5.6"
+  },
+  "maturity": "candidate",
+  "enabledByDefault": false,
+  "inputMatchers": {
+    "taskTags": ["network"]
+  },
+  "allowedProfiles": ["web"],
+  "runner": {
+    "type": "container",
+    "image": "six2dez/reconftw:latest",
+    "command": ["reconftw", "-d", "TARGET", "-r"]
+  },
+  "resources": {
+    "timeoutSeconds": 3600,
+    "memoryMb": 4096,
+    "maxOutputBytes": 524288
+  },
+  "network": { "mode": "contest-target-only", "requiresScopeApproval": true },
+  "output": { "parser": "jsonl" },
+  "scheduling": {
+    "costTier": "heavy",
+    "estimatedSeconds": 1800,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "six2dez/reconftw:latest", "reconftw", "--help"]
+  }
+}

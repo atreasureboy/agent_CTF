@@ -16,11 +16,19 @@ import type { CapabilityProfile } from '../core/capabilityProfile.js'
 import type { ContestScopeChecker } from '../core/contestScope.js'
 import type { EventLog } from '../core/eventLog.js'
 import type { ToolContext } from '../core/types.js'
+import {
+  allExecutablesShellSafe,
+  firstExecutableSafe,
+  parseShellCommand,
+} from './shellParser.js'
 
 export interface BashPolicyCheck {
   firstExecutable: string
   allowed: boolean
   reason: string
+  /** True when the new state-machine parser could not classify the command,
+   *  so we fail-closed regardless of policy lookup. */
+  unknown?: boolean
 }
 
 /**
@@ -70,36 +78,18 @@ export function firstExecutable(command: string): string | null {
   return tokens[cursor] ?? null
 }
 
-/**
- * Audit rounds 6-10 — extract EVERY executable from a command,
- * including those chained by `;`, `&&`, `||`, `|`, `$(...)`, and
- * subshells. The legacy firstExecutable only inspects the first
- * token, so `echo ok; nmap evil.com` would pass the first token
- * (`echo`) and bypass deniedCommands for `nmap`.
- *
- * Strategy: split the command on shell control operators (outside of
- * quotes / parens), tokenize each segment, and collect the first
- * non-assignment token of each.
- */
 export function allExecutables(command: string): string[] {
-  const out: string[] = []
-  // Split on shell control operators. We deliberately split before
-  // tokenizing because splitting a string like `a; b && c` on `;`
-  // or `&&` is safe — each segment is independently a command.
-  // The split must skip operators inside `$(...)` and quoted strings,
-  // but for our purposes (looking for any denied binary) a coarse
-  // split is sufficient and consistent with how a real shell parses.
-  const segments = command.split(/[;|&]+(?!\w)|&&|\|\|/g)
-  for (const seg of segments) {
-    const trimmed = seg.trim()
-    if (!trimmed) continue
-    // Strip $(...) and backtick subshells by walking the string and
-    // recursively analysing the contents.
-    const cleaned = stripSubshells(trimmed)
-    const first = firstExecutable(cleaned)
-    if (first) out.push(first)
-  }
-  return Array.from(new Set(out))
+  // Audit round 11 — use the state-machine splitter for accurate segment
+  // boundary detection (handles parens, subshells, backticks, heredocs,
+  // and balanced quotes — the legacy regex splitter cannot).
+  const safe = allExecutablesShellSafe(command)
+  if (safe.unknown) return [] // fail-closed: no executables resolvable.
+  return Array.from(new Set(safe.executables))
+}
+
+/** State-machine-backed variant of `firstExecutable`. */
+export function firstExecutableShellSafe(command: string): string | null {
+  return firstExecutableSafe(command)
 }
 
 function stripSubshells(s: string): string {
@@ -164,6 +154,8 @@ export interface CommandPolicyResult {
   allowed: boolean
   reason: string
   firstExecutable: string | null
+  /** True when the parser failed closed. */
+  unknown?: boolean
 }
 
 export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyResult {
@@ -178,51 +170,64 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
     }
   }
 
-  const first = firstExecutable(cmd)
+  // Audit round 11 — use the state-machine splitter so a missing lexer
+  // state fails closed (unknown=true) instead of being silently allowed.
+  const parse = parseShellCommand(cmd)
+  if (parse.unknown) {
+    input.eventLog?.append('permission', 'bash-policy', {
+      decision: 'deny',
+      reason: 'unparseable shell — fail-closed',
+      profile: input.profile.id,
+    }, ['bash-policy', 'parse-error', 'deny'])
+    return {
+      allowed: false,
+      reason: 'shell parser failed closed (complex/unparseable command)',
+      firstExecutable: null,
+      unknown: true,
+    }
+  }
+  const first = parse.segments[0]?.firstExecutable ?? null
   if (!first) return { allowed: false, reason: 'unable to parse command', firstExecutable: null }
 
-  // Allow built-ins + shell control.
+  const denied = input.profile.deniedCommands
+  const allowed = input.profile.allowedCommands
+  const deniedTools = input.profile.deniedTools
+
+  // Build a denylist predicate. Even when the first executable is a builtin
+  // (e.g. `echo ok; nmap`) we must still scan every segment — the legacy
+  // short-circuit was the source of the §十二 bypass.
+  const denyOne = (exe: string): string | null => {
+    if (denied && denied.includes(exe)) return `"${exe}" is denied by profile "${input.profile.id}" (deniedCommands)`
+    if (deniedTools && deniedTools.includes(exe)) return `"${exe}" is denied by profile "${input.profile.id}" (deniedTools)`
+    if (allowed && allowed.length > 0 && !allowed.includes(exe) && !SHELL_BUILTINS.has(exe)) {
+      return `"${exe}" is not in profile "${input.profile.id}" allowedCommands`
+    }
+    return null
+  }
+
+  for (const seg of parse.segments) {
+    if (!seg.firstExecutable) continue
+    const exe = seg.firstExecutable
+    // Shell builtins are tokenised inside the shell — `deniedCommands` does
+    // not apply. Keeping the explicit allow lets `echo ok; nmap evil.com`
+    // still trip the `nmap` deny.
+    if (SHELL_BUILTINS.has(exe)) continue
+    const reason = denyOne(exe)
+    if (reason) {
+      input.eventLog?.append('permission', 'bash-policy', {
+        decision: 'deny',
+        command: exe,
+        reason,
+        profile: input.profile.id,
+      }, ['bash-policy', 'deny', 'composite-bypass'])
+      return { allowed: false, reason, firstExecutable: exe }
+    }
+  }
+
+  // No segment triggered a deny — apply the path-specific verdict for the
+  // first executable so audit logs still record why the call was allowed.
   if (SHELL_BUILTINS.has(first)) {
     return { allowed: true, reason: 'shell builtin', firstExecutable: first }
-  }
-
-  const denied = input.profile.deniedCommands
-  if (denied && denied.includes(first)) {
-    const reason = `command "${first}" is denied by profile "${input.profile.id}" (deniedCommands).`
-    input.eventLog?.append('permission', 'bash-policy', {
-      decision: 'deny',
-      command: first,
-      reason,
-      profile: input.profile.id,
-    }, ['bash-policy', 'deny'])
-    return { allowed: false, reason, firstExecutable: first }
-  }
-
-  // A profile's deniedTools list may also be enforced at the binary level —
-  // e.g. an image-stego profile denies the `nmap` tool. If the LLM bypasses
-  // the broker and writes `nmap -sV ...` directly into a Bash command, the
-  // command policy must still refuse.
-  if (input.profile.deniedTools && input.profile.deniedTools.includes(first)) {
-    const reason = `command "${first}" is denied by profile "${input.profile.id}" (deniedTools).`
-    input.eventLog?.append('permission', 'bash-policy', {
-      decision: 'deny',
-      command: first,
-      reason,
-      profile: input.profile.id,
-    }, ['bash-policy', 'deny', 'bypass'])
-    return { allowed: false, reason, firstExecutable: first }
-  }
-
-  const allowed = input.profile.allowedCommands
-  if (allowed && allowed.length > 0 && !allowed.includes(first)) {
-    const reason = `command "${first}" is not in profile "${input.profile.id}" allowedCommands.`
-    input.eventLog?.append('permission', 'bash-policy', {
-      decision: 'deny',
-      command: first,
-      reason,
-      profile: input.profile.id,
-    }, ['bash-policy', 'deny'])
-    return { allowed: false, reason, firstExecutable: first }
   }
 
   // Audit rounds 6-10 — composite commands can chain executable tokens

@@ -235,11 +235,35 @@ export async function runCtfCli(
   // Fast-path help/version (no arg parsing required).
   if (argv.includes('--help') || argv.includes('-h')) {
     printHelp(stdout)
+    stdout.write(`
+ONEShot COMMANDS (six_goal §十四)
+  ovogogogo-ctf doctor [--oneshot]
+  ovogogogo-ctf oneshot list
+  ovogogogo-ctf oneshot check <manifestId>
+  ovogogogo-ctf benchmark [runs]
+`)
     return 0
   }
   if (argv.includes('--version') || argv.includes('-V') || argv.includes('-v')) {
     stdout.write(`${VERSION} (ovogogogo-ctf)\n`)
     return 0
+  }
+
+  // ── Doctor / OneShot command fast-paths (no Runtime needed).
+  if (argv[2] === 'doctor' || argv.includes('--doctor')) {
+    const { runDoctorCommand } = await import('../src/ctf/cli/doctor.js')
+    return runDoctorCommand(argv.slice(argv.indexOf('doctor') >= 0 ? argv.indexOf('doctor') : 2), {
+      stdout,
+      stderr,
+    })
+  }
+  if (argv[2] === 'oneshot') {
+    const { runOneshotCommand } = await import('../src/ctf/cli/oneshot.js')
+    return runOneshotCommand(argv.slice(3), { stdout, stderr })
+  }
+  if (argv[2] === 'benchmark') {
+    const { runBenchmarkCommand } = await import('../src/ctf/cli/benchmarkCli.js')
+    return runBenchmarkCommand(argv.slice(3), { stdout, stderr })
   }
 
   // §十四 — parseArgs inside the try block so missing-value / unknown-flag

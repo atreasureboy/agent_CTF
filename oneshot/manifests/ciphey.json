@@ -1,0 +1,40 @@
+{
+  "id": "ciphey",
+  "displayName": "Ciphey",
+  "category": "crypto",
+  "description": "Automated ciphertext/plaintext recognition with layered decoders.",
+  "source": {
+    "repository": "https://github.com/Ciphey/Ciphey",
+    "license": "MIT",
+    "pinnedRef": "v5.10.2"
+  },
+  "maturity": "candidate",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["encoded", "unknown"]
+  },
+  "allowedProfiles": ["crypto", "triage", "orchestrator"],
+  "runner": {
+    "type": "container",
+    "image": "ghcr.io/ciphey/ciphey:latest",
+    "command": ["ciphey", "-q", "--text"]
+  },
+  "resources": {
+    "timeoutSeconds": 300,
+    "memoryMb": 1024,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "passthrough",
+    "flagPatterns": ["flag\\{[^}]+\\}", "FLAG\\{[^}]+\\}"]
+  },
+  "scheduling": {
+    "costTier": "medium",
+    "estimatedSeconds": 120,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "ghcr.io/ciphey/ciphey:latest", "ciphey", "--help"]
+  }
+}

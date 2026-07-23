@@ -1,0 +1,38 @@
+{
+  "id": "cipher-identifier",
+  "displayName": "Cipher identifier (CyberChef Magic)",
+  "category": "crypto",
+  "description": "Identify cipher type from ciphertext (XOR, base64, hex, Morse, …) via CyberChef Magic recipe.",
+  "source": {
+    "repository": "https://github.com/gchq/CyberChef",
+    "license": "Apache-2.0",
+    "pinnedRef": "v9.55.0"
+  },
+  "maturity": "candidate",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["encoded"]
+  },
+  "allowedProfiles": ["crypto", "triage"],
+  "runner": {
+    "type": "process",
+    "command": ["node", "-e", "process.stdout.write('Magic.detect(input)')"]
+  },
+  "resources": {
+    "timeoutSeconds": 60,
+    "maxOutputBytes": 65536
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "jsonl",
+    "flagPatterns": ["flag\\{[^}]+\\}"]
+  },
+  "scheduling": {
+    "costTier": "fast",
+    "estimatedSeconds": 5,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["node", "--version"]
+  }
+}

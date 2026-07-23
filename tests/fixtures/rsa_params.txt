@@ -1,0 +1,3 @@
+n = 143
+e = 11
+ciphertext = 88

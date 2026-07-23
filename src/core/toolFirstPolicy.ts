@@ -29,6 +29,25 @@ import type { CapabilityProfile } from './capabilityProfile.js'
 
 export type PolicySeverity = 'info' | 'warn' | 'block'
 
+/**
+ * Mode — six_goal §十一 three-tier escalation.
+ *   advisory        → only emit `policy_advisory` event (current behaviour).
+ *   require_reason  → broker returns a structured refusal unless the caller
+ *                     supplies `__overrideReason` documenting why a mature
+ *                     tool was tried first and failed. The model can still
+ *                     proceed by providing the override.
+ *   enforced        → broker denies the call outright when a matching
+ *                     workflow has not yet recorded a failed run. Manual
+ *                     work is allowed only after a documented overrideReason.
+ */
+export type PolicyMode = 'advisory' | 'require_reason' | 'enforced'
+
+export const POLICY_MODES: ReadonlyArray<PolicyMode> = [
+  'advisory',
+  'require_reason',
+  'enforced',
+] as const
+
 export interface PolicyVerdict {
   /** A short, model-readable reminder string. Empty = no advice. */
   advice: string
@@ -36,6 +55,8 @@ export interface PolicyVerdict {
   rule: string
   /** When true, the broker should mutate the tool result to prepend advice. */
   injectInResult: boolean
+  /** Suggested workflow id the LLM should run before proceeding. */
+  suggestedWorkflowId?: string
 }
 
 interface PolicyRule {
@@ -47,6 +68,8 @@ interface PolicyRule {
   match(args: { toolId: string; input: Record<string, unknown>; profile: CapabilityProfile }): boolean
   /** Render advice. */
   advice(): string
+  /** Optional: the canonical workflow id this rule wants the agent to run. */
+  workflowId?(): string
 }
 
 const RULE_PORT_SCAN_KEYWORDS = ['full port scan', 'service enumeration', 'port scan', 'all ports', 'complete scan', 'service detection']
@@ -71,6 +94,7 @@ const RULES: PolicyRule[] = [
     id: 'web-enumeration',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'host_service_enumeration',
     match: ({ toolId, input }) => {
       if (toolId !== 'Bash') return false
       const fp = combinedInputFingerprint(input)
@@ -93,6 +117,7 @@ const RULES: PolicyRule[] = [
     id: 'image-stego',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'image_quick_scan',
     match: ({ toolId, input }) => {
       const fp = combinedInputFingerprint(input)
       const isImage = RULE_IMAGE_EXTS.some((ext) => fp.includes(ext))
@@ -115,6 +140,7 @@ const RULES: PolicyRule[] = [
     id: 'rsa-common-attacks',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'rsa_common_attacks',
     match: ({ toolId, input, profile }) => {
       const fp = combinedInputFingerprint(input)
       if (!/(rsa|n\s*=\s*\d|p\s*=|q\s*=|phi|euler|totient|public.?key|n,e)/.test(fp)) return false
@@ -133,6 +159,7 @@ const RULES: PolicyRule[] = [
     id: 'unknown-file-triage',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'unknown_file_triage',
     match: ({ toolId, input }) => {
       if (toolId !== 'Bash') return false
       const fp = combinedInputFingerprint(input)
@@ -151,6 +178,7 @@ const RULES: PolicyRule[] = [
     id: 'reverse-binary-first',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'binary_triage',
     match: ({ toolId, input, profile }) => {
       if (profile.id !== 'reverse') return false
       if (toolId !== 'Bash') return false
@@ -172,6 +200,7 @@ const RULES: PolicyRule[] = [
     id: 'web-crawl-first',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'web_triage',
     match: ({ toolId, input, profile }) => {
       if (profile.id !== 'web') return false
       if (toolId !== 'Bash') return false
@@ -193,6 +222,7 @@ const RULES: PolicyRule[] = [
     id: 'pcap-extract-first',
     severity: 'info',
     injectInResult: false,
+    workflowId: () => 'pcap_triage',
     match: ({ toolId, input, profile }) => {
       if (profile.id !== 'traffic') return false
       if (toolId !== 'Bash') return false
@@ -226,12 +256,15 @@ export class ToolFirstPolicy {
     for (const rule of this.rules) {
       try {
         if (rule.match({ toolId, input, profile })) {
-          return {
+          const verdict: PolicyVerdict = {
             advice: rule.advice(),
             severity: rule.severity,
             rule: rule.id,
             injectInResult: rule.injectInResult,
           }
+          const wid = rule.workflowId?.()
+          if (wid) verdict.suggestedWorkflowId = wid
+          return verdict
         }
       } catch { /* bad rule shouldn't break execution */ }
     }
@@ -242,4 +275,70 @@ export class ToolFirstPolicy {
 /** Test helper — exposes the rule list without exposing internals. */
 export function defaultPolicyRules(): PolicyRule[] {
   return [...RULES]
+}
+
+/**
+ * Enforce mode helper — six_goal §十一 says the broker should refuse
+ * hand-rolled scripts when a workflow has not yet recorded a failure.
+ *
+ * Two cooperating pieces of state are required:
+ *   1. `mode` ∈ {advisory, require_reason, enforced};
+ *   2. `failedWorkflowIds` — the set of workflow ids that have already run
+ *      and recorded a `WORKFLOW_FAILED` (or `partial`) outcome.
+ *
+ * `evaluatePolicyGate` returns:
+ *   { allowed: true }                                  → no advice / advisory only;
+ *   { allowed: 'with-reason' }                         → require_reason; caller must pass __overrideReason;
+ *   { allowed: false, reason: 'enforced-no-failure' }  → enforced with no failed-workflow evidence.
+ *
+ * This helper is intentionally pure so the broker / engine can call it.
+ */
+export interface PolicyGateInput {
+  mode: PolicyMode
+  toolId: string
+  input: Record<string, unknown>
+  profile: CapabilityProfile
+  failedWorkflowIds: ReadonlyArray<string>
+  overrideReason?: string
+}
+
+export type PolicyGateResult =
+  | { allowed: true }
+  | { allowed: 'with-reason' }
+  | { allowed: false; reason: string; verdict: PolicyVerdict }
+
+export function evaluatePolicyGate(args: PolicyGateInput): PolicyGateResult {
+  const policy = new ToolFirstPolicy()
+  const verdict = policy.advise(args.toolId, args.input, args.profile)
+  if (!verdict.suggestedWorkflowId) return { allowed: true }
+
+  const suggested = verdict.suggestedWorkflowId
+  const failedFor = args.failedWorkflowIds.includes(suggested)
+  const hasOverride = typeof args.overrideReason === 'string' && args.overrideReason.trim().length > 0
+
+  if (args.mode === 'advisory') return { allowed: true }
+
+  if (args.mode === 'require_reason') {
+    if (failedFor || hasOverride) return { allowed: true }
+    return { allowed: 'with-reason' }
+  }
+
+  // enforced
+  if (failedFor || hasOverride) return { allowed: true }
+  return { allowed: false, reason: 'enforced: mature workflow must run first', verdict }
+}
+
+/**
+ * Wire a workflowId into each existing rule by mapping rule id →
+ * canonical workflow id. Kept in one place so adding a new rule does not
+ * forget the workflow hook (six_goal §十一).
+ */
+export const RULE_TO_WORKFLOW: Record<string, string> = {
+  'web-enumeration': 'host_service_enumeration',
+  'image-stego': 'image_quick_scan',
+  'rsa-common-attacks': 'rsa_common_attacks',
+  'unknown-file-triage': 'unknown_file_triage',
+  'reverse-binary-first': 'binary_triage',
+  'web-crawl-first': 'web_triage',
+  'pcap-extract-first': 'pcap_triage',
 }

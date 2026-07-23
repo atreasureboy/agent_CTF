@@ -1,0 +1,38 @@
+{
+  "id": "strings",
+  "displayName": "strings(1)",
+  "category": "triage",
+  "description": "Extract ASCII/Unicode strings from a binary; used for flag discovery and quick triage.",
+  "source": {
+    "repository": "https://github.com/bleurdouche/binutils",
+    "license": "GPL-2.0",
+    "pinnedRef": "binutils-2.42"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["binary", "encoded", "unknown"]
+  },
+  "allowedProfiles": ["triage", "orchestrator", "reverse", "file-forensics", "crypto", "reverse"],
+  "runner": {
+    "type": "process",
+    "command": ["strings", "-n", "6"]
+  },
+  "resources": {
+    "timeoutSeconds": 60,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "flag-regex",
+    "flagPatterns": ["flag\\{[^}]+\\}", "FLAG\\{[^}]+\\}", "[A-Za-z0-9_]{20,}"]
+  },
+  "scheduling": {
+    "costTier": "fast",
+    "estimatedSeconds": 30,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["strings", "--version"]
+  }
+}

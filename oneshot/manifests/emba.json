@@ -1,0 +1,37 @@
+{
+  "id": "emba",
+  "displayName": "EMBA",
+  "category": "iot",
+  "description": "EMBA firmware security analyser. Heavy tier; only enabled explicitly.",
+  "source": {
+    "repository": "https://github.com/e-m-b-a/emba",
+    "license": "GPL-3.0",
+    "pinnedRef": "1.5.0"
+  },
+  "maturity": "candidate",
+  "enabledByDefault": false,
+  "inputMatchers": {
+    "taskTags": ["firmware", "binary"]
+  },
+  "allowedProfiles": ["misc"],
+  "runner": {
+    "type": "container",
+    "image": "ghcr.io/emba-community/emba:latest",
+    "command": ["emba", "-Q", "/work/INPUT"]
+  },
+  "resources": {
+    "timeoutSeconds": 3600,
+    "memoryMb": 8192,
+    "maxOutputBytes": 1048576
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": { "parser": "jsonl" },
+  "scheduling": {
+    "costTier": "heavy",
+    "estimatedSeconds": 2400,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "ghcr.io/emba-community/emba:latest", "emba", "--help"]
+  }
+}

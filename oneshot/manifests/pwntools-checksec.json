@@ -1,0 +1,39 @@
+{
+  "id": "pwntools-checksec",
+  "displayName": "checksec",
+  "category": "pwn",
+  "description": "Detect binary hardening flags (NX/PIE/canary/RELRO) before exploit development.",
+  "source": {
+    "repository": "https://github.com/pwntools/checksec",
+    "license": "MIT",
+    "pinnedRef": "v2.0.1"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["binary"]
+  },
+  "allowedProfiles": ["pwn", "reverse"],
+  "runner": {
+    "type": "container",
+    "image": "pwntools/pwntools:latest",
+    "command": ["checksec", "--file=/work/INPUT"]
+  },
+  "resources": {
+    "timeoutSeconds": 60,
+    "memoryMb": 512,
+    "maxOutputBytes": 65536
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "jsonl"
+  },
+  "scheduling": {
+    "costTier": "fast",
+    "estimatedSeconds": 5,
+    "falsePositiveRisk": "low"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "pwntools/pwntools:latest", "checksec", "--help"]
+  }
+}

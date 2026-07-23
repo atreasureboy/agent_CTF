@@ -1,0 +1,38 @@
+{
+  "id": "binwalk",
+  "displayName": "Binwalk",
+  "category": "triage",
+  "description": "Scan a binary for embedded files using magic-byte signatures.",
+  "source": {
+    "repository": "https://github.com/ReFirmLabs/binwalk",
+    "license": "MIT",
+    "pinnedRef": "v2.3.4"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["binary", "archive", "image"]
+  },
+  "allowedProfiles": ["triage", "orchestrator", "reverse", "file-forensics"],
+  "runner": {
+    "type": "process",
+    "command": ["binwalk", "-e", "-C", "/tmp/binwalk"]
+  },
+  "resources": {
+    "timeoutSeconds": 120,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "passthrough",
+    "artifactGlobs": ["*.bin", "*.zip", "*.png", "*.jpg"]
+  },
+  "scheduling": {
+    "costTier": "fast",
+    "estimatedSeconds": 60,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["binwalk", "--version"]
+  }
+}

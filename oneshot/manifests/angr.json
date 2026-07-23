@@ -1,0 +1,37 @@
+{
+  "id": "angr",
+  "displayName": "angr",
+  "category": "reverse",
+  "description": "Symbolic execution via angr for reverse engineering challenges. Heavy lane.",
+  "source": {
+    "repository": "https://github.com/angr/angr",
+    "license": "BSD-2-Clause",
+    "pinnedRef": "v9.2.32"
+  },
+  "maturity": "candidate",
+  "enabledByDefault": false,
+  "inputMatchers": {
+    "taskTags": ["binary"]
+  },
+  "allowedProfiles": ["reverse"],
+  "runner": {
+    "type": "container",
+    "image": "angr/angr:latest",
+    "command": ["python3", "/work/INPUT"]
+  },
+  "resources": {
+    "timeoutSeconds": 1800,
+    "memoryMb": 8192,
+    "maxOutputBytes": 262144
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": { "parser": "passthrough" },
+  "scheduling": {
+    "costTier": "heavy",
+    "estimatedSeconds": 1200,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "angr/angr:latest", "python3", "-c", "import angr"]
+  }
+}

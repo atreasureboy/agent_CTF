@@ -1,0 +1,39 @@
+{
+  "id": "zsteg",
+  "displayName": "zsteg (image LSB)",
+  "category": "image",
+  "description": "Detect hidden data in PNG/BMP using bit-level analysis (LSB / MSB / channel-order).",
+  "source": {
+    "repository": "https://github.com/zed-0xff/zsteg",
+    "license": "MIT",
+    "pinnedRef": "v0.2"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["image"]
+  },
+  "allowedProfiles": ["image-stego", "triage"],
+  "runner": {
+    "type": "process",
+    "command": ["zsteg", "-a"]
+  },
+  "resources": {
+    "timeoutSeconds": 600,
+    "memoryMb": 512,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "flag-regex",
+    "flagPatterns": ["flag\\{[^}]+\\}", "FLAG\\{[^}]+\\}", "[A-Za-z0-9_]{20,}"]
+  },
+  "scheduling": {
+    "costTier": "medium",
+    "estimatedSeconds": 120,
+    "falsePositiveRisk": "medium"
+  },
+  "healthcheck": {
+    "command": ["zsteg", "--version"]
+  }
+}

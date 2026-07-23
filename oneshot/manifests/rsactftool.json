@@ -1,0 +1,40 @@
+{
+  "id": "rsactftool",
+  "displayName": "RsaCtfTool",
+  "category": "crypto",
+  "description": "Run common RSA attacks (Wiener, Fermat, Pollard, ROCA) against n/e/c parameters.",
+  "source": {
+    "repository": "https://github.com/RsaCtfTool/RsaCtfTool",
+    "license": "MIT",
+    "pinnedRef": "v0.7.1"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["rsa"]
+  },
+  "allowedProfiles": ["crypto"],
+  "runner": {
+    "type": "container",
+    "image": "rsactftool/rsactftool:latest",
+    "command": ["python3", "RsaCtfTool.py", "--private"]
+  },
+  "resources": {
+    "timeoutSeconds": 600,
+    "memoryMb": 2048,
+    "maxOutputBytes": 65536
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "flag-regex",
+    "flagPatterns": ["plaintext\\s*=\\s*(\\S+)", "d\\s*=\\s*([0-9]+)"]
+  },
+  "scheduling": {
+    "costTier": "medium",
+    "estimatedSeconds": 300,
+    "falsePositiveRisk": "high"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "rsactftool/rsactftool:latest", "python3", "RsaCtfTool.py", "--help"]
+  }
+}

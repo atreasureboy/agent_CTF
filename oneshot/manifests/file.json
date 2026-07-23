@@ -1,0 +1,38 @@
+{
+  "id": "file",
+  "displayName": "file(1)",
+  "category": "triage",
+  "description": "Identify file type via magic bytes; safe local CLI with no network.",
+  "source": {
+    "repository": "https://github.com/file/file",
+    "license": "MIT",
+    "pinnedRef": "file-5.45"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["binary", "archive", "encoded", "unknown"]
+  },
+  "allowedProfiles": ["triage", "orchestrator", "reverse", "file-forensics", "crypto"],
+  "runner": {
+    "type": "process",
+    "command": ["file", "-b"]
+  },
+  "resources": {
+    "timeoutSeconds": 30,
+    "maxOutputBytes": 65536
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "passthrough",
+    "artifactGlobs": []
+  },
+  "scheduling": {
+    "costTier": "fast",
+    "estimatedSeconds": 5,
+    "falsePositiveRisk": "low"
+  },
+  "healthcheck": {
+    "command": ["file", "--version"]
+  }
+}

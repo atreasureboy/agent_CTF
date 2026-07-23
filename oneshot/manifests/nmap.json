@@ -1,0 +1,39 @@
+{
+  "id": "nmap",
+  "displayName": "nmap",
+  "category": "web",
+  "description": "Network mapper — port/service enumeration. Network-bound; requires ScopeGate approval.",
+  "source": {
+    "repository": "https://github.com/nmap/nmap",
+    "license": "Nmap",
+    "pinnedRef": "7.95"
+  },
+  "maturity": "stable",
+  "enabledByDefault": false,
+  "inputMatchers": {
+    "taskTags": ["network"]
+  },
+  "allowedProfiles": ["web", "triage", "orchestrator"],
+  "runner": {
+    "type": "process",
+    "command": ["nmap", "-sV", "-Pn"]
+  },
+  "resources": {
+    "timeoutSeconds": 600,
+    "memoryMb": 512,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "contest-target-only", "requiresScopeApproval": true },
+  "output": {
+    "parser": "passthrough",
+    "flagPatterns": []
+  },
+  "scheduling": {
+    "costTier": "medium",
+    "estimatedSeconds": 300,
+    "falsePositiveRisk": "low"
+  },
+  "healthcheck": {
+    "command": ["nmap", "--version"]
+  }
+}

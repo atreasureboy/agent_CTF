@@ -1,0 +1,39 @@
+{
+  "id": "capa",
+  "displayName": "capa",
+  "category": "reverse",
+  "description": "Detect capabilities in executable files (CAPA rules).",
+  "source": {
+    "repository": "https://github.com/mandiant/capa",
+    "license": "Apache-2.0",
+    "pinnedRef": "v7.0.0"
+  },
+  "maturity": "stable",
+  "enabledByDefault": true,
+  "inputMatchers": {
+    "taskTags": ["binary"]
+  },
+  "allowedProfiles": ["reverse", "file-forensics"],
+  "runner": {
+    "type": "container",
+    "image": "ghcr.io/mandiant/capa:latest",
+    "command": ["capa", "/work/INPUT"]
+  },
+  "resources": {
+    "timeoutSeconds": 300,
+    "memoryMb": 1024,
+    "maxOutputBytes": 131072
+  },
+  "network": { "mode": "none", "requiresScopeApproval": false },
+  "output": {
+    "parser": "jsonl"
+  },
+  "scheduling": {
+    "costTier": "medium",
+    "estimatedSeconds": 60,
+    "falsePositiveRisk": "low"
+  },
+  "healthcheck": {
+    "command": ["docker", "run", "--rm", "ghcr.io/mandiant/capa:latest", "capa", "--help"]
+  }
+}
