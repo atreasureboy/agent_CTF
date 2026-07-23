@@ -195,7 +195,7 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       handoffs: [],
       agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now,
       updatedAt: now,
@@ -387,7 +387,7 @@ describe('TaskState — finding/artifact merge', () => {
       challenge: { inputArtifactIds: [] },
       activeProfileId: 'orchestrator',
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -508,9 +508,8 @@ describe('CTFTaskOrchestrator — wiring', () => {
         taskId: orch.getState().taskId,
         producerAgentId: 'orchestrator',
         category: 'workflow',
-        title: 'seed',
-        summary: 'seed',
-        confidence: 'low',
+        title: 'seed', summary: 'triage summary',
+          confidence: 'low',
         evidence: [],
         artifactIds: [],
       })
@@ -899,7 +898,7 @@ describe('§六 — StateStore guards', () => {
       challenge: { inputArtifactIds: [] },
       activeProfileId: 'orchestrator',
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [],
+      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }

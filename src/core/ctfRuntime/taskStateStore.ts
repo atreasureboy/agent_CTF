@@ -24,6 +24,7 @@ import {
   isActiveWorkflowRun,
   isTerminalOneShotStatus,
   isTerminalPhase,
+  type CTFHypothesis,
   type CTFTaskPhase,
   type CTFTaskState,
   type HandoffRecord,
@@ -227,6 +228,10 @@ function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): 
   }
 }
 
+function dedupeStrings(arr: string[]): string[] {
+  return [...new Set(arr)]
+}
+
 function freezeState<T>(s: T): T {
   // Audit rounds 6-10 — the previous shallow freeze left arrays
   // like `artifactIds` and `findings` mutable. We re-shallow-freeze
@@ -421,6 +426,16 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
       return { ...state, hypotheses: [...state.hypotheses, event.hypothesis] }
     }
 
+    case 'HYPOTHESIS_PROPOSED': {
+      // §七 — wraps HYPOTHESIS_ADDED; refuses duplicates.
+      if (state.hypotheses.some((h) => h.id === event.hypothesis.id)) {
+        throw new DuplicateHypothesisError(
+          `Hypothesis ${event.hypothesis.id} already exists`,
+        )
+      }
+      return { ...state, hypotheses: [...state.hypotheses, event.hypothesis] }
+    }
+
     case 'HYPOTHESIS_UPDATED': {
       const next = state.hypotheses.map((h) =>
         h.id === event.hypothesisId ? { ...h, ...event.patch, updatedAt: Date.now() } : h,
@@ -431,12 +446,118 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
       return { ...state, hypotheses: next }
     }
 
+    case 'HYPOTHESIS_STATUS_CHANGED': {
+      // §七 — FSM guard. Reject illegal transitions.
+      const allowed: Record<CTFHypothesis['status'], CTFHypothesis['status'][]> = {
+        proposed: ['testing', 'rejected'],
+        testing: ['supported', 'rejected', 'inconclusive'],
+        inconclusive: ['testing'],
+        supported: [], // terminal — new evidence creates a revision
+        rejected: [],  // terminal — new evidence creates a revision
+      }
+      if (!allowed[event.from].includes(event.to)) {
+        throw new TaskStateStoreError(
+          `Hypothesis ${event.hypothesisId} cannot transition ${event.from} → ${event.to}`,
+        )
+      }
+      return {
+        ...state,
+        hypotheses: state.hypotheses.map((h) =>
+          h.id === event.hypothesisId
+            ? { ...h, status: event.to, updatedAt: Date.now() }
+            : h,
+        ),
+      }
+    }
+
+    case 'OBSERVATION_ADDED': {
+      // §四 — no duplicate IDs; bounded dedup via fingerprint.
+      if (state.observations.some((o) => o.id === event.observation.id)) {
+        throw new TaskStateStoreError(
+          `Observation ${event.observation.id} already exists`,
+        )
+      }
+      return { ...state, observations: [...state.observations, event.observation] }
+    }
+
+    case 'EVIDENCE_ADDED': {
+      if (state.evidence.some((e) => e.id === event.evidence.id)) {
+        throw new TaskStateStoreError(`Evidence ${event.evidence.id} already exists`)
+      }
+      return { ...state, evidence: [...state.evidence, event.evidence] }
+    }
+
+    case 'EVIDENCE_MERGED': {
+      // Merge: take the existing record, replace observationIds / artifactIds
+      // with the union, and bump confidence to max.
+      const existing = state.evidence.find((e) => e.id === event.evidenceId)
+      const other = state.evidence.find((e) => e.id === event.mergedFrom)
+      if (!existing || !other) {
+        throw new TaskStateStoreError(
+          `EVIDENCE_MERGED: missing evidence ${!existing ? event.evidenceId : event.mergedFrom}`,
+        )
+      }
+      const merged = {
+        ...existing,
+        observationIds: dedupeStrings([...existing.observationIds, ...other.observationIds]),
+        artifactIds: dedupeStrings([...existing.artifactIds, ...other.artifactIds]),
+        confidence: Math.max(existing.confidence, other.confidence),
+      }
+      return {
+        ...state,
+        evidence: state.evidence
+          .filter((e) => e.id !== event.mergedFrom)
+          .map((e) => (e.id === event.evidenceId ? merged : e)),
+      }
+    }
+
+    case 'STRATEGY_DECISION_RECORDED': {
+      return { ...state, strategyDecisions: [...state.strategyDecisions, event.decision] }
+    }
+
     case 'ATTEMPT_RECORDED': {
       // §九 — refuse duplicates and rejected status transitions.
       if (state.attempts.some((a) => a.id === event.attempt.id)) {
         throw new DuplicateAttemptError(`Attempt ${event.attempt.id} already exists`)
       }
       return { ...state, attempts: [...state.attempts, event.attempt] }
+    }
+
+    case 'ATTEMPT_STARTED': {
+      // Same as ATTEMPT_RECORDED but uses the new Attempt shape.
+      if (state.attempts.some((a) => a.id === event.attempt.id)) {
+        throw new DuplicateAttemptError(`Attempt ${event.attempt.id} already exists`)
+      }
+      return { ...state, attempts: [...state.attempts, event.attempt] }
+    }
+
+    case 'ATTEMPT_COMPLETED':
+    case 'ATTEMPT_FAILED':
+    case 'ATTEMPT_CANCELLED':
+    case 'ATTEMPT_SKIPPED': {
+      const next = state.attempts.map((a) => {
+        if (a.id !== event.attemptId) return a
+        if (event.type === 'ATTEMPT_COMPLETED') {
+          return { ...a, status: event.status, completedAt: event.completedAt }
+        }
+        if (event.type === 'ATTEMPT_FAILED') {
+          return { ...a, status: 'failed' as const, error: event.error, completedAt: Date.now() }
+        }
+        if (event.type === 'ATTEMPT_CANCELLED') {
+          return { ...a, status: 'cancelled' as const, error: { message: event.reason }, completedAt: Date.now() }
+        }
+        // ATTEMPT_SKIPPED
+        const skipStatus = event.reason === 'duplicate'
+          ? 'skipped_duplicate' as const
+          : event.reason === 'policy'
+            ? 'skipped_policy' as const
+            : 'skipped_budget' as const
+        return { ...a, status: skipStatus, completedAt: Date.now() }
+      })
+      if (next.every((a, i) => a === state.attempts[i])) {
+        throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
+      }
+      return { ...state, attempts: next }
     }
 
     case 'ATTEMPT_UPDATED': {
@@ -458,6 +579,47 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         throw new UnknownAttemptError(`Attempt ${event.attemptId} not found`)
       }
       return { ...state, attempts: next }
+    }
+
+    case 'FLAG_CANDIDATE_DETECTED': {
+      if (state.flagCandidates.some((c) => c.id === event.candidate.id)) {
+        throw new TaskStateStoreError(
+          `FlagCandidate ${event.candidate.id} already exists`,
+        )
+      }
+      return { ...state, flagCandidates: [...state.flagCandidates, event.candidate] }
+    }
+
+    case 'FLAG_CANDIDATE_VALIDATED': {
+      const next = state.flagCandidates.map((c) => {
+        if (c.id !== event.candidateId) return c
+        return {
+          ...c,
+          status: 'validated' as const,
+          validation: {
+            ...c.validation,
+            errors: event.errors,
+            locallyVerified: event.errors.length === 0,
+          },
+          updatedAt: Date.now(),
+        }
+      })
+      if (next.every((c, i) => c === state.flagCandidates[i])) {
+        throw new TaskStateStoreError(`FlagCandidate ${event.candidateId} not found`)
+      }
+      return { ...state, flagCandidates: next }
+    }
+
+    case 'FLAG_CANDIDATE_REJECTED': {
+      const next = state.flagCandidates.map((c) =>
+        c.id === event.candidateId
+          ? { ...c, status: 'rejected' as const, updatedAt: Date.now() }
+          : c,
+      )
+      if (next.every((c, i) => c === state.flagCandidates[i])) {
+        throw new TaskStateStoreError(`FlagCandidate ${event.candidateId} not found`)
+      }
+      return { ...state, flagCandidates: next }
     }
 
     case 'JOB_RECORDED': {

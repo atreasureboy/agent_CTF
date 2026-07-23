@@ -143,6 +143,65 @@ export const workflowDefinitionSchema = z
 
 export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>
 
+/* ─── Phase 2.1 §十八 / §二十二 — typed WorkflowDefinition ──────────── */
+
+/** Phase 2.1 typed WorkflowDefinition. The new shape replaces the
+ *  legacy `when: string` / `stopConditions: string[]` with structured
+ *  predicates (`WorkflowCondition`) and an explicit DAG `dependsOn`
+ *  field. Legacy workflows keep using `WorkflowDefinition` until they
+ *  are migrated. */
+import type { WorkflowCondition } from './ctfReasoning/workflowCondition.js'
+
+export type TypedWorkflowStep =
+  | {
+      id: string
+      kind: 'tool'
+      toolId: string
+      inputs?: Record<string, unknown>
+      dependsOn?: string[]
+      emit_finding?: false
+      description?: string
+    }
+  | {
+      id: string
+      kind: 'request_handoff'
+      capability: string
+      dependsOn?: string[]
+      emit_finding?: false
+      description?: string
+    }
+  | {
+      id: string
+      kind: 'if'
+      condition: WorkflowCondition
+      then: TypedWorkflowStep[]
+      else?: TypedWorkflowStep[]
+      dependsOn?: string[]
+      description?: string
+    }
+  | {
+      id: string
+      kind: 'emit_finding'
+      dependsOn?: string[]
+      fromEvidence?: { kinds?: string[]; minConfidence?: number; polarity?: 'supports' | 'contradicts' | 'neutral' }
+      fromObservations?: { kinds?: string[]; minConfidence?: number }
+      includeSuggestedActions?: boolean
+      description?: string
+    }
+
+export interface TypedWorkflowDefinition {
+  id: string
+  displayName: string
+  description: string
+  /** When `true`, the workflow uses the legacy engine. Migrated
+   *  workflows must be `false` (or omit). */
+  legacy?: false
+  executionMode: 'sequential' | 'parallel' | 'dag'
+  inputs: string[]
+  stopConditions: WorkflowCondition[]
+  steps: TypedWorkflowStep[]
+}
+
 export type WorkflowRunStatus = 'success' | 'partial' | 'failed' | 'cancelled'
 
 export interface StepOutcome {

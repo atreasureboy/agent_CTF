@@ -9,10 +9,16 @@
  * ArtifactStore, HandoffStore). Those continue to be the durable backing for
  * findings/artifacts/handoffs; the TaskState keeps only the **indices** plus
  * derived information (phase, attempts, hypotheses, completions).
+ *
+ * Phase 2.1 — adds `observations`, `evidence`, `strategyDecisions` for the
+ * structured reasoning loop.
  */
 
 import type { Finding } from '../findings.js'
 import type { TaskExecutionContext } from './taskExecutionContext.js'
+import type { Observation } from '../ctfReasoning/observation.js'
+import type { Evidence } from '../ctfReasoning/evidence.js'
+import type { StrategyDecision } from '../ctfReasoning/strategyDecision.js'
 
 export type CTFTaskPhase =
   | 'created'
@@ -44,24 +50,48 @@ export interface ChallengeDescriptor {
 
 export interface CTFHypothesis {
   id: string
+  taskId: string
   statement: string
+  category: string
   status: 'proposed' | 'testing' | 'supported' | 'rejected' | 'inconclusive'
-  evidenceIds: string[]
-  createdBy: string
+  supportingEvidenceIds: string[]
+  contradictingEvidenceIds: string[]
+  proposedBy: { type: 'planner' | 'workflow' | 'agent' | 'specialist' | 'manual'; id: string }
+  priority: number
+  confidence: number
+  revisionOf?: string
   createdAt: number
   updatedAt: number
 }
 
+export interface AttemptExecution {
+  index: number
+  startedAt: number
+  completedAt?: number
+  status: 'succeeded' | 'failed' | 'cancelled'
+  errorCode?: string
+  errorMessage?: string
+}
+
 export interface CTFAttempt {
   id: string
-  kind: 'tool' | 'workflow' | 'agent' | 'manual'
-  summary: string
-  /** Optional fingerprint for repeat-detection (e.g. toolId+input hash). */
-  fingerprint?: string
+  taskId: string
+  kind: 'tool' | 'workflow' | 'oneshot' | 'handoff' | 'verification' | 'manual'
+  targetId: string
+  input: Record<string, unknown>
+  fingerprint: string
+  hypothesisIds: string[]
   status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
-  resultSummary?: string
-  createdAt: number
+    | 'skipped_duplicate' | 'skipped_policy' | 'skipped_budget'
+  observationIds: string[]
+  evidenceIds: string[]
+  artifactIds: string[]
+  flagCandidateIds: string[]
+  retryExecutions?: AttemptExecution[]
+  error?: { code?: string; message: string; retryable?: boolean }
+  startedAt?: number
   completedAt?: number
+  createdAt: number
 }
 
 export type HandoffRecordStatus =
@@ -227,15 +257,29 @@ export interface FlagCandidate {
   id: string
   taskId: string
   value: string
+  normalizedValue: string
+  sourceObservationIds: string[]
+  sourceEvidenceIds: string[]
+  sourceArtifactIds: string[]
+  sourceRunIds: string[]
+  transformChain?: Array<{ operation: string; inputHash: string; outputHash: string }>
+  confidence: number
+  validation: {
+    patternMatched: boolean
+    provenanceComplete: boolean
+    locallyVerified: boolean
+    platformVerified: boolean
+    errors: string[]
+  }
+  status: 'detected' | 'validated' | 'rejected' | 'submitted' | 'accepted'
   source: 'finding' | 'agent_output' | 'workflow_output' | 'manual'
   sourceId?: string
-  confidence: 'low' | 'medium' | 'high'
-  /** Whether the candidate matched `challenge.flagPattern`. */
   matchedPattern: boolean
   submittedAt?: number
   submitResult?: 'accepted' | 'rejected' | 'pending'
   notes?: string
   createdAt: number
+  updatedAt: number
 }
 
 export interface TaskCompletion {
@@ -284,6 +328,14 @@ export interface CTFTaskState {
   /** Phase 2.0 §三 — OneShot runs as first-class task entities. Filter by
    *  status for "active" subsets. */
   oneShotRuns: OneShotRunRecord[]
+  /** Phase 2.1 §六 — structured reasoning artefacts. Each observation
+   *  binds a single witnessed fact to a Source; evidence is the claim
+   *  built from one or more observations. */
+  observations: Observation[]
+  evidence: Evidence[]
+  /** Phase 2.1 §十六 — every Planner action becomes a StrategyDecision
+   *  with the chosen + rejected actions and the reason. */
+  strategyDecisions: StrategyDecision[]
   /** Convenience: the ids of runs that are currently `running`. Derived
    *  from `agentRuns` / `workflowRuns` / `jobs`. */
   activeAgentRunIds: string[]

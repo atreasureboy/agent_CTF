@@ -280,10 +280,17 @@ export class Dispatcher {
 
       const attempt: CTFAttempt = {
         id: attemptId,
-        kind: 'tool',
-        summary: `one-shot:${manifestId}`,
+        taskId: this.taskId,
+        kind: 'oneshot',
+        targetId: manifestId,
+        input: { argv: inputs.argv, resolvedInput: inputs.resolvedInput ?? {} },
         fingerprint: `${manifestId}:${this.shortFingerprint(inputs)}`,
+        hypothesisIds: [],
         status: 'running',
+        observationIds: [],
+        evidenceIds: [],
+        artifactIds: [],
+        flagCandidateIds: [],
         createdAt: Date.now(),
       }
       this.deps.orchestrator?.recordAttempt(attempt)
@@ -539,7 +546,7 @@ export class Dispatcher {
       )
       this.deps.orchestrator?.updateAttempt(attempt.id, {
         status: 'succeeded',
-        resultSummary: normalized.summary,
+        error: undefined,
         completedAt,
       })
     } else {
@@ -646,21 +653,21 @@ export class Dispatcher {
         return
       case 'partial':
         o.recordOneShotPartial(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'succeeded', resultSummary: summary, completedAt })
+        o.updateAttempt(attempt.id, { status: 'succeeded', error: { message: summary }, completedAt })
         return
       case 'timeout':
         o.recordOneShotTimeout(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'failed', resultSummary: summary, completedAt })
+        o.updateAttempt(attempt.id, { status: 'failed', error: { message: summary, code: 'timeout' }, completedAt })
         return
       case 'cancelled':
         o.recordOneShotCancelled(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'cancelled', resultSummary: summary, completedAt })
+        o.updateAttempt(attempt.id, { status: 'cancelled', error: { message: summary }, completedAt })
         return
       case 'failed':
       case 'unavailable':
       default:
         o.recordOneShotFailed(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'failed', resultSummary: summary, completedAt })
+        o.updateAttempt(attempt.id, { status: 'failed', error: { message: summary }, completedAt })
         return
     }
   }

@@ -451,7 +451,7 @@ describe('§4 — Abort chain', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -591,7 +591,7 @@ describe('§4 — Abort chain', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     })
@@ -903,7 +903,7 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }
@@ -1013,7 +1013,7 @@ describe('§6 — Reducer invariants', () => {
       findings: [], artifactIds: [], hypotheses: [], attempts: [],
       handoffs: [], agentRuns: [], activeAgentRunIds: [],
       workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [],
+      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [],
       flagCandidates: [],
       createdAt: now, updatedAt: now,
     }
@@ -1025,10 +1025,15 @@ describe('§6 — Reducer invariants', () => {
       type: 'HYPOTHESIS_ADDED',
       hypothesis: {
         id: 'h1',
+        taskId: 't1',
         statement: 'x',
+        category: 'crypto',
         status: 'proposed',
-        evidenceIds: [],
-        createdBy: 'main',
+        supportingEvidenceIds: [],
+        contradictingEvidenceIds: [],
+        proposedBy: { type: 'manual', id: 'main' },
+        priority: 0,
+        confidence: 0.5,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       },
@@ -1038,8 +1043,7 @@ describe('§6 — Reducer invariants', () => {
       store.apply({
         type: 'HYPOTHESIS_ADDED',
         hypothesis: {
-          id: 'h1', statement: 'y', status: 'proposed',
-          evidenceIds: [], createdBy: 'main',
+          id: 'h1', taskId: 't1', statement: 'y', category: 'crypto', status: 'proposed', supportingEvidenceIds: [], contradictingEvidenceIds: [], proposedBy: { type: 'manual', id: 'main' }, priority: 0, confidence: 0.5,
           createdAt: Date.now(), updatedAt: Date.now(),
         },
       }),
@@ -1057,13 +1061,19 @@ describe('§6 — Reducer invariants', () => {
     const store = new CTFTaskStateStore(freshState())
     store.apply({
       type: 'ATTEMPT_RECORDED',
-      attempt: { id: 'a1', kind: 'tool', summary: 'x', status: 'pending', createdAt: Date.now() },
+      attempt: { id: 'a1', taskId: 't1', kind: 'tool', targetId: 't1', input: {},
+        fingerprint: 'fp_tool_t1', hypothesisIds: [], observationIds: [],
+        evidenceIds: [], artifactIds: [], flagCandidateIds: [], error: { message: 'x' },
+        status: 'pending', createdAt: Date.now() },
     })
     expect(store.getState().attempts.length).toBe(1)
     expect(() =>
       store.apply({
         type: 'ATTEMPT_RECORDED',
-        attempt: { id: 'a1', kind: 'tool', summary: 'x', status: 'pending', createdAt: Date.now() },
+        attempt: { id: 'a1', taskId: 't1', kind: 'tool', targetId: 't1', input: {},
+        fingerprint: 'fp_tool_t1', hypothesisIds: [], observationIds: [],
+        evidenceIds: [], artifactIds: [], flagCandidateIds: [], error: { message: 'x' },
+        status: 'pending', createdAt: Date.now() },
       }),
     ).toThrow(DuplicateAttemptError)
   })
@@ -1072,7 +1082,10 @@ describe('§6 — Reducer invariants', () => {
     const store = new CTFTaskStateStore(freshState())
     store.apply({
       type: 'ATTEMPT_RECORDED',
-      attempt: { id: 'a1', kind: 'tool', summary: 'x', status: 'running', createdAt: Date.now() },
+      attempt: { id: 'a1', taskId: 't1', kind: 'tool', targetId: 't1', input: {},
+        fingerprint: 'fp_tool_t1', hypothesisIds: [], observationIds: [],
+        evidenceIds: [], artifactIds: [], flagCandidateIds: [], error: { message: 'x' },
+        status: 'running', createdAt: Date.now() },
     })
     store.apply({ type: 'ATTEMPT_UPDATED', attemptId: 'a1', patch: { status: 'succeeded' } })
     expect(() =>
@@ -1133,9 +1146,8 @@ describe('§7 — TaskStateProjector', () => {
         taskId: 't',
         producerAgentId: 'main',
         category: 'triage',
-        title: 't',
-        summary: 's',
-        confidence: 'low',
+        title: 't', summary: 'triage summary',
+          confidence: 'low',
         evidence: [],
         artifactIds: [],
       })
@@ -1211,9 +1223,8 @@ describe('§7 — TaskStateProjector', () => {
         taskId: orch.getState().taskId,
         producerAgentId: 'triage',
         category: 'triage',
-        title: 'pre',
-        summary: 'pre',
-        confidence: 'low',
+        title: 'pre', summary: 'triage summary',
+          confidence: 'low',
         evidence: [],
         artifactIds: [],
       })
@@ -1249,9 +1260,8 @@ describe('§8 — Integration', () => {
         taskId: orch.getState().taskId,
         producerAgentId: 'triage',
         category: 'forensics',
-        title: 'parent seed',
-        summary: 'parent seed',
-        confidence: 'low',
+        title: 'parent seed', summary: 'triage summary',
+          confidence: 'low',
         evidence: [],
         artifactIds: [],
       })

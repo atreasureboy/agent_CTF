@@ -25,6 +25,9 @@ import type {
   WorkflowRunRecord,
 } from './taskState.js'
 import type { Finding } from '../findings.js'
+import type { Observation } from '../ctfReasoning/observation.js'
+import type { Evidence } from '../ctfReasoning/evidence.js'
+import type { StrategyDecision } from '../ctfReasoning/strategyDecision.js'
 
 export type CTFTaskEvent =
   | { type: 'TASK_CREATED'; taskId: string; initial: CTFTaskState }
@@ -123,6 +126,21 @@ export type CTFTaskEvent =
       patch: Partial<OneShotRunRecord>
     }
   | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
+  /* ─── Phase 2.1 §六 — structured reasoning events ──────────────────── */
+  | { type: 'OBSERVATION_ADDED'; observation: Observation }
+  | { type: 'EVIDENCE_ADDED'; evidence: Evidence }
+  | { type: 'EVIDENCE_MERGED'; evidenceId: string; mergedFrom: string }
+  | { type: 'HYPOTHESIS_PROPOSED'; hypothesis: CTFHypothesis }
+  | { type: 'HYPOTHESIS_STATUS_CHANGED'; hypothesisId: string; from: CTFHypothesis['status']; to: CTFHypothesis['status']; reason?: string }
+  | { type: 'ATTEMPT_STARTED'; attempt: CTFAttempt }
+  | { type: 'ATTEMPT_COMPLETED'; attemptId: string; status: CTFAttempt['status']; completedAt: number }
+  | { type: 'ATTEMPT_FAILED'; attemptId: string; error: { code?: string; message: string; retryable?: boolean } }
+  | { type: 'ATTEMPT_CANCELLED'; attemptId: string; reason: string }
+  | { type: 'ATTEMPT_SKIPPED'; attemptId: string; reason: 'duplicate' | 'policy' | 'budget' }
+  | { type: 'STRATEGY_DECISION_RECORDED'; decision: StrategyDecision }
+  | { type: 'FLAG_CANDIDATE_DETECTED'; candidate: FlagCandidate }
+  | { type: 'FLAG_CANDIDATE_VALIDATED'; candidateId: string; errors: string[] }
+  | { type: 'FLAG_CANDIDATE_REJECTED'; candidateId: string; reason: string }
 
 /** A subscriber receives every event AFTER it has been applied. */
 export type TaskStateListener = (event: CTFTaskEvent, state: Readonly<CTFTaskState>) => void
