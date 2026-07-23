@@ -23,6 +23,12 @@ export interface ResolveArgsInput {
   options: Record<string, unknown>
   resolveArtifactPath?: (artifactId: string) => string | undefined
   taskWorkspaceDir: string
+  /**
+   * §round-2 audit fix — authoritative containment boundary. When
+   * supplied, the narrowest of `allowedFilesRoot` and `taskWorkspaceDir`
+   * is used for path-containment checks.
+   */
+  allowedFilesRoot?: string
 }
 
 /**
@@ -75,14 +81,31 @@ function validateOptions(schema: unknown, options: Record<string, unknown>): voi
  * the workspace, and any path that didn't come through resolveArtifactPath
  * (i.e. model-supplied string paths).
  */
-function authorisePath(p: string, taskWorkspaceDir: string): string {
+function authorisePath(p: string, containmentRoot: string): string {
   if (p.includes('..')) {
     throw new Error(`path traversal rejected: ${p}`)
   }
-  if (p.startsWith('/') && !p.startsWith(`${taskWorkspaceDir}/`)) {
+  if (p.startsWith('/') && !p.startsWith(`${containmentRoot}/`)) {
     throw new Error(`absolute path outside workspace rejected: ${p}`)
   }
   return p
+}
+
+/** §round-2 audit fix — pick the narrowest available containment
+ *  boundary between `taskWorkspaceDir` and `allowedFilesRoot`. */
+function pickContainmentRoot(
+  taskWorkspaceDir: string,
+  allowedFilesRoot: string | undefined,
+): string {
+  if (!allowedFilesRoot) return taskWorkspaceDir
+  const taskInAllowed = taskWorkspaceDir === allowedFilesRoot ||
+    taskWorkspaceDir.startsWith(`${allowedFilesRoot}/`)
+  if (taskInAllowed) return taskWorkspaceDir
+  const allowedInTask = allowedFilesRoot === taskWorkspaceDir ||
+    allowedFilesRoot.startsWith(`${taskWorkspaceDir}/`)
+  if (allowedInTask) return allowedFilesRoot
+  // Neither contains the other — fall back to allowedFilesRoot.
+  return allowedFilesRoot
 }
 
 const PLACEHOLDER = /\$\{([^}]+)\}/g
@@ -110,6 +133,15 @@ export function resolveArgumentTemplate(
     validateOptions(def.optionsSchema, input.options)
   }
 
+  // §round-2 audit fix — pick the narrowest containment root available.
+  // `allowedFilesRoot` is the contest boundary; `taskWorkspaceDir` is the
+  // per-task workspace. The longest realpath wins as the most specific
+  // boundary (since the narrower root is contained in the wider one).
+  const containmentRoot = pickContainmentRoot(
+    input.taskWorkspaceDir,
+    input.allowedFilesRoot,
+  )
+
   const resolvedPaths = input.artifactIds.map((id, i) => {
     if (!input.resolveArtifactPath) {
       throw new Error(`manifest ${manifest.id} requires artifact path resolution (artifact #${i})`)
@@ -118,7 +150,7 @@ export function resolveArgumentTemplate(
     if (!p) {
       throw new Error(`artifact ${id} not found in workspace`)
     }
-    return authorisePath(p, input.taskWorkspaceDir)
+    return authorisePath(p, containmentRoot)
   })
 
   const optionValues: Record<string, string> = {}

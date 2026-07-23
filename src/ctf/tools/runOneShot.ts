@@ -93,6 +93,8 @@ export function makeRunOneShotTool(deps: RunOneShotToolDeps): Tool {
           options: options ?? {},
           resolveArtifactPath,
           taskWorkspaceDir: taskContext.workspaceDir,
+          // §round-2 audit fix — pass the contest boundary.
+          allowedFilesRoot: taskContext.contestScope.allowedFilesRoot,
         })
       } catch (err) {
         return {

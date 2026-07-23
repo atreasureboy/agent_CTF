@@ -46,7 +46,12 @@ export function makeCancelOneShotTool(dispatcher: Dispatcher): Tool {
           return { content: `already_terminal: ${runId}`, isError: false }
         case 'cancel_failed':
           return { content: `cancel_failed: ${runId}`, isError: true }
+        case 'wrong_task':
+          return { content: `wrong_task: ${runId}`, isError: true }
       }
+      // Unreachable — TypeScript needs an explicit return for the
+      // exhaustive switch when the function return type isn't `undefined`.
+      return { content: `unknown: ${runId}`, isError: true }
     },
   }
 }

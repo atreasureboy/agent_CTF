@@ -44,14 +44,18 @@ export interface ContainerNetworkAdapter {
   cleanup(networkName: string): Promise<void>
 }
 
+// §round-2 audit fix — deny by default for system paths. The previous
+// list missed /etc itself, /var, /proc, /sys, /dev, /boot, and many
+// sub-paths. safeWorkspaceDir now refuses to mount any system path; the
+// runtime must scope workspace under allowedFilesRoot.
 const FORBIDDEN_MOUNTS = [
-  '/root',
-  '/home',
-  '/etc/ssh',
-  '/etc/shadow',
-  '/etc/passwd',
-  '/var/run/docker.sock',
-  '/.git',
+  '/', '/root', '/home', '/etc', '/etc/ssh', '/etc/shadow',
+  '/etc/passwd', '/etc/cron.d', '/etc/sudoers.d', '/etc/profile.d',
+  '/var', '/var/run/docker.sock',
+  '/proc', '/sys', '/dev', '/boot', '/lib', '/lib64',
+  '/sbin', '/bin', '/usr', '/opt', '/srv', '/mnt',
+  '/run', '/tmp/.X11-unix',
+  '/.git', '/.ssh', '/.aws', '/.docker', '/.kube', '/.gnupg',
 ]
 
 function safeWorkspaceDir(given: string): string {
@@ -83,8 +87,15 @@ export async function probeDocker(dockerBin: string = 'docker'): Promise<boolean
 }
 
 export class ContainerRunner implements OneShotRunner {
-  /** runId → docker child + container name. */
-  private readonly children = new Map<string, { child: ChildProcess; containerName: string }>()
+  /** runId → docker child + container name + cleanupNetwork callback. */
+  private readonly children = new Map<string, {
+    child: ChildProcess
+    containerName: string
+    cleanupNetwork?: () => void
+    timeoutHandle?: ReturnType<typeof setTimeout>
+    onAbort?: () => void
+    signal?: AbortSignal
+  }>()
 
   constructor(private readonly opts: ContainerRunnerOptions = {}) {}
 
@@ -193,7 +204,14 @@ export class ContainerRunner implements OneShotRunner {
         resolve(this.fail(runId, manifest, startedAt, 'failed', `docker spawn failed: ${(err as Error).message}`))
         return
       }
-      this.children.set(runId, { child, containerName: runId })
+      this.children.set(runId, {
+        child,
+        containerName: runId,
+        // §round-2 audit fix — populate cleanupNetwork / timeoutHandle /
+        // onAbort here so the cancel(runId) path can reach them. They
+        // are overwritten when the timeout/abort closures are created
+        // further down (network cleanup, etc.).
+      })
       const outStream = createWriteStream(stdoutPath, { flags: 'a' })
       const errStream = createWriteStream(stderrPath, { flags: 'a' })
       let truncated = false
@@ -226,8 +244,19 @@ export class ContainerRunner implements OneShotRunner {
         try { spawn(dockerBin, ['kill', runId]) } catch { /* ignore */ }
       }
       if (signal) {
+        // §P1 audit fix — register the listener first, then re-check
+        // `signal.aborted` to close the race window.
+        signal.addEventListener('abort', onAbort, { once: true })
         if (signal.aborted) onAbort()
-        else signal.addEventListener('abort', onAbort, { once: true })
+      }
+
+      // §round-2 audit fix — make these handles reachable from cancel()
+      // by stashing them on the children map entry.
+      const entry = this.children.get(runId)
+      if (entry) {
+        entry.timeoutHandle = timeoutHandle
+        entry.onAbort = onAbort
+        entry.signal = signal
       }
 
       // §P1 audit fix — when the run finishes (close or error), clean up
@@ -240,13 +269,18 @@ export class ContainerRunner implements OneShotRunner {
           } catch { /* best-effort */ }
           createdNetworkName = undefined
         }
+        const e = this.children.get(runId)
+        if (e) e.cleanupNetwork = cleanupNetwork
       }
 
-      child.on('error', (err) => {
+      child.on('error', async (err) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
-        outStream.end()
-        errStream.end()
+        // §round-2 audit fix — await stream drain so log bytes aren't lost.
+        await Promise.all([
+          new Promise<void>((r) => outStream.end(() => r())),
+          new Promise<void>((r) => errStream.end(() => r())),
+        ])
         this.children.delete(runId)
         cleanupNetwork()
         resolve({
@@ -266,11 +300,14 @@ export class ContainerRunner implements OneShotRunner {
         })
       })
 
-      child.on('close', (code, sig) => {
+      child.on('close', async (code, sig) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
-        outStream.end()
-        errStream.end()
+        // §round-2 audit fix — await stream drain.
+        await Promise.all([
+          new Promise<void>((r) => outStream.end(() => r())),
+          new Promise<void>((r) => errStream.end(() => r())),
+        ])
         this.children.delete(runId)
         cleanupNetwork()
         const finishedAt = new Date().toISOString()
@@ -312,6 +349,14 @@ export class ContainerRunner implements OneShotRunner {
     const entry = this.children.get(runId)
     if (!entry) return
     const dockerBin = this.opts.dockerBin ?? 'docker'
+    // §round-2 audit fix — clear the timeout + abort listener so they
+    // don't fire spuriously after external cancel, and clean up the
+    // adapter-created docker network so it doesn't leak.
+    if (entry.timeoutHandle) clearTimeout(entry.timeoutHandle)
+    if (entry.signal && entry.onAbort) {
+      entry.signal.removeEventListener('abort', entry.onAbort)
+    }
+    entry.cleanupNetwork?.()
     try {
       // Issue `docker kill` for the container, then kill the docker client
       // process to ensure no orphan child remains.

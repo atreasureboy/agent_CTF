@@ -238,22 +238,21 @@ export async function createCTFTaskRuntime(
   const { runnerFor } = await import('../../ctf/oneshot/runner.js')
   const { OneShotRegistry } = await import('../../ctf/oneshot/registry.js')
   const { OneShotCatalog } = await import('../../ctf/oneshot/catalog.js')
+  const { loadManifestsFromDir } = await import('../../ctf/oneshot/manifestLoader.js')
 
-  // §6 audit fix — store the catalog on the jobManager so the registry's
-  // JobRunner can resolve manifests without casting through unknown fields.
-  // Production callers should still prefer `getOneShotRegistry()` over the
-  // attached catalog for thread-safety, but the attached reference is the
-  // single source of truth for `toolId: oneshot:<id>` resolution.
-  // Lazy-built one-shot registry bound to this catalog.
+  // §round-2 audit fix — actually populate the catalog from the bundled
+  // manifests directory. The previous code created an empty catalog so
+  // `oneshot:` jobs always returned `unknown manifest: ...`.
   const oneShotCatalog = new OneShotCatalog()
-  // Register the catalog on the BackgroundJobManager so the registry
-  // can look it up. We assign to a known symbol-keyed field that the
-  // registry callback reads.
-  ;(harness.jobManager as unknown as { __oneShotCatalog: InstanceType<typeof OneShotCatalog> }).__oneShotCatalog = oneShotCatalog
+  const manifestsRoot = `${cwd}/oneshot/manifests`
+  try {
+    loadManifestsFromDir(manifestsRoot, oneShotCatalog)
+  } catch { /* best-effort — manifest dir may not exist in tests */ }
   const oneShotRegistry = new OneShotRegistry(oneShotCatalog)
-  // §6 audit fix — actually wire the registry into the BackgroundJobManager
-  // so `toolId: oneshot:<id>` jobs route through the registered JobRunner
-  // instead of the default broker runner.
+
+  // §round-2 audit fix — remove the magic `__oneShotCatalog` cast that
+  // was set but never read. The registry callback below closes over
+  // `oneShotRegistry` directly.
   harness.jobManager.setRunnerRegistry(runnerRegistry)
 
   runnerRegistry.register('oneshot:', async (spec, signal) => {
@@ -269,13 +268,27 @@ export async function createCTFTaskRuntime(
       evidenceRoot?: string
     }
     const runner = runnerFor(manifest)
+    // §round-2 audit fix — surface the structured OneShotResult through
+    // the BackgroundJob contract. The previous code returned only the
+    // summary string, discarding findings/artifacts/candidates and
+    // forcing the dispatcher to rebuild an empty synthetic result.
     const out = await runner.run(manifest, {
       argv: input.argv ?? [],
       workspace: input.workspace ?? cwd,
       logDir: input.logDir ?? input.evidenceRoot ?? cwd,
       signal,
     })
-    return { summary: out.summary }
+    const payload = Buffer.from(JSON.stringify(out), 'utf8').toString('base64')
+    return {
+      summary: out.summary,
+      // BackgroundJobManager persists `error`/`summary`/`artifactId`. The
+      // dispatcher reads `job.summary` on success; we keep the structured
+      // payload in the summary field via a sentinel prefix that the
+      // dispatcher recognises.
+      artifactId: undefined,
+      error: undefined,
+      __oneShotPayload: payload,
+    } as unknown as { summary?: string; error?: string }
   })
 
   return {

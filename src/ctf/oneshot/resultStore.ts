@@ -88,14 +88,16 @@ export class OneShotResultStore {
     this.refsByTask.set(result.taskId, refs)
   }
 
-  /** Reference a result — bump the GC retention count. */
+  /** Reference a result — bump the GC retention count. Idempotent. */
   retain(taskId: string, runId: string): void {
     const refs = this.refsByTask.get(taskId) ?? new Set<string>()
     refs.add(runId)
     this.refsByTask.set(taskId, refs)
   }
 
-  /** Release a reference. */
+  /** Release a reference. §round-2 audit fix — callers must NOT use this
+   *  to evict results that TaskState still references. Use only when
+   *  the OneShotRunRecord itself is removed. */
   release(taskId: string, runId: string): void {
     this.refsByTask.get(taskId)?.delete(runId)
   }
@@ -146,31 +148,50 @@ export class OneShotResultStore {
    *  - Refuses to delete results still referenced by the task.
    *  - `maxPerTask` — keep at most N newest results; delete the rest.
    *  - `maxAgeMs` — delete results older than this age (against finishedAt).
+   *  - `referencedRunIds` — additional durable references from
+   *    TaskState (OneShotRunRecord.resultPath). Refuses to delete them.
    *  Returns the number of results deleted.
    */
-  async gc(taskId: string, options: OneShotResultStoreGCOptions = {}): Promise<number> {
+  async gc(
+    taskId: string,
+    options: OneShotResultStoreGCOptions & { referencedRunIds?: ReadonlySet<string> } = {},
+  ): Promise<number> {
     const results = await this.listByTask(taskId)
     const refs = this.refsByTask.get(taskId) ?? new Set<string>()
+    const durableRefs = options.referencedRunIds ?? new Set<string>()
     const now = Date.now()
-    const candidates: { runId: string; finishedAt: number }[] = []
-    for (const r of results) {
-      if (refs.has(r.runId)) continue
-      const finishedAt = r.finishedAt ? Date.parse(r.finishedAt) : 0
-      if (options.maxAgeMs !== undefined && finishedAt > 0 && now - finishedAt > options.maxAgeMs) {
-        candidates.push({ runId: r.runId, finishedAt })
+    // §round-2 audit fix — union of age-expired AND count-overflow
+    // candidates, computed independently. The previous logic only
+    // applied `maxPerTask` to the already-age-qualified subset, which
+    // meant with no `maxAgeMs` the count limit never fired.
+    const ageExpired = new Set<string>()
+    if (options.maxAgeMs !== undefined) {
+      for (const r of results) {
+        if (refs.has(r.runId) || durableRefs.has(r.runId)) continue
+        const finishedAt = r.finishedAt ? Date.parse(r.finishedAt) : 0
+        if (finishedAt > 0 && now - finishedAt > options.maxAgeMs) {
+          ageExpired.add(r.runId)
+        }
       }
     }
-    candidates.sort((a, b) => b.finishedAt - a.finishedAt)
+    let countOverflow = new Set<string>()
+    if (options.maxPerTask !== undefined && results.length > options.maxPerTask) {
+      // Newest results first (sorted by finishedAt desc). The
+      // oldest `results.length - maxPerTask` are candidates.
+      const sorted = [...results].sort((a, b) =>
+        (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''),
+      )
+      const overflow = sorted.slice(options.maxPerTask)
+      for (const r of overflow) {
+        if (!refs.has(r.runId) && !durableRefs.has(r.runId) && !ageExpired.has(r.runId)) {
+          countOverflow.add(r.runId)
+        }
+      }
+    }
+    const toDelete = [...ageExpired, ...countOverflow]
     let deleted = 0
-    if (options.maxPerTask !== undefined && candidates.length > options.maxPerTask) {
-      const toRemove = candidates.slice(options.maxPerTask)
-      for (const c of toRemove) {
-        if (await this.delete(c.runId)) deleted++
-      }
-      return deleted
-    }
-    for (const c of candidates) {
-      if (await this.delete(c.runId)) deleted++
+    for (const runId of toDelete) {
+      if (await this.delete(runId)) deleted++
     }
     return deleted
   }

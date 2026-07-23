@@ -47,6 +47,13 @@ export interface EvidenceItem {
 
 export interface EvidenceCollectOptions {
   workspaceDir: string
+  /**
+   * §round-2 audit fix — authoritative containment boundary. The
+   * contest boundary (`allowedFilesRoot`) is the canonical scope; the
+   * per-task `workspaceDir` is allowed as a wider hint for backwards
+   * compatibility, but the narrowest of the two wins.
+   */
+  allowedFilesRoot?: string
   /** Maximum source size in bytes. Files larger than this throw. */
   maxBytes?: number
   /** Allowed MIME prefixes (best-effort). */
@@ -86,13 +93,22 @@ export async function collectEvidence(
   item: EvidenceItem,
   options: EvidenceCollectOptions,
 ): Promise<EvidenceCollectResult> {
-  const { workspaceDir, maxBytes } = options
+  const { workspaceDir, allowedFilesRoot, maxBytes } = options
   if (!existsSync(item.srcPath)) {
     throw new Error(`evidence source missing: ${item.srcPath}`)
   }
-  // Symlink / containment check — realpath must stay inside workspaceDir.
+  // §round-2 audit fix — containment check uses the contest boundary
+  // (`allowedFilesRoot`) when supplied; otherwise falls back to
+  // `workspaceDir`. The narrowest of the two is the effective root.
   const realSrc = await fsp.realpath(item.srcPath)
-  const realRoot = await fsp.realpath(workspaceDir).catch(() => workspaceDir)
+  const candidateRoots = [
+    await fsp.realpath(workspaceDir).catch(() => workspaceDir),
+  ]
+  if (allowedFilesRoot) {
+    candidateRoots.push(await fsp.realpath(allowedFilesRoot).catch(() => allowedFilesRoot))
+  }
+  // Pick the longest realpath — that's the most specific boundary.
+  const realRoot = candidateRoots.sort((a, b) => b.length - a.length)[0] ?? workspaceDir
   if (!realSrc.startsWith(`${realRoot}/`) && realSrc !== realRoot) {
     throw new Error(`evidence source outside workspace: ${item.srcPath}`)
   }

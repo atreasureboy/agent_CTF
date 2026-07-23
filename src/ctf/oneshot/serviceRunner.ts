@@ -49,12 +49,23 @@ export type ServiceFetcher = (
 ) => Promise<ServiceFetcherResult>
 
 const defaultFetcher: ServiceFetcher = async (url, method, body, signal, maxResponseBytes) => {
+  // §round-2 audit fix — `redirect: 'manual'` so we never follow a
+  // 3xx to a private IP without re-validating the scope. Callers that
+  // want to follow redirects must re-issue fetch with the Location
+  // header and re-validate via ScopeGate.
   const res = await fetch(url, {
     method,
     headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
+    redirect: 'manual',
   })
+  if (res.status >= 300 && res.status < 400) {
+    return {
+      status: res.status,
+      body: { redirect: res.headers.get('location') ?? null },
+    }
+  }
   const reader = res.body?.getReader()
   let total = 0
   const chunks: Uint8Array[] = []

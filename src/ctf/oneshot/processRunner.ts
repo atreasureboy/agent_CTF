@@ -23,6 +23,44 @@ import type {
 } from './types.js'
 import type { OneShotRunner, RunnerInputs } from './runner.js'
 
+/**
+ * §round-2 audit fix — build a strict allow-list env. The previous
+ * `...process.env` propagation exposed OPENAI_API_KEY, GitHub tokens,
+ * etc. to every spawned subprocess. A manifest template like
+ * `["bash","-c","echo $OPENAI_API_KEY"]` exfiltrated secrets via the
+ * captured log file.
+ *
+ * Allow-listed vars are passed through; everything matching common
+ * secret patterns (API_KEY/TOKEN/SECRET/PRIVATE/PASSWORD/CREDENTIALS) is
+ * stripped. Manifest-supplied `inputs.env` may opt-in additional vars
+ * via `inputs.env.<name>`, but only those names survive.
+ */
+function buildSafeEnv(inputsEnv?: Record<string, string>): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {}
+  // Always-pass-through safe vars.
+  const ALLOW = new Set([
+    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL',
+    'LC_CTYPE', 'LC_MESSAGES', 'LC_COLLATE', 'TMPDIR', 'TMP', 'TEMP',
+    'TZ', 'PWD', 'OLDPWD', 'TERM', 'COLORTERM', 'NODE_PATH',
+    'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
+    'XDG_CACHE_HOME', 'XDG_STATE_HOME',
+  ])
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v === undefined) continue
+    if (ALLOW.has(k)) out[k] = v
+  }
+  // Allow only opt-in env vars supplied via `inputs.env`. Pattern-match
+  // each name against secret heuristics and reject any match.
+  if (inputsEnv) {
+    const SECRET_RE = /api[_-]?key|token|secret|private|password|credential|passwd/i
+    for (const [k, v] of Object.entries(inputsEnv)) {
+      if (SECRET_RE.test(k)) continue
+      out[k] = v
+    }
+  }
+  return out
+}
+
 export class ProcessRunner implements OneShotRunner {
   /** runId → child for per-run cancellation. */
   private readonly children = new Map<string, ChildProcess>()
@@ -53,7 +91,11 @@ export class ProcessRunner implements OneShotRunner {
       try {
         child = spawn(head, rest, {
           cwd: inputs.workspace,
-          env: { ...process.env, ...(inputs.env ?? {}) },
+          // §round-2 audit fix — use a strict allow-list env. The previous
+          // `...process.env` propagation exposed OPENAI_API_KEY, GitHub
+          // tokens, etc. to every spawned subprocess. Manifest templates
+          // like `["bash","-c","echo $OPENAI_API_KEY"]` exfiltrated them.
+          env: buildSafeEnv(inputs.env),
           stdio: ['ignore', 'pipe', 'pipe'],
           // Spawn detached so we can kill the whole process group on
           // cancel/timeout. Setsid-equivalent on POSIX.
@@ -128,11 +170,15 @@ export class ProcessRunner implements OneShotRunner {
       }
 
       // Error events must resolve the promise — no hangs.
-      child.on('error', (err) => {
+      child.on('error', async (err) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
-        outStream.end()
-        errStream.end()
+        // §round-2 audit fix — await stream drain so log bytes aren't
+        // lost when the child exits unexpectedly.
+        await Promise.all([
+          new Promise<void>((r) => outStream.end(() => r())),
+          new Promise<void>((r) => errStream.end(() => r())),
+        ])
         this.children.delete(runId)
         const finishedAt = new Date().toISOString()
         const status: OneShotStatus = signal?.aborted ? 'cancelled' : 'failed'
@@ -154,12 +200,15 @@ export class ProcessRunner implements OneShotRunner {
         })
       })
 
-      child.on('close', (code, sig) => {
+      child.on('close', async (code, sig) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
-        // Wait for the streams to drain before resolving.
-        outStream.end()
-        errStream.end()
+        // §round-2 audit fix — await stream drain so log bytes aren't
+        // lost when the child exits.
+        await Promise.all([
+          new Promise<void>((r) => outStream.end(() => r())),
+          new Promise<void>((r) => errStream.end(() => r())),
+        ])
         this.children.delete(runId)
         const finishedAt = new Date().toISOString()
         const durationMs = Date.parse(finishedAt) - Date.parse(startedAt)

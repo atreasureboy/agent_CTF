@@ -48,13 +48,25 @@ export interface BackgroundJob {
   summary?: string
   error?: string
   cancelReason?: string
+  /** §round-2 audit fix — opaque payload from the JobRunner. The
+   *  OneShot dispatcher reads this to recover the structured result. */
+  payload?: string
 }
 
-export type JobRunner = (spec: JobSpec, signal: AbortSignal) => Promise<{
+export interface JobRunnerResult {
   summary?: string
   artifactId?: string
   error?: string
-}>
+  /**
+   * §round-2 audit fix — optional opaque payload the runner may use to
+   * hand structured data back to the dispatcher. Production OneShot
+   * runners base64-encode the OneShotResult here so the dispatcher
+   * doesn't have to rebuild an empty synthetic result.
+   */
+  __oneShotPayload?: string
+}
+
+export type JobRunner = (spec: JobSpec, signal: AbortSignal) => Promise<JobRunnerResult>
 
 /**
  * Optional runner registry — lets callers route `toolId: prefix:*` jobs to
@@ -273,19 +285,29 @@ export class BackgroundJobManager {
     const combined = AbortSignal.any([signal, timeoutCtrl.signal])
 
     try {
-      const out = await this.runner(spec, combined)
+      // §round-2 audit fix — resolve by toolId prefix so registered
+      // runners (e.g. `oneshot:`) actually execute. The previous code
+      // unconditionally called `this.runner`, which meant the registry
+      // was set up but never used — registered jobs went to the default
+      // broker runner and produced empty synthetic results.
+      const out = await this.resolveRunner(spec.toolId)(spec, combined)
       job.endedAt = new Date().toISOString()
       job.artifactId = out.artifactId
       job.summary = out.summary
+      // §round-2 audit fix — propagate the runner's opaque payload so
+      // the dispatcher can recover the structured OneShotResult.
+      if (out.__oneShotPayload) job.payload = out.__oneShotPayload
       // Precedence: cancelled > failed > success. When the user cancels,
-      // the runner may still surface an error message (e.g. "Command
-      // cancelled.") so we honour the abort signal as the source of truth.
+// the runner may still surface an error message (e.g. "Command
+// cancelled.") so we honour the abort signal as the source of truth.
+// §round-2 audit fix — only overwrite the operator-supplied
+// `cancelReason` when none was set by `cancel()`.
       if (signal.aborted) {
         job.status = 'cancelled'
-        job.cancelReason = (signal.reason as string) ?? 'cancelled'
+        if (!job.cancelReason) job.cancelReason = (signal.reason as string) ?? 'cancelled'
       } else if (timeoutCtrl.signal.aborted) {
         job.status = 'cancelled'
-        job.cancelReason = (timeoutCtrl.signal.reason as string) ?? 'timeout'
+        if (!job.cancelReason) job.cancelReason = (timeoutCtrl.signal.reason as string) ?? 'timeout'
       } else if (out.error) {
         job.status = 'failed'
         job.error = out.error
@@ -297,10 +319,10 @@ export class BackgroundJobManager {
       job.error = (err as Error).message
       if (signal.aborted) {
         job.status = 'cancelled'
-        job.cancelReason = signal.reason as string
+        if (!job.cancelReason) job.cancelReason = signal.reason as string
       } else if (timeoutCtrl.signal.aborted) {
         job.status = 'cancelled'
-        job.cancelReason = timeoutCtrl.signal.reason as string
+        if (!job.cancelReason) job.cancelReason = timeoutCtrl.signal.reason as string
       } else {
         job.status = 'failed'
       }

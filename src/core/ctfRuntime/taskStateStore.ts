@@ -111,11 +111,18 @@ export class CTFTaskStateStore {
         )
       }
     } else if (this.state.completion) {
+      // §round-2 audit fix — include the _UPDATED bookkeeping events so
+      // post-completion reflection / audit code can update hypothesis
+      // fields, attempt summaries, and job records without tripping the
+      // TaskAlreadyCompletedError guard.
       const bookkeepingOnly: CTFTaskEvent['type'][] = [
         'FINDING_ADDED',
         'ARTIFACT_ADDED',
         'FLAG_CANDIDATE_ADDED',
         'HYPOTHESIS_ADDED',
+        'HYPOTHESIS_UPDATED',
+        'ATTEMPT_UPDATED',
+        'JOB_UPDATED',
       ]
       if (!bookkeepingOnly.includes(event.type)) {
         throw new TaskAlreadyCompletedError(

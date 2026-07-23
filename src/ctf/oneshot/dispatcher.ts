@@ -20,6 +20,7 @@
  */
 
 import { randomBytes } from 'crypto'
+import { ScopeGate } from './scopeGate.js'
 import type {
   CandidateValue,
   NormalizedFinding,
@@ -203,6 +204,25 @@ export class Dispatcher {
       throw new Error(`budget exceeded for lane=${lane} (taskId=${this.taskId})`)
     }
 
+    // §round-2 audit fix — defence-in-depth ScopeGate. Every argv value
+    // that looks like a network target (host, host:port, IP, URL) is
+    // checked against the contest scope. This blocks the SSRF vector
+    // where model-supplied `options.url` flows through the template into
+    // a process runner's argv and reaches the network.
+    if (manifest.network.mode !== 'none') {
+      const gate = new ScopeGate({
+        hosts: this.taskContext.contestScope.allowedHosts ?? [],
+        domains: this.taskContext.contestScope.allowedDomains ?? [],
+        ports: this.taskContext.contestScope.allowedPorts ?? [],
+        cidrs: this.taskContext.contestScope.allowedCidrs ?? [],
+      }, { denyByDefault: true })
+      for (const arg of inputs.argv) {
+        if (this.looksLikeNetworkTarget(arg)) {
+          gate.assert(arg)
+        }
+      }
+    }
+
     const runId = `os_${randomBytes(6).toString('hex')}`
     this.ticketByRun.set(runId, ticket)
 
@@ -232,9 +252,6 @@ export class Dispatcher {
       queuedAt: Date.now(),
     }
 
-    // §四 — record the queued run BEFORE the executor starts, so an
-    // immediate cancellation can find the active entry. Cleanup is in
-    // executeRun's `finally`.
     const entry: ActiveRun = {
       controller: linked,
       backgroundJobId: '',
@@ -245,28 +262,32 @@ export class Dispatcher {
     this.activeRuns.set(runId, entry)
     this.resultStore.retain(this.taskId, runId)
 
-    this.emit({
-      type: 'ONESHOT_QUEUED',
-      runId,
-      manifestId,
-      taskId: this.taskId,
-      lane,
-      at: new Date().toISOString(),
-      detail: { argv: inputs.argv.slice(0, 10) },
-    })
-    this.deps.orchestrator?.recordOneShotQueued(record)
-
-    const attempt: CTFAttempt = {
-      id: attemptId,
-      kind: 'tool',
-      summary: `one-shot:${manifestId}`,
-      fingerprint: `${manifestId}:${this.shortFingerprint(inputs)}`,
-      status: 'running',
-      createdAt: Date.now(),
-    }
-    this.deps.orchestrator?.recordAttempt(attempt)
-
+    // §round-2 audit fix — every setup step that can throw must run
+    // INSIDE the try block. Previously the activeRuns entry was added
+    // before the try, so a throw during newEvidenceDir / recordOneShotQueued
+    // / recordAttempt leaked the budget ticket + linked controller.
     try {
+      this.emit({
+        type: 'ONESHOT_QUEUED',
+        runId,
+        manifestId,
+        taskId: this.taskId,
+        lane,
+        at: new Date().toISOString(),
+        detail: { argvLength: inputs.argv.length },
+      })
+      this.deps.orchestrator?.recordOneShotQueued(record)
+
+      const attempt: CTFAttempt = {
+        id: attemptId,
+        kind: 'tool',
+        summary: `one-shot:${manifestId}`,
+        fingerprint: `${manifestId}:${this.shortFingerprint(inputs)}`,
+        status: 'running',
+        createdAt: Date.now(),
+      }
+      this.deps.orchestrator?.recordAttempt(attempt)
+
       const promise = this.executeRun(manifestId, record, attempt, linked, inputs, ev.rootDir)
       entry.promise = promise
       return await promise
@@ -315,10 +336,16 @@ export class Dispatcher {
   /** Per-run cancellation (§八). */
   async cancelRun(runId: string, reason: string): Promise<
     | { ok: true }
-    | { ok: false; reason: 'unknown_run' | 'already_terminal' | 'cancel_failed' }
+    | { ok: false; reason: 'unknown_run' | 'already_terminal' | 'cancel_failed' | 'wrong_task' }
   > {
     const active = this.activeRuns.get(runId)
     if (!active) return { ok: false, reason: 'unknown_run' }
+    // §round-2 audit fix — verify the runId belongs to the calling
+    // task. A model that learned another task's runId could otherwise
+    // cancel its runs.
+    if (active.record.taskId !== this.taskId) {
+      return { ok: false, reason: 'wrong_task' }
+    }
     const status = active.record.status
     if (status !== 'queued' && status !== 'running') {
       return { ok: false, reason: 'already_terminal' }
@@ -472,7 +499,13 @@ export class Dispatcher {
     // OneShotResult (test/dev path) — use it. Production route reads
     // from the BackgroundJob's persisted summary.
     const job = this.deps.jobManager.status(backgroundJobId)
-    const raw: OneShotResult = runnerOutput ?? this.buildSuccessResult(
+    // §round-2 audit fix — prefer the OneShot payload the registry's
+    // JobRunner handed back through `job.payload`. The direct-runner
+    // path captures the return value into `runnerOutput`. If neither
+    // is present, fall back to an empty success envelope built from
+    // the BackgroundJob's `summary`.
+    const payloadResult = this.decodePayload(job?.payload)
+    const raw: OneShotResult = runnerOutput ?? payloadResult ?? this.buildSuccessResult(
       record.id, manifestId, manifest, startedAt, job,
     )
 
@@ -533,6 +566,39 @@ export class Dispatcher {
 
   /** Build the OneShotResult for a successful run. Pulls the BackgroundJob's
    *  summary if the registry path didn't return a richer result. */
+  /** Decode the base64-encoded OneShotResult payload persisted by the
+   *  registry's JobRunner. Returns `null` on any decode error so the
+   *  dispatcher falls back to building an empty envelope. */
+  private decodePayload(payload: string | undefined): OneShotResult | null {
+    if (!payload) return null
+    try {
+      const json = Buffer.from(payload, 'base64').toString('utf8')
+      const obj = JSON.parse(json) as OneShotResult
+      return obj
+    } catch {
+      return null
+    }
+  }
+
+  /** §round-2 audit fix — heuristic network-target detection. We pass
+   *  any argv value that looks like a host/IP/URL through ScopeGate.
+   *  This is intentionally conservative — false positives just trigger
+   *  a `ScopeDeniedError` rather than permit a private-IP SSRF. */
+  private looksLikeNetworkTarget(arg: string): boolean {
+    if (!arg) return false
+    // IPv4: 1.2.3.4
+    if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(arg)) return true
+    // Bracketed IPv6: [::1]:443
+    if (/^\[[0-9a-fA-F:]+\](:\d+)?$/.test(arg)) return true
+    // Bare IPv6: ::1
+    if (/^[0-9a-fA-F:]+$/.test(arg) && arg.includes(':')) return true
+    // URL with scheme
+    if (/^[a-z][a-z0-9+.-]*:\/\//.test(arg)) return true
+    // host:port or host
+    if (/^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(:\d+)?$/.test(arg)) return true
+    return false
+  }
+
   private buildSuccessResult(
     runId: string,
     manifestId: string,
@@ -635,7 +701,12 @@ export class Dispatcher {
     }
     active.controller.unlink()
     this.activeRuns.delete(runId)
-    this.resultStore.release(this.taskId, runId)
+    // §round-2 audit fix — do NOT release the ResultStore reference here.
+    // TaskState's OneShotRunRecord.resultPath still points at the saved
+    // file; releasing the ref allows GC to delete a file that the state
+    // index claims exists, violating the §九 retention contract. The ref
+    // is released explicitly when the OneShotRunRecord itself is removed
+    // (or when the orchestrator's persist passes ownership to TaskState).
   }
 
   private emitCompletedEvents(result: OneShotResult): void {
@@ -704,23 +775,6 @@ export class Dispatcher {
   private fingerprintFinding(f: NormalizedFinding): string {
     return `${f.category}/${f.title}`
   }
-}
-
-/* ─── BackgroundJob bridge helper ───────────────────────────────────────── */
-
-/** Convenience: subscribe to existing BackgroundJobManager and forward JOB_*
- *  events to the dispatcher projection. The dispatcher does not need this
- *  hook to function, but production code wires it so the TaskState sees JOB_*
- *  AND ONESHOT_* in one stream. */
-export function bridgeBackgroundJobs(
-  jobManager: BackgroundJobManager,
-  dispatcher: Dispatcher,
-): () => void {
-  const sub = jobManager.subscribe((event: BackgroundJobEvent) => {
-    void dispatcher
-    void event
-  })
-  return sub
 }
 
 /* Re-export helper types so callers don't need separate imports. */
