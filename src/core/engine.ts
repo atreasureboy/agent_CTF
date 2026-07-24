@@ -312,6 +312,17 @@ export class ExecutionEngine {
       const profile = this.config.profile
       defs = defs.filter((d) => profileAllowsTool(profile, d.function.name))
     }
+    // Phase 3.0 — Apply ToolVisibilityPolicy filter if present
+    if (this.config.toolVisibilityPolicy) {
+      const policy = this.config.toolVisibilityPolicy
+      const role = this.config.profile?.id || 'solver'
+      defs = defs.filter((d) =>
+        policy.isToolVisible(d.function.name, {
+          role,
+          isOrchestrator: role === 'orchestrator',
+        }),
+      )
+    }
     // Filter by plan mode (read-only tools only)
     if (planMode) {
       defs = defs.filter((t) => PLAN_MODE_TOOLS.has(t.function.name))

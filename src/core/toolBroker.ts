@@ -87,6 +87,7 @@ export interface ToolBrokerOptions {
    * `store.switchTo()` instead.
    */
   profileStore?: import('./ctfRuntime/profileStore.js').ProfileStore
+  toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
 }
 
 /**
@@ -192,6 +193,20 @@ export class ToolBroker {
         content: `Permission denied: ${denyReason}\nIf this tool is required for your task, return a HandoffRequest to an agent whose profile permits it.`,
         isError: true,
       })
+    }
+
+    // ── Step 1.5: ToolVisibilityPolicy gate ─────────────────
+    if (this.opts.toolVisibilityPolicy) {
+      const isVisible = this.opts.toolVisibilityPolicy.isToolVisible(toolId, {
+        role: profile.id,
+        isOrchestrator: profile.id === 'orchestrator',
+      })
+      if (!isVisible) {
+        return new BrokerExecutionResult({
+          content: `Permission denied: Tool "${toolId}" is hidden or not visible to current role/profile "${profile.id}".`,
+          isError: true,
+        })
+      }
     }
 
     const reg = this.opts.registry.get(toolId)

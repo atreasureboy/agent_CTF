@@ -20,6 +20,7 @@ This document provides a comprehensive completion and conflict/duplication audit
 | Section II #9 & Section XV | CompilerValidator | Validate objectives, scope, sources; fallback to deterministic template | **DONE (100%)** | `src/core/contextCompiler/compilerValidator.ts` |
 | Section XIV | M3 SolverBrief | XML-structured mechanical prompt for 1-step single action contract | **DONE (100%)** | `src/core/contextCompiler/solverBriefCompiler.ts` |
 | Section II #10 & Section XVI | ToolVisibilityPolicy | Multi-role visibility rules, Orchestrator high-level tool filtering | **DONE (100%)** | `src/core/toolVisibility/toolVisibilityPolicy.ts` |
+| Section XVI | ToolBroker Visibility Gate | Enforce `ToolVisibilityPolicy.isToolVisible` in `ToolBroker.execute` & `ExecutionEngine.getToolDefinitions` | **DONE (100%)** | `src/core/toolBroker.ts` & `src/core/engine.ts` |
 | Section XVII | MCP Visibility | Role-based MCP server visibility isolation | **DONE (100%)** | `src/core/toolVisibility/mcpVisibility.ts` |
 | Section II #11, 12, 13, 20 | ExternalSolverAdapters | Protocol interface, NativeSolverAdapter, GenericProcessSolverAdapter | **DONE (100%)** | `src/core/solverPortfolio/` |
 | Section II #14, 15 & Section XXIII | ChallengeSwarm | Controlled multi-solver swarm, staged escalation, winner selection | **DONE (100%)** | `src/core/solverPortfolio/challengeSwarm.ts` |

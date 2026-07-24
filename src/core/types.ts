@@ -149,6 +149,7 @@ export interface EngineConfig {
   systemPrompt?: string
   /** Extra tools to inject (e.g. MCP tools) */
   extraTools?: Tool[]
+  toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
   /**
    * Plan mode: restrict tools to read-only (Read, Glob, Grep, WebFetch, WebSearch).
    * The agent analyzes and plans but cannot write, edit, or execute.

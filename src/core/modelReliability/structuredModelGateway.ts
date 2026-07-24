@@ -35,19 +35,24 @@ export interface StructuredModelResponse<T> {
   routingDecision: ModelRoutingDecision
 }
 
+import { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
+
 export class StructuredModelGateway {
   private router: ModelRouter
   private healthStore: ModelHealthStore
   private circuitBreaker: ModelCircuitBreaker
+  private trajectoryRecorder?: TrajectoryRecorder
 
   constructor(
     router: ModelRouter,
     healthStore: ModelHealthStore,
     circuitBreaker: ModelCircuitBreaker,
+    trajectoryRecorder?: TrajectoryRecorder,
   ) {
     this.router = router
     this.healthStore = healthStore
     this.circuitBreaker = circuitBreaker
+    this.trajectoryRecorder = trajectoryRecorder
   }
 
   public async executeStructured<T>(
@@ -61,6 +66,18 @@ export class StructuredModelGateway {
       preferredModelId: req.preferredModelId,
       taskId: req.taskId,
     })
+
+    this.trajectoryRecorder?.record(
+      req.taskId,
+      'model_routing_decision',
+      {
+        selectedModelId: routingDecision.selectedModelId,
+        reason: routingDecision.reason,
+        role: req.role,
+      },
+      1,
+      req.agentRunId,
+    )
 
     const candidateModels = [
       routingDecision.selectedModelId,
