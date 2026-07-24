@@ -152,7 +152,7 @@ export function applyCompaction(
   decision: CompactionDecision,
   at: number = Date.now(),
 ): CTFTaskState {
-  if (!decision.shouldCompact) return state as CTFTaskState
+  if (!decision.shouldCompact) return state
   const dropSet = new Set([...decision.removedObservationIds, ...decision.removedEvidenceIds])
   return {
     ...state,

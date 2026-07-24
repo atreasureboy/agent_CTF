@@ -1,5 +1,5 @@
 import type { ModelHealthRecord } from './modelHealth.js'
-import { ModelHealthStore } from './modelHealth.js'
+import type { ModelHealthStore } from './modelHealth.js'
 
 export interface ModelCircuitBreakerPolicy {
   maxConsecutiveSchemaFailures: number

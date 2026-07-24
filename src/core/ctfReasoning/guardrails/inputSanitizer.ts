@@ -102,7 +102,7 @@ export function sanitizeOutput(
     let m: RegExpExecArray | null
     while ((m = b64.exec(text))) {
       try {
-        const decoded = Buffer.from(m[1]!, 'base64').toString('utf-8')
+        const decoded = Buffer.from(m[1], 'base64').toString('utf-8')
         if (/(?:sh|bash|curl|wget|nc|rm\b)/.test(decoded)) {
           detected.push('base64_encoded_payload')
           break

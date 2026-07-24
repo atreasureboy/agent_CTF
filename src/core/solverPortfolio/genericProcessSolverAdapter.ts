@@ -26,6 +26,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
   }
 
   public async probe(): Promise<SolverHealth> {
+    await Promise.resolve()
     try {
       if (!existsSync(this.options.executablePath) && !this.options.executablePath.includes('/')) {
         // Simple executable name like 'node' or 'codex'

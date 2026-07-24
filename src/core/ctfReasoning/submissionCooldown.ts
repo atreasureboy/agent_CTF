@@ -30,7 +30,7 @@ export const COOLDOWN_SCHEDULE_SEC: ReadonlyArray<number> = [0, 30, 120, 300, 60
 export function nextCooldownDelaySec(recentWrongCount: number): number {
   if (recentWrongCount < 0) return 0
   const idx = Math.min(recentWrongCount, COOLDOWN_SCHEDULE_SEC.length - 1)
-  return COOLDOWN_SCHEDULE_SEC[idx]!
+  return COOLDOWN_SCHEDULE_SEC[idx]
 }
 
 /** True when at least `cooldownSec` seconds have NOT passed since

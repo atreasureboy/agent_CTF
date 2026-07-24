@@ -62,8 +62,8 @@ export function redactSecretsDeep<T>(v: T): T {
     if (typeof val === 'string') return redactSecrets(val)
     if (Array.isArray(val)) return val.map((x) => visit(x, depth + 1))
     if (val && typeof val === 'object') {
-      if (seen.has(val as object)) return val
-      seen.add(val as object)
+      if (seen.has(val)) return val
+      seen.add(val)
       const out: Record<string, unknown> = {}
       for (const [k, x] of Object.entries(val as Record<string, unknown>)) {
         out[k] = visit(x, depth + 1)

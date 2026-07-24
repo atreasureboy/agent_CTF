@@ -180,7 +180,7 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
         selectedBasedOn = based
       }
     } else {
-      rejected.push({ action, reason: reasons[0]!, detail: reasons.join(',') })
+      rejected.push({ action, reason: reasons[0], detail: reasons.join(',') })
     }
   }
 

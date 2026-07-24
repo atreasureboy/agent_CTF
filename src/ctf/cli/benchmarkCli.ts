@@ -25,6 +25,6 @@ export async function runBenchmarkCommand(argv: string[], deps: BenchmarkCliDeps
     all.push(summary)
     stdout.write(`run #${i + 1}: ${summary.rows.length} rows\n`)
   }
-  if (all.length > 0) stdout.write(formatBenchmarkSummary(all[0]!))
+  if (all.length > 0) stdout.write(formatBenchmarkSummary(all[0]))
   return 0
 }

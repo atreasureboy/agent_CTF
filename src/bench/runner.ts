@@ -94,7 +94,7 @@ export function createFixtureExecutor(options: FixtureExecutorOptions): Strategy
             warnings: [],
             rawArtifactIds: [],
           },
-          executionRefs: { attemptId: ctx.attempt.id } as ExecutionRefs,
+          executionRefs: { attemptId: ctx.attempt.id },
         }
       }
       return {
@@ -325,8 +325,8 @@ function aggregateByCategory(
   const out: Record<string, { won: number; lost: number }> = {}
   for (const r of results) {
     out[r.category] ??= { won: 0, lost: 0 }
-    if (r.won) out[r.category]!.won += 1
-    else out[r.category]!.lost += 1
+    if (r.won) out[r.category].won += 1
+    else out[r.category].lost += 1
   }
   return out
 }

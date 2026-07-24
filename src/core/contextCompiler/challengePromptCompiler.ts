@@ -1,7 +1,8 @@
-import { CompiledContext } from './compiledContext.js'
+import type { CompiledContext } from './compiledContext.js'
 import { CompilerValidator } from './compilerValidator.js'
-import { ContextProjection, TaskStateProjectionInput } from './contextProjection.js'
-import { ModelRole } from '../modelReliability/modelCapability.js'
+import type { TaskStateProjectionInput } from './contextProjection.js';
+import { ContextProjection } from './contextProjection.js'
+import type { ModelRole } from '../modelReliability/modelCapability.js'
 
 export class ChallengePromptCompiler {
   public static compile(

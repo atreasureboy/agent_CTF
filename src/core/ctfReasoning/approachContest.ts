@@ -66,7 +66,7 @@ export function createApproachContestExecutor(
       }
       if (options.framings.length === 1) {
         return options.executor.execute(
-          options.applyFraming ? options.applyFraming(ctx, options.framings[0]!) : ctx,
+          options.applyFraming ? options.applyFraming(ctx, options.framings[0]) : ctx,
         )
       }
       const ac = new AbortController()
@@ -173,7 +173,7 @@ async function consumeFirstApproach(
     return
   }
   try {
-    const r = await items[index]!
+    const r = await items[index]
     const ok = await accept(r)
     if (ok) return
     await consumeFirstApproach(items, index + 1, accept, resolve, reject)
@@ -228,7 +228,7 @@ function mergeContestResult(
       warnings,
       rawArtifactIds: winner.materializedResult.rawArtifactIds,
     },
-    executionRefs: { ...winner.executionRefs, attemptId } as ExecutionRefs,
+    executionRefs: { ...winner.executionRefs, attemptId },
     resultAlreadyProjected: winner.resultAlreadyProjected,
   }
 }

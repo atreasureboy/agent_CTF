@@ -390,7 +390,7 @@ export async function runTypedDag(
           // covers every executed step.
           outcomes.push({ stepId: step.id, status, durationMs: Date.now() - start, executions: [] })
           for (const [i, sub] of branch.entries()) {
-            const r = childResults[i]!
+            const r = childResults[i]
             outcomes.push({
               stepId: `${step.id}:${sub.id}`,
               status: r.status,
@@ -455,7 +455,7 @@ export async function runTypedDag(
       }),
     )
     for (const [i, r] of results.entries()) {
-      const step = ready[i]!
+      const step = ready[i]
       if (r.status === 'fulfilled') {
         const v = r.value
         if (v.status === 'succeeded') {
@@ -588,7 +588,7 @@ function stepOutcomesToMap(
 ): Map<string, { status: 'succeeded' | 'failed' | 'cancelled' | 'skipped' }> {
   const m = new Map<string, { status: 'succeeded' | 'failed' | 'cancelled' | 'skipped' }>()
   for (const o of outcomes) {
-    m.set(o.stepId, { status: o.status as 'succeeded' | 'failed' | 'cancelled' })
+    m.set(o.stepId, { status: o.status })
   }
   return m
 }

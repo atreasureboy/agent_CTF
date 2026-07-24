@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import type { TrajectoryEventEnvelope } from './trajectoryTypes.js'
-import { TrajectoryValidator, TrajectoryValidationResult } from './trajectoryValidator.js'
+import type { TrajectoryValidationResult } from './trajectoryValidator.js';
+import { TrajectoryValidator } from './trajectoryValidator.js'
 
 export interface ReplayInput {
   trajectoryPath: string

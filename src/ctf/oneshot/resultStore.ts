@@ -195,7 +195,7 @@ export class OneShotResultStore {
         }
       }
     }
-    let countOverflow = new Set<string>()
+    const countOverflow = new Set<string>()
     if (options.maxPerTask !== undefined && results.length > options.maxPerTask) {
       // Newest results first (sorted by finishedAt desc). The
       // oldest `results.length - maxPerTask` are candidates.

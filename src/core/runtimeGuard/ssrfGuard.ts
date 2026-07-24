@@ -41,7 +41,7 @@ function ipv4ToInt(ip: string): number | null {
   if (!m) return null
   const o = [m[1], m[2], m[3], m[4]].map(Number)
   if (o.some((n) => n < 0 || n > 255)) return null
-  return ((o[0]! << 24) | (o[1]! << 16) | (o[2]! << 8) | o[3]!) >>> 0
+  return ((o[0] << 24) | (o[1] << 16) | (o[2] << 8) | o[3]) >>> 0
 }
 
 function isBlockedV4(ip: string): boolean {

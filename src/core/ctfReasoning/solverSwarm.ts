@@ -81,7 +81,7 @@ export function createSolverSwarmExecutor(options: SolverSwarmOptions): Strategy
         const settled = await Promise.allSettled(tasks)
         const partials: MaterializedResult[] = settled
           .filter((s) => s.status === 'fulfilled')
-          .map((s) => (s as PromiseFulfilledResult<SwarmTaskResult>).value)
+          .map((s) => (s).value)
           .filter(
             (
               w,
@@ -178,7 +178,7 @@ async function consumeFirst<T extends { res: ActionExecutionResult }>(
     return
   }
   try {
-    const r = await items[index]!
+    const r = await items[index]
     const ok = await accept(r)
     if (ok) return
     await consumeFirst(items, index + 1, accept, resolve, reject)
@@ -238,7 +238,7 @@ function mergeResult(
       warnings: [...warnings, `swarm: winner=${winnerMemberId}`],
       rawArtifactIds: winner.materializedResult.rawArtifactIds,
     },
-    executionRefs: { ...winner.executionRefs, attemptId } as ExecutionRefs,
+    executionRefs: { ...winner.executionRefs, attemptId },
     resultAlreadyProjected: winner.resultAlreadyProjected,
   }
 }

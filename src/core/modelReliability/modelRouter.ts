@@ -1,7 +1,7 @@
 import type { ModelRole } from './modelCapability.js'
-import { ModelCircuitBreaker } from './modelCircuitBreaker.js'
-import { ModelHealthStore } from './modelHealth.js'
-import { ModelCapabilityRegistry } from './modelRegistry.js'
+import type { ModelCircuitBreaker } from './modelCircuitBreaker.js'
+import type { ModelHealthStore } from './modelHealth.js'
+import type { ModelCapabilityRegistry } from './modelRegistry.js'
 import { NoEligibleModelError } from './errors.js'
 
 export interface ModelRoutingInput {

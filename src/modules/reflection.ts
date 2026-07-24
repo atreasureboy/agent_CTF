@@ -35,8 +35,6 @@ Rules:
 - If nothing worth remembering, return {"knowledge": []}
 - Respond with JSON only, no prose`
 
-const REFLECTION_MAX_TOKENS = 800
-
 export class ReflectionModule implements AgentModule {
   readonly name = 'reflection'
   readonly dependencies = ['memory']

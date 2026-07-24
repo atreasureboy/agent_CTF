@@ -1,4 +1,4 @@
-import { ModelReliabilityMetrics, TrajectoryEvent } from './trajectoryTypes.js'
+import type { ModelReliabilityMetrics, TrajectoryEvent } from './trajectoryTypes.js'
 
 export class TrajectoryMetricsCalculator {
   public static calculate(events: TrajectoryEvent[]): ModelReliabilityMetrics {

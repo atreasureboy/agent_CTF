@@ -109,7 +109,7 @@ export function createLlmToolActionExecutor(
               warnings: won ? [] : [`live: wrong flag ${value}`],
               rawArtifactIds: [],
             },
-            executionRefs: { attemptId: ctx.attempt.id } as ExecutionRefs,
+            executionRefs: { attemptId: ctx.attempt.id },
           }
         }
         return {
@@ -129,7 +129,7 @@ export function createLlmToolActionExecutor(
             warnings: [],
             rawArtifactIds: [],
           },
-          executionRefs: { attemptId: ctx.attempt.id } as ExecutionRefs,
+          executionRefs: { attemptId: ctx.attempt.id },
         }
       }
       if (a.type === 'verify_flag') {
@@ -160,7 +160,7 @@ export function createLlmToolActionExecutor(
             warnings: won ? [] : ['live: wrong flag'],
             rawArtifactIds: [],
           },
-          executionRefs: { attemptId: ctx.attempt.id } as ExecutionRefs,
+          executionRefs: { attemptId: ctx.attempt.id },
         }
       }
       return {
@@ -189,7 +189,7 @@ export async function runLiveChallenge(
   // For live tests we don't pre-seed a flag candidate — the LLM
   // must discover / generate the flag candidate through the
   // structured action protocol.
-  const baseState = buildStateForChallenge(challenge, taskId) as unknown as CTFTaskState
+  const baseState = buildStateForChallenge(challenge, taskId)
   const initial = { ...baseState, flagCandidates: [], diagnostics: [] } as unknown as CTFTaskState
   const store = new CTFTaskStateStore(initial)
   const executor =

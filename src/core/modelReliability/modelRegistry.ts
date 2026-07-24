@@ -1,6 +1,7 @@
+import type {
+  ModelCapabilityProfile} from './modelCapability.js';
 import {
   DEFAULT_CONSERVATIVE_PROFILE,
-  ModelCapabilityProfile,
   ModelCapabilityProfileSchema,
 } from './modelCapability.js'
 import type { ModelProfileResolver } from './structuredModelGateway.js'

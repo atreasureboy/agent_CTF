@@ -84,11 +84,11 @@ export function createMcpExecutor(client: McpClient): StrategyActionExecutor {
             status: 'failed',
             error: { message: `mcp:${client.serverName}:${toolName} returned isError: ${text}` },
             partialResult: mat,
-          } as ActionExecutionResult)
+          })
         : {
             status: 'executed',
             materializedResult: mat,
-            executionRefs: { attemptId: ctx.attempt.id } as ExecutionRefs,
+            executionRefs: { attemptId: ctx.attempt.id },
           }
     },
   }

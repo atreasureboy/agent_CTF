@@ -19,7 +19,6 @@ import {
   CRITIC_INTERVAL,
   CRITIC_MIN_ITERATIONS,
   CRITIC_CONTEXT_MESSAGES,
-  CRITIC_MAX_TOKENS,
   DEFAULT_CRITIC_SYSTEM_PROMPT,
   formatMessagesForCritic,
   parseCriticOutput,
@@ -39,6 +38,7 @@ export class CriticModule implements AgentModule {
   }
 
   async onIteration(ctx: ModuleIterationContext): Promise<ModuleIterationResult | void> {
+    await Promise.resolve()
     if (this.planMode) return
     if (ctx.iteration < CRITIC_MIN_ITERATIONS) return
     if (ctx.iteration % CRITIC_INTERVAL !== 0) return

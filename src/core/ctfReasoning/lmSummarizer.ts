@@ -83,17 +83,17 @@ function parseSummary(
   for (const l of lines) {
     const m1 = /^-\s*claim:\s*(.+)$/.exec(l)
     if (m1) {
-      claims.push(m1[1]!.trim())
+      claims.push(m1[1].trim())
       continue
     }
     const m2 = /^-\s*category:\s*(.+)$/.exec(l)
     if (m2) {
-      categories.push(m2[1]!.trim())
+      categories.push(m2[1].trim())
       continue
     }
     const m3 = /^-\s*question:\s*(.+)$/.exec(l)
     if (m3) {
-      openQuestions.push(m3[1]!.trim())
+      openQuestions.push(m3[1].trim())
       continue
     }
   }

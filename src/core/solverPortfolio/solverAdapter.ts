@@ -1,5 +1,5 @@
-import { OperatorMessage } from './operatorMessage.js'
-import {
+import type { OperatorMessage } from './operatorMessage.js'
+import type {
   ExternalSolverResult,
   SolverChallengeInput,
   SolverHealth,

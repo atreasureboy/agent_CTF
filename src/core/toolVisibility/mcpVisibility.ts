@@ -1,4 +1,4 @@
-import { ToolVisibility, ToolVisibilityPolicy } from './toolVisibilityPolicy.js'
+import type { ToolVisibility, ToolVisibilityPolicy } from './toolVisibilityPolicy.js'
 
 export interface MCPServerConfig {
   name: string

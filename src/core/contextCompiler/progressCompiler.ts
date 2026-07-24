@@ -1,6 +1,7 @@
-import { CompiledContext } from './compiledContext.js'
-import { ContextProjection, TaskStateProjectionInput } from './contextProjection.js'
-import { ModelRole } from '../modelReliability/modelCapability.js'
+import type { CompiledContext } from './compiledContext.js'
+import type { TaskStateProjectionInput } from './contextProjection.js';
+import { ContextProjection } from './contextProjection.js'
+import type { ModelRole } from '../modelReliability/modelCapability.js'
 
 export class ProgressCompiler {
   public static compileProgress(

@@ -48,6 +48,7 @@ export interface ABBenchmarkComparison {
 
 export class Phase32BenchmarkRunner {
   public async runComparison(config: ABBenchmarkConfig): Promise<ABBenchmarkComparison> {
+    await Promise.resolve()
     const mockBaselineMetrics: Phase32BenchmarkMetrics = {
       solveRate: 0.8,
       medianTimeToSolveMs: 5000,

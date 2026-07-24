@@ -60,7 +60,7 @@ export class CrossSolverEvidenceBus {
       (m) =>
         m.taskId === taskId &&
         m.sourceSolverRunId !== solverRunId &&
-        !cursor!.seenMessageIds.has(m.id) &&
+        !cursor.seenMessageIds.has(m.id) &&
         (!m.expiresAt || m.expiresAt > Date.now()),
     )
 

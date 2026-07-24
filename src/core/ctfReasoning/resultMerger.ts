@@ -144,7 +144,7 @@ function stableJson(v: unknown): string {
   if (v === null || v === undefined) return ''
   if (typeof v !== 'object') return JSON.stringify(v)
   if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`
-  const keys = Object.keys(v as Record<string, unknown>).sort()
+  const keys = Object.keys(v).sort()
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableJson((v as Record<string, unknown>)[k])}`).join(',')}}`
 }
 
@@ -293,7 +293,7 @@ function mergeActions(a: SuggestedAction, b: SuggestedAction): SuggestedAction {
   const costTier = higherCost(a.costTier, b.costTier)
   const reason = uniqueReasons(a.reason, b.reason)
   const hypothesisIds = dedupe([...(a.hypothesisIds ?? []), ...(b.hypothesisIds ?? [])])
-  return { ...a, priority, costTier, reason, hypothesisIds } as SuggestedAction
+  return { ...a, priority, costTier, reason, hypothesisIds }
 }
 
 function uniqueReasons(a: string, b: string): string {

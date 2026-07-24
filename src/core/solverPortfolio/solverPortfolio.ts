@@ -1,5 +1,5 @@
-import { ExternalSolverAdapter } from './solverAdapter.js'
-import { ExternalSolverResult, SolverChallengeInput } from './solverTypes.js'
+import type { ExternalSolverAdapter } from './solverAdapter.js'
+import type { ExternalSolverResult, SolverChallengeInput } from './solverTypes.js'
 
 export interface SolverPortfolioDependencies {
   stateStore?: any

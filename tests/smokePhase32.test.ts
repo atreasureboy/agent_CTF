@@ -5,7 +5,8 @@ import {
   ModelHealthStore,
   ModelCircuitBreaker,
   ModelCapabilityRegistry,
-  MissingModelProviderError,
+} from '../src/core/modelReliability/index.js'
+import type {
   ModelCapabilityProfile,
 } from '../src/core/modelReliability/index.js'
 import type {
@@ -42,10 +43,12 @@ class FakeTestProvider implements ModelProvider {
 
   public async streamAgentTurn(
     model: ModelCapabilityProfile,
-    input: ProviderAgentTurnInput,
+    _input: ProviderAgentTurnInput,
   ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>> {
+    await Promise.resolve()
     this.streamCalls.push(model.id)
     async function* gen() {
+      await Promise.resolve()
       yield { choices: [{ delta: { content: 'chunk1' } }] } as any
       yield { choices: [{ delta: { content: 'chunk2' } }] } as any
     }
@@ -53,9 +56,10 @@ class FakeTestProvider implements ModelProvider {
   }
 
   public async executeStructured(
-    model: ModelCapabilityProfile,
-    input: ProviderStructuredInput,
+    _model: ModelCapabilityProfile,
+    _input: ProviderStructuredInput,
   ): Promise<ProviderStructuredResult> {
+    await Promise.resolve()
     return {
       rawText: JSON.stringify({ result: 'ok' }),
     }
@@ -66,10 +70,12 @@ class FailingMidStreamProvider implements ModelProvider {
   public id = 'failing-provider'
 
   public async streamAgentTurn(
-    model: ModelCapabilityProfile,
-    input: ProviderAgentTurnInput,
+    _model: ModelCapabilityProfile,
+    _input: ProviderAgentTurnInput,
   ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>> {
+    await Promise.resolve()
     async function* gen() {
+      await Promise.resolve()
       yield { choices: [{ delta: { content: 'chunk1' } }] } as any
       throw new Error('Mid-stream network drop')
     }
@@ -77,6 +83,7 @@ class FailingMidStreamProvider implements ModelProvider {
   }
 
   public async executeStructured(): Promise<ProviderStructuredResult> {
+    await Promise.resolve()
     throw new Error('Not implemented')
   }
 }
@@ -164,8 +171,8 @@ describe('Phase 3.2 Smoke Tests', () => {
     })
 
     await expect(async () => {
-      for await (const _chunk of stream) {
-        /* consume */
+      for await (const chunk of stream) {
+        void chunk
       }
     }).rejects.toThrow('Mid-stream network drop')
 
@@ -239,6 +246,7 @@ describe('Phase 3.2 Smoke Tests', () => {
     const swarm = new ChallengeSwarm()
     const nativeAdapter = new NativeSolverAdapter({
       async runMainAgent() {
+        await Promise.resolve()
         return { summary: 'Native solver done', observations: [{ summary: 'Obs 1', confidence: 0.9 }] }
       },
     })

@@ -1,4 +1,4 @@
-import { SolverEvidenceMessage } from './crossSolverEvidenceBus.js'
+import type { SolverEvidenceMessage } from './crossSolverEvidenceBus.js'
 
 export class GuidanceCompiler {
   public static compileGuidance(messages: SolverEvidenceMessage[], targetModelId: string): string {

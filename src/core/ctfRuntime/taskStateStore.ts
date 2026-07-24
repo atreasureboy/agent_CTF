@@ -350,12 +350,12 @@ function freezeState<T>(s: T): T {
   // new objects so external mutation isn't possible. Tests that
   // mutated the state from getState() must now construct a fresh
   // state via `createTestTaskState` or by applying events.
-  return deepFreeze(s, new WeakSet()) as T
+  return deepFreeze(s, new WeakSet())
 }
 
 function deepFreeze<T>(v: T, seen: WeakSet<object>): T {
   if (v === null || typeof v !== 'object') return v
-  if (seen.has(v as unknown as object)) return v
+  if (seen.has(v)) return v
   // Skip native objects that are not safe to freeze (AbortSignal, Date,
   // RegExp, Map, Set, Promise, Buffer, etc.). Recursing into them can
   // break invariants like the AbortController's internal kAborted flag.
@@ -372,13 +372,13 @@ function deepFreeze<T>(v: T, seen: WeakSet<object>): T {
   ) {
     return v
   }
-  seen.add(v as unknown as object)
+  seen.add(v)
   if (Array.isArray(v)) {
     for (const item of v) deepFreeze(item, seen)
     return Object.freeze(v)
   }
   // Plain object — recurse.
-  for (const k of Object.keys(v as Record<string, unknown>)) {
+  for (const k of Object.keys(v)) {
     deepFreeze((v as Record<string, unknown>)[k], seen)
   }
   return Object.freeze(v)

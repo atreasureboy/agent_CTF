@@ -1,11 +1,12 @@
 import type { OperatorMessage } from './operatorMessage.js'
 import type { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
-import {
+import type {
   ExternalSolverResult,
   SolverChallengeInput,
   SolverEvent,
   SolverHealth,
-  SolverRunRecord,
+  SolverRunRecord} from './solverTypes.js';
+import {
   SolverUnavailableError,
 } from './solverTypes.js'
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
@@ -43,6 +44,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
   }
 
   public async probe(): Promise<SolverHealth> {
+    await Promise.resolve()
     if (!this.delegate) {
       return {
         status: 'unavailable',

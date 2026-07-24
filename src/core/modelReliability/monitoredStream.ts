@@ -32,6 +32,7 @@ export class MonitoredAgentTurnStream implements AsyncIterable<OpenAI.Chat.ChatC
   }
 
   public async *[Symbol.asyncIterator](): AsyncIterator<OpenAI.Chat.ChatCompletionChunk> {
+    await Promise.resolve()
     const iterator = (this.innerStream as any)[Symbol.asyncIterator]
       ? (this.innerStream as any)[Symbol.asyncIterator]()
       : (this.innerStream as any)

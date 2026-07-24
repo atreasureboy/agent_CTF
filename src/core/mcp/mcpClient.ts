@@ -14,7 +14,8 @@
  * planner and event-sourced state.
  */
 
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
+import type { ChildProcessWithoutNullStreams } from 'child_process';
+import { spawn } from 'child_process'
 import { randomBytes } from 'crypto'
 import { redactSecrets } from '../ctfReasoning/redaction.js'
 
@@ -80,7 +81,7 @@ export function createMcpClient(config: McpServerConfig): McpClient {
           stdio: ['pipe', 'pipe', 'pipe'],
         })
       } catch (err) {
-        reject(err as Error)
+        reject(err)
         return
       }
       const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
@@ -215,7 +216,7 @@ export function createMcpClient(config: McpServerConfig): McpClient {
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
       } catch (err) {
         pending.delete(id)
-        reject(err as Error)
+        reject(err)
       }
     })
   }
@@ -290,11 +291,11 @@ export function createMcpClient(config: McpServerConfig): McpClient {
       } catch (err) {
         pending.delete(id)
         signal?.removeEventListener('abort', onAbort)
-        reject(err as Error)
+        reject(err)
       }
     }).finally(() => {
       // Cleanup of abort listener happens in resolve/reject paths.
-    }) as Promise<McpCallResult>
+    })
   }
 
   return {

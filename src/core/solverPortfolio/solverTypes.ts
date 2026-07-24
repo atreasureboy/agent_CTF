@@ -1,5 +1,5 @@
-import { CompiledContext } from '../contextCompiler/compiledContext.js'
-import { ModelRole } from '../modelReliability/modelCapability.js'
+import type { CompiledContext } from '../contextCompiler/compiledContext.js'
+import type { ModelRole } from '../modelReliability/modelCapability.js'
 
 export type SolverRunStatus =
   | 'queued'

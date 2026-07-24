@@ -65,6 +65,6 @@ export const TaskEventLogger = {
         unsubscribe()
         await pending
       },
-    } as TaskEventLogger
+    }
   },
 }

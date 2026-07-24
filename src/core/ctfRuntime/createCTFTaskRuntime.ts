@@ -267,7 +267,7 @@ export async function createCTFTaskRuntime(
       artifactId: undefined,
       error: undefined,
       __oneShotPayload: payload,
-    } as unknown as { summary?: string; error?: string }
+    }
   })
 
   const baseDispose = orchestrator.dispose.bind(orchestrator)
