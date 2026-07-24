@@ -52,6 +52,8 @@ export function createTestTaskState(overrides: Partial<CTFTaskState> = {}): CTFT
     reasoningBudget: createInitialReasoningBudgetState(),
     reasoningBudgetLimits: DEFAULT_REASONING_BUDGET_LIMITS,
     flagCandidates: [],
+    diagnostics: [],
+    degraded: false,
     createdAt: 0,
     updatedAt: 0,
   }

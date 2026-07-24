@@ -182,10 +182,11 @@ export class TaskStateProjector {
     ): boolean => {
       // No run-id metadata → pass everything (snapshot diff is the truth).
       if (!md.agentRunId && !md.workflowRunId && !md.handoffId) return true
-      // Items without run-id metadata pass when metadata is set so we
-      // don't break the legacy path that emits without run-id.
+      // §H1 — when run-id metadata IS set, items without any run-id
+      // metadata on them must NOT pass through — they cannot be tied
+      // to the current run and would leak across runs.
       const itemHas = item.agentRunId || item.workflowRunId || item.handoffId
-      if (!itemHas) return true
+      if (!itemHas) return false
       if (md.agentRunId && item.agentRunId === md.agentRunId) return true
       if (md.workflowRunId && item.workflowRunId === md.workflowRunId) return true
       if (md.handoffId && item.handoffId === md.handoffId) return true

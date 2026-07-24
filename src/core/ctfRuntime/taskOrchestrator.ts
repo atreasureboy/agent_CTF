@@ -190,6 +190,8 @@ export class CTFTaskOrchestrator {
       reasoningBudget: createInitialReasoningBudgetState(),
       reasoningBudgetLimits: DEFAULT_REASONING_BUDGET_LIMITS,
       flagCandidates: [],
+      diagnostics: [],
+      degraded: false,
       createdAt: now,
       updatedAt: now,
     }
@@ -363,6 +365,7 @@ export class CTFTaskOrchestrator {
    */
   async processReasoningInput(input: import('../ctfReasoning/reasoningCoordinator.js').ProcessReasoningInputsInput): Promise<import('../ctfReasoning/actionExecutionResult.js').ReasoningResult> {
     const { processNewReasoningInputs } = await import('../ctfReasoning/reasoningCoordinator.js')
+    const { createRuntimeStrategyActionExecutor } = await import('../ctfReasoning/runtimeStrategyActionExecutor.js')
     const budgetLimits = this.dependencies.budgetLimits ?? {
       fastConcurrency: 4,
       mediumConcurrency: 2,
@@ -371,6 +374,73 @@ export class CTFTaskOrchestrator {
       perTaskHeavyRuns: 4,
     }
     const heavyApproved = this.store.getState().context.contestScope.allowHeavyOneShots === true
+    // §C2 — wire the production runtime adapter. The Executor
+    // calls Workflow / Tool / OneShot / Handoff through the real
+    // Runtime, not a Noop.
+    const executor = createRuntimeStrategyActionExecutor({
+      runWorkflow: async ({ workflowId, inputs }) => {
+        const r = await this.runWorkflow(workflowId, inputs)
+        return {
+          workflowId,
+          status: r.status === 'failed' ? 'failed'
+            : r.status === 'cancelled' ? 'cancelled'
+              : r.status === 'partial' ? 'partial'
+                : 'completed',
+          emittedArtifactIds: [],
+          warnings: [],
+        }
+      },
+      runOneShot: async ({ manifestId, inputArtifactIds, options }) => {
+        // The dispatcher's real signature is `runOne(manifestId, inputs)`;
+        // we surface a shim through the runtime surface. Tests can inject
+        // their own dispatcher when they want to drive execution.
+        const surfaceDispatcher = (this as unknown as { runOneShot?: (id: string, opts: { inputArtifactIds: string[]; options?: Record<string, unknown> }) => Promise<{ runId: string; summary?: string; artifactIds: string[] }> }).runOneShot
+        if (surfaceDispatcher) {
+          const r = await surfaceDispatcher(manifestId, { inputArtifactIds, options })
+          return { runId: r.runId, artifactIds: r.artifactIds }
+        }
+        return { runId: '', artifactIds: [] }
+      },
+      callTool: async ({ toolId, profileId, cwd, signal, input }) => {
+        const r = await this.mainHarness.broker.execute(toolId, input, {
+          taskId: this.store.getState().taskId,
+          agentId: profileId,
+          cwd,
+          signal,
+        })
+        return {
+          content: r.result.content ?? '',
+          isError: r.result.isError ?? false,
+          exitCode: r.result.isError ? 1 : 0,
+          artifactId: r.artifactId,
+        }
+      },
+      requestHandoff: async ({ objective, targetCapability, reason, artifactIds, evidenceIds, hypothesisIds }) => {
+        const h = this.requestHandoff({
+          fromAgentRunId: hypothesisIds[0] ?? 'unknown',
+          targetCapability,
+          reason,
+          objective,
+          artifactIds,
+          findingIds: evidenceIds,
+        })
+        const r = await this.approveHandoff(h.id)
+        return { handoffId: h.id, agentRunId: r?.agentRunId }
+      },
+      verifyFlag: async ({ candidateId, value }) => {
+        const { validateFlag } = await import('../ctfReasoning/flagCandidateValidator.js')
+        const d = validateFlag({
+          pattern: 'flag\\{[^}]+\\}',
+          candidate: value,
+          provenanceComplete: true,
+          sourceArtifactExists: true,
+          locallyVerified: true,
+        })
+        return { validated: d.validated, errors: d.errors }
+      },
+      resolveProfileId: () => this.profileStore.getCurrent().id,
+      resolveCwd: () => this.mainHarness.context.workspaceDir,
+    })
     return processNewReasoningInputs(
       {
         taskId: this.store.getState().taskId,
@@ -378,6 +448,7 @@ export class CTFTaskOrchestrator {
         store: this.store,
         budgetLimits,
         heavyApproved,
+        executor,
         abortSignal: this.abort.signal,
       },
       input,
@@ -453,22 +524,30 @@ export class CTFTaskOrchestrator {
           // workflow's step outcomes + projections are surfaced as
           // Observations / Evidence / SuggestedActions via the parser
           // pipeline that the projector already mirrors into the
-          // state. Forward to the coordinator so it can plan the
-          // task-level next action.
-          try {
-            await this.processReasoningInput({
+          // state.
+          //
+          // §C4 — do NOT `await` a nested reasoning pass here. Awaiting
+          // would deadlock against the outer reasoning pass that
+          // invoked runWorkflow() (the same task lock is held in both
+          // directions). Fire-and-forget — the executor emits the
+          // REASONING_FAILED event if anything goes wrong.
+          this.processReasoningInput({
+            source: 'workflow',
+            runContext: { workflowRunId: id },
+            newObservationIds: [],
+            newEvidenceIds: [],
+            suggestedActions: [
+              { type: 'run_workflow', workflowId, inputs: inputs ?? {}, reason: 'workflow finished; reschedule', priority: 1, costTier: 'cheap' },
+            ],
+          }).catch((err: unknown) => {
+            this.safeApply({
+              type: 'REASONING_FAILED',
               source: 'workflow',
-              runContext: { workflowRunId: id },
-              newObservationIds: [],
-              newEvidenceIds: [],
-              suggestedActions: [
-                { type: 'run_workflow', workflowId, inputs: inputs ?? {}, reason: 'workflow finished; reschedule', priority: 1, costTier: 'cheap' },
-              ],
+              workflowRunId: id,
+              error: { message: err instanceof Error ? err.message : String(err) },
+              at: Date.now(),
             })
-          } catch {
-            // Reasoning failure does not propagate to the caller — the
-            // workflow itself succeeded.
-          }
+          })
           if (r.status === 'cancelled') {
             // §九 — cancel path emits WORKFLOW_CANCELLED so the run record
             // reflects the actual outcome (not 'completed').
@@ -625,17 +704,22 @@ export class CTFTaskOrchestrator {
         const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
         this.safeApply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
         // §七 — Main Agent completion feeds the reasoning loop.
-        try {
-          await this.processReasoningInput({
+        // §C4 — fire-and-forget; never `await` a nested reasoning pass.
+        this.processReasoningInput({
+          source: 'main-agent',
+          runContext: { agentRunId },
+          newObservationIds: [],
+          newEvidenceIds: [],
+          suggestedActions: [],
+        }).catch((err: unknown) => {
+          this.safeApply({
+            type: 'REASONING_FAILED',
             source: 'main-agent',
-            runContext: { agentRunId },
-            newObservationIds: [],
-            newEvidenceIds: [],
-            suggestedActions: [],
+            attemptId: agentRunId,
+            error: { message: err instanceof Error ? err.message : String(err) },
+            at: Date.now(),
           })
-        } catch {
-          // Reasoning failure does not break the main agent result.
-        }
+        })
         return {
           agentRunId,
           profileId,

@@ -184,14 +184,10 @@ function ruleFor(e: Evidence, obs: ReadonlyArray<{ summary: string; attributes: 
         proposedStatus: 'proposed',
       }
     case 'negative_result': {
-      if (claim.includes('zsteg') || claim.includes('stego')) {
-        return {
-          category: 'image-stego',
-          statement: 'image has steganography payload',
-          priority: 4,
-          proposedStatus: 'proposed',
-        }
-      }
+      // §H5 — negative evidence MUST NOT propose a positive hypothesis.
+      // The upstream updater weakens the matching existing hypothesis
+      // (image-stego contradiction); here we record no proposal.
+      if (claim.includes('zsteg') || claim.includes('stego')) return undefined
       return undefined
     }
     case 'flag_candidate_source':

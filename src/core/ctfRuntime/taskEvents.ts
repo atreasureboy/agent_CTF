@@ -166,6 +166,17 @@ export type CTFTaskEvent =
       completedAt: number
     }
   | { type: 'STRATEGY_DECISION_RECORDED'; decision: StrategyDecision }
+  | {
+      type: 'REASONING_FAILED'
+      source: 'main-agent' | 'workflow' | 'oneshot' | 'specialist' | 'manual'
+      attemptId?: string
+      runId?: string
+      workflowRunId?: string
+      oneShotRunId?: string
+      handoffId?: string
+      error: { code?: string; message: string }
+      at: number
+    }
   | { type: 'PENDING_ACTION_ADDED'; pending: PendingSuggestedAction }
   | { type: 'PENDING_ACTION_STATUS_CHANGED'; pendingId: string; status: PendingSuggestedAction['status']; at: number }
   | { type: 'REASONING_BUDGET_CONSUMED'; snapshot: ReasoningBudgetState }

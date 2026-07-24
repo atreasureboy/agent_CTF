@@ -24,6 +24,7 @@ import {
   isActiveWorkflowRun,
   isTerminalOneShotStatus,
   isTerminalPhase,
+  type CTFAttempt,
   type CTFHypothesis,
   type CTFTaskPhase,
   type CTFTaskState,
@@ -225,6 +226,7 @@ export class CTFTaskStateStore {
         'PENDING_ACTION_ADDED',
         'PENDING_ACTION_STATUS_CHANGED',
         'REASONING_BUDGET_CONSUMED',
+        'REASONING_FAILED',
         'FLAG_CANDIDATE_DETECTED',
         'FLAG_CANDIDATE_VALIDATED',
         'FLAG_CANDIDATE_REJECTED',
@@ -335,6 +337,15 @@ function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): 
 function dedupeStrings(arr: string[]): string[] {
   return [...new Set(arr)]
 }
+
+const ATTEMPT_TERMINAL: ReadonlySet<CTFAttempt['status']> = new Set([
+  'succeeded',
+  'failed',
+  'cancelled',
+  'skipped_duplicate',
+  'skipped_policy',
+  'skipped_budget',
+])
 
 function freezeState<T>(s: T): T {
   // §十八 — deep freeze the state tree. The reducer still returns
@@ -570,8 +581,11 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     }
 
     case 'HYPOTHESIS_UPDATED': {
+      // §H4 — `status` MUST be changed via HYPOTHESIS_STATUS_CHANGED
+      // so the FSM is enforced. Strip it from the patch payload here.
+      const { status: _s, ...safePatch } = event.patch as { status?: unknown } & Record<string, unknown>
       const next = state.hypotheses.map((h) =>
-        h.id === event.hypothesisId ? { ...h, ...event.patch, updatedAt: Date.now() } : h,
+        h.id === event.hypothesisId ? { ...h, ...safePatch, updatedAt: Date.now() } : h,
       )
       if (next.every((h, i) => h === state.hypotheses[i])) {
         throw new UnknownHypothesisError(`Hypothesis ${event.hypothesisId} not found`)
@@ -711,6 +725,27 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
       return { ...state, reasoningBudget: event.snapshot }
     }
 
+    case 'REASONING_FAILED': {
+      // §六 / Audit-C1 — reasoning failure is a structured event
+      // recorded into TaskState. The runtime's degraded flag is
+      // always flipped; downstream subsystems can observe the event.
+      return {
+        ...state,
+        diagnostics: [
+          ...state.diagnostics,
+          {
+            kind: 'reasoning_failed',
+            source: event.source,
+            attemptId: event.attemptId,
+            runId: event.runId,
+            message: event.error.message,
+            at: event.at,
+          },
+        ],
+        degraded: true,
+      }
+    }
+
     case 'ATTEMPT_RECORDED': {
       // §九 — refuse duplicates and rejected status transitions.
       if (state.attempts.some((a) => a.id === event.attempt.id)) {
@@ -783,7 +818,7 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'ATTEMPT_CANCELLED': {
       const next = state.attempts.map((a) => {
         if (a.id !== event.attemptId) return a
-        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled') {
+        if (ATTEMPT_TERMINAL.has(a.status)) {
           throw new IllegalAttemptTransitionError(
             `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_CANCELLED.`,
           )
@@ -804,7 +839,7 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'ATTEMPT_SKIPPED': {
       const next = state.attempts.map((a) => {
         if (a.id !== event.attemptId) return a
-        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled') {
+        if (ATTEMPT_TERMINAL.has(a.status)) {
           throw new IllegalAttemptTransitionError(
             `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_SKIPPED.`,
           )
@@ -825,9 +860,10 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
     case 'ATTEMPT_UPDATED': {
       const next = state.attempts.map((a) => {
         if (a.id !== event.attemptId) return a
-        // §九 — completed attempts cannot return to running/pending.
+        // §H4 — patch cannot move a terminal attempt back to
+        // running/pending. ALL 6 terminal statuses are guarded.
         if (
-          (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled') &&
+          ATTEMPT_TERMINAL.has(a.status) &&
           event.patch.status &&
           (event.patch.status === 'running' || event.patch.status === 'pending')
         ) {

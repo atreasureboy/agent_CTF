@@ -69,6 +69,8 @@ function emptyState(taskId = 't1'): CTFTaskState {
     reasoningBudget: createInitialReasoningBudgetState(),
     reasoningBudgetLimits: DEFAULT_REASONING_BUDGET_LIMITS,
     flagCandidates: [],
+    diagnostics: [],
+    degraded: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }

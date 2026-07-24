@@ -91,9 +91,13 @@ export interface ReasoningCoordinatorOptions {
   store: CTFTaskStateStore
   budgetLimits: BudgetLimits
   heavyApproved: boolean
-  /** §五 — Required executor. No fallback Noop; the production
-   *  Runtime MUST inject a concrete adapter. Tests declare
-   *  `mode: 'dry-run'` and supply createNoopStrategyActionExecutor. */
+  /** §五 / §C2 — Required executor. No fallback Noop. Production
+   *  code paths (Orchestrator, StructuredOutputHandler) MUST supply
+   *  a concrete adapter via `createRuntimeStrategyActionExecutor`.
+   *  Tests declare `mode: 'dry-run'` and supply
+   *  `createNoopStrategyActionExecutor`. The field is optional at the
+   *  type level only so test fixtures that exercise the FSM in
+   *  isolation compile; the runtime throws if missing. */
   executor?: StrategyActionExecutor
   /** Cumulative budget limits (overrides the state's defaults when provided). */
   reasoningBudgetLimits?: ReasoningBudgetLimits
@@ -129,8 +133,13 @@ export interface ProcessReasoningInputsInput {
 
 /** Per-task reasoning lock. Lives outside the module — the
  *  caller (Runtime instance) owns the chain and can dispose it
- *  on tear-down. */
-const _taskLocks = new Map<string, Promise<unknown>>()
+ *  on tear-down.
+ *
+ * §H2 — settled entries are deleted in `.finally` so the map does not
+ *  grow without bound. Generation token guards against a stale
+ *  finally from deleting a fresher holder's entry. */
+const _taskLocks = new Map<string, { promise: Promise<unknown>; generation: number }>()
+let _lockGeneration = 0
 
 export async function processNewReasoningInputs(
   options: ReasoningCoordinatorOptions,
@@ -140,13 +149,20 @@ export async function processNewReasoningInputs(
     throw new MissingStrategyActionExecutorError()
   }
   const { taskId } = options
-  // Per-task lock — chain on the existing lock so concurrent calls
-  // for the same task are serialized.
-  const prev = _taskLocks.get(taskId) ?? Promise.resolve()
-  const next: Promise<ReasoningResult> = prev
+  // §C4 — Per-task lock — chain on the existing lock so concurrent
+  // calls for the same task are serialized. Settled entries are
+  // deleted in `.finally` so the map does not retain completed task
+  // IDs forever. Generation token guards against a stale finally.
+  const prevEntry = _taskLocks.get(taskId)
+  const myGeneration = ++_lockGeneration
+  const next: Promise<ReasoningResult> = (prevEntry?.promise ?? Promise.resolve())
     .catch(() => undefined)
     .then(() => runCycles(options, input))
-  _taskLocks.set(taskId, next.catch(() => undefined))
+    .finally(() => {
+      const cur = _taskLocks.get(taskId)
+      if (cur && cur.generation === myGeneration) _taskLocks.delete(taskId)
+    })
+  _taskLocks.set(taskId, { promise: next.catch(() => undefined), generation: myGeneration })
   return next
 }
 
@@ -179,7 +195,10 @@ async function runCycles(
   const strategyDecisionIds: string[] = []
   const finalObservationIds: string[] = []
   const finalEvidenceIds: string[] = []
-  let budget: ReasoningBudgetState = { ...options.state.reasoningBudget }
+  // §H2 — initialise the budget from the LIVE store, not the
+  // caller-provided entry snapshot. The lock guard already serialised
+  // us, so the live snapshot is the freshest version.
+  let budget: ReasoningBudgetState = { ...store.getState().reasoningBudget }
   const pending = createPendingActionStore()
 
   // Apply incoming Evidence to HypothesisUpdater first.
@@ -215,8 +234,16 @@ async function runCycles(
     }
     cycles++
     cycleCounter++
-    budget = consumeCycle(budget)
-    store.apply({ type: 'REASONING_BUDGET_CONSUMED', snapshot: budget })
+    // §H3 — only consume the cycle counter if we end up actually
+    // executing an action in this cycle. The pre-flight budget check
+    // (below) still does its own projection against the live value.
+    let cycleConsumed = false
+    const consumeBudgetCycle = () => {
+      if (cycleConsumed) return
+      cycleConsumed = true
+      budget = consumeCycle(budget)
+      store.apply({ type: 'REASONING_BUDGET_CONSUMED', snapshot: budget })
+    }
 
     // Honour stop first.
     const stopAction = input.suggestedActions.find((a) => a.type === 'stop')
@@ -306,7 +333,9 @@ async function runCycles(
     // §二十二 — PendingAction FSM: pending → selected.
     markPendingSelected(pending, selected, attempt.id)
 
-    // Update in-flight + budget BEFORE execution.
+    // Update in-flight + budget BEFORE execution. The cycle counter
+    // is consumed only when an action actually runs (not on stop / skip).
+    consumeBudgetCycle()
     const tier = selected.costTier === 'expensive' ? 'heavy' : selected.costTier === 'normal' ? 'medium' : 'fast'
     inFlight[tier]++
     budget = applyReasoningBudgetConsumption(budget, selected)
@@ -334,8 +363,16 @@ async function runCycles(
       inFlight[tier]--
     }
 
-    // Process the result.
+    // Process the result. §二十 — Executor returning `stop` after an
+    // Attempt was created is illegal in normal flow; we record the
+    // attempt as cancelled rather than leaving it pending.
     if (execResult.status === 'stop') {
+      store.apply({
+        type: 'ATTEMPT_CANCELLED',
+        attemptId: attempt.id,
+        reason: execResult.reason || 'executor returned stop after attempt creation',
+        completedAt: Date.now(),
+      })
       stopped = true
       stopReason = execResult.reason
       break

@@ -30,6 +30,7 @@ import type {
   StrategyActionExecutor,
   StrategyActionExecutorContext,
 } from './strategyActionExecutor.js'
+import { materialize } from './resultMaterializer.js'
 import type { SuggestedAction } from './suggestedAction.js'
 import type { ReasoningExecutionContext } from './reasoningCascade.js'
 
@@ -185,16 +186,20 @@ async function executeCallTool(
     signal: ctx.signal,
     input: action.input,
   })
+  // §C3 — invoke materialize() so raw tool output becomes
+  // Observation / Evidence / FlagCandidate drafts. Without this the
+  // planner's feedback loop is empty for tools.
+  const mat = await materialize(ctx.taskState.taskId, {
+    type: 'tool',
+    toolId: action.toolId,
+    content: r.content,
+    artifactIds: r.artifactId ? [r.artifactId] : [],
+    exitCode: r.exitCode,
+    isError: r.isError,
+  })
   return {
     status: 'executed',
-    materializedResult: {
-      observations: [],
-      evidence: [],
-      suggestedActions: [],
-      flagCandidateDrafts: [],
-      warnings: [],
-      rawArtifactIds: r.artifactId ? [r.artifactId] : [],
-    },
+    materializedResult: mat,
     executionRefs: { attemptId: ctx.attempt.id },
   }
 }

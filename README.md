@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%3E%3D20-339933?logo=node.js)](https://nodejs.org/)
 [![Tests](https://img.shields.io/badge/Tests-586%20passed-brightgreen)]()
+[![Architecture audit](https://img.shields.io/badge/Audit-2026--07--24-blue)](docs/architecture/audit-architecture.md)
 
 > `ovolv999 "任何你需要它完成的任务"`
 
@@ -236,6 +237,31 @@ Run Output (Main Agent / Workflow / OneShot / Specialist)
 
 完整文档：`docs/architecture/phase-2.3-real-action-loop.md`；测试覆盖
 `tests/phase22ReasoningMainPath.test.ts`。
+
+## Architecture 审计 — 2026-07-24
+
+四个并行 agent 从四个角度审计了仓库：
+- 模块结构 / 类型安全 / 代码质量
+- 事件溯源 / Reducer 纯度 / FSM 强制 / 不可变性
+- Runtime / 并发 / 生命周期 (Abort / 锁 / dispose)
+- 推理循环 / Planner / Executor ↔ Coordinator 契约
+
+### 关键修复（这一轮）
+
+| ID | 问题 | 修复 |
+|----|------|-----|
+| C1 | Reasoning 失败被 `} catch {}` 静默丢弃 | 新增 `REASONING_FAILED` 事件 + `diagnostics[]` + `degraded` 字段 |
+| C2 | 生产 Orchestrator 没注入 production Executor | Orchestrator 现在动态构建 `RuntimeSurface` 并注入 |
+| C3 | 生产 `call_tool` 不调 materializer，丢失所有 Observation | 现在调用 `resultMaterializer.materialize()` |
+| C4 | 推理 ↔ 工作流 嵌套锁 死锁 | Orchestrator 触发改 `fire-and-forget`，Coordinator 内部释放 `_taskLocks` |
+| H1 | Projector `matchesRun` 跨 Run 泄漏 | 没有 run-id 的项在 metadata 提供 run-id 时被丢弃 |
+| H2 | 预算从 entry snapshot 初始化 | 改为从 `store.getState()` 读取 |
+| H3 | cycle 双重投影 | cycle 仅在真正执行 action 时 `consumeCycle()` |
+| H4 | `HYPOTHESIS_UPDATED` 绕过 status FSM | reducer 强制剥离 patch.payload.status；强制走 `HYPOTHESIS_STATUS_CHANGED` |
+| H5 | 阴性证据反向提出 stego 正向 Hypothesis | 删除 `negative_result + zsteg` 的 proposal 分支 |
+| M-3c | Attempt FSM 不守卫 `skipped_*` 终态 | ATTEMPT_CANCELLED/SKIPPED/UPDATED 全套守卫 6 个终态 |
+
+完整报告：`docs/architecture/audit-architecture.md`。
 
 ## 核心概念
 

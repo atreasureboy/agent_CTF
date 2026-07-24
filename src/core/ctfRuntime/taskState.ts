@@ -75,6 +75,25 @@ export interface AttemptExecution {
   errorMessage?: string
 }
 
+/** §C1 — TaskDiagnostic — a single runtime issue recorded as a
+ *  structured entry on `TaskState.diagnostics`. */
+export interface TaskDiagnostic {
+  kind:
+    | 'reasoning_failed'
+    | 'workflow_projection_dropped'
+    | 'one_shot_cleanup_window'
+    | 'lock_deadlock_avoided'
+    | 'task_degraded'
+  source?: 'main-agent' | 'workflow' | 'oneshot' | 'specialist' | 'manual'
+  attemptId?: string
+  runId?: string
+  workflowRunId?: string
+  oneShotRunId?: string
+  handoffId?: string
+  message: string
+  at: number
+}
+
 export interface CTFAttempt {
   id: string
   taskId: string
@@ -347,6 +366,7 @@ export interface CTFTaskState {
   reasoningBudget: ReasoningBudgetState
   /** Phase 2.2 §十一 — per-task budget limits (read-only config). */
   reasoningBudgetLimits: ReasoningBudgetLimits
+
   /** Convenience: the ids of runs that are currently `running`. Derived
    *  from `agentRuns` / `workflowRuns` / `jobs`. */
   activeAgentRunIds: string[]
@@ -356,6 +376,13 @@ export interface CTFTaskState {
   flagCandidates: FlagCandidate[]
 
   completion?: TaskCompletion
+
+  /** §C1 — runtime diagnostics: reasoning failures, FSM
+   *  rejections, etc. Read-only via the reducer. */
+  diagnostics: TaskDiagnostic[]
+  /** §C1 — true after a critical-listener failure or a reasoning
+   *  failure. Callers may consult `store.isDegraded()`. */
+  degraded: boolean
 
   createdAt: number
   updatedAt: number
