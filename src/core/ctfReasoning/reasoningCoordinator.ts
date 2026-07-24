@@ -312,26 +312,15 @@ async function runCycles(
     budget = applyReasoningBudgetConsumption(budget, selected)
     store.apply({ type: 'REASONING_BUDGET_CONSUMED', snapshot: budget })
 
-    // Execute the selected action.
-    const executor = options.executor ?? ({ async execute(): Promise<ActionExecutionResult> {
-      return {
-        status: 'executed',
-        materializedResult: {
-          observations: [],
-          evidence: [],
-          suggestedActions: [],
-          flagCandidateDrafts: [],
-          warnings: [],
-          rawArtifactIds: [],
-        },
-        executionRefs: { attemptId: attempt.id },
-      }
-    } } as StrategyActionExecutor)
+    // §五 — Executor is mandatory; throw if missing.
+    if (!options.executor) throw new MissingStrategyActionExecutorError()
+    const executor = options.executor
 
     let execResult: ActionExecutionResult
     try {
       execResult = await executor.execute({
-        taskState: options.state,
+        // §十八 — pass live state to the Executor, not the entry snapshot.
+        taskState: store.getState(),
         action: selected,
         attempt,
         signal: options.abortSignal ?? new AbortController().signal,
