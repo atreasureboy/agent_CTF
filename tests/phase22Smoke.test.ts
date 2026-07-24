@@ -1,3 +1,4 @@
+import { createNoopStrategyActionExecutor } from '../src/core/ctfReasoning/runtimeStrategyActionExecutor.js'
 /**
  * Phase 2.2 §二十九 — Smoke tests (no real LLM / no network).
  */
@@ -17,6 +18,7 @@ describe('Phase 2.2 §二十九 — smoke tests', () => {
       taskId: 'smoke-stop',
       state,
       store,
+      executor: createNoopStrategyActionExecutor(),
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
       heavyApproved: false,
     }, {
@@ -48,13 +50,18 @@ describe('Phase 2.2 §二十九 — smoke tests', () => {
               confidence: 0.5,
             }],
             evidence: [{
-              kind: 'tool_failure',
-              claim: 'fake tool produced evidence',
-              confidence: 0.5,
-              observationIds: [],
-              producer: { type: 'parser', id: 'fake' },
-              polarity: 'neutral',
-            }],
+        kind: 'tool_failure',
+        claim: 'fake tool produced evidence',
+        polarity: 'neutral',
+        source: {
+          producer: { type: 'parser', id: 'fake' },
+          observationIds: [],
+          artifactIds: [],
+          attemptIds: [],
+          confidence: 0.5,
+          createdAt: 0,
+        },
+      }],
             suggestedActions: [],
             flagCandidateDrafts: [],
             warnings: [],

@@ -40,9 +40,12 @@ export const exifToolParser: ResultParser = {
         evidence: [{
           kind: 'negative_result',
           claim: 'exiftool: no suspicious metadata fields',
-          confidence: 0.6,
-          producer: { type: 'parser', id: 'exiftool' },
           polarity: 'neutral',
+          source: {
+            producer: { type: 'parser', id: 'exiftool' },
+            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+            confidence: 0.6, createdAt: Date.now(),
+          },
         }],
         suggestedActions: [],
         flagCandidateDrafts: [],
@@ -64,9 +67,12 @@ export const exifToolParser: ResultParser = {
         evidence.push({
           kind: 'suspicious_metadata',
           claim: `${s.key} is unusually long (${s.value.length} chars)`,
-          confidence: 0.65,
-          producer: { type: 'parser', id: 'exiftool' },
           polarity: 'supports',
+          source: {
+            producer: { type: 'parser', id: 'exiftool' },
+            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+            confidence: 0.65, createdAt: Date.now(),
+          },
         })
       }
     }

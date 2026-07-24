@@ -106,31 +106,34 @@ export function evaluateReasoningBudget(
   if (action.costTier === 'expensive' && !opts.heavyApproved) {
     return { allowed: false, reason: 'heavy_not_approved' }
   }
-  if (state.strategyCyclesUsed >= limits.maxStrategyCycles) {
+  // §十九 — projection check: project the consumption BEFORE the
+  // action runs. `used + 1 > max` (NOT `used >= max`) so the first
+  // action over the cap is rejected and the Attempt isn't created.
+  if (state.strategyCyclesUsed + 1 > limits.maxStrategyCycles) {
     return { allowed: false, reason: 'strategy_cycles_exceeded', detail: `cycles=${state.strategyCyclesUsed}/${limits.maxStrategyCycles}` }
   }
-  if (state.actionsExecuted >= limits.maxActions) {
+  if (state.actionsExecuted + 1 > limits.maxActions) {
     return { allowed: false, reason: 'actions_exceeded', detail: `actions=${state.actionsExecuted}/${limits.maxActions}` }
   }
-  if (state.cheapActionsUsed >= limits.maxCheapActions && action.costTier === 'cheap') {
+  if ((state.cheapActionsUsed + (action.costTier === 'cheap' ? 1 : 0)) > limits.maxCheapActions) {
     return { allowed: false, reason: 'cheap_actions_exceeded' }
   }
-  if (state.normalActionsUsed >= limits.maxNormalActions && action.costTier === 'normal') {
+  if ((state.normalActionsUsed + (action.costTier === 'normal' ? 1 : 0)) > limits.maxNormalActions) {
     return { allowed: false, reason: 'normal_actions_exceeded' }
   }
-  if (state.expensiveActionsUsed >= limits.maxExpensiveActions && action.costTier === 'expensive') {
+  if ((state.expensiveActionsUsed + (action.costTier === 'expensive' ? 1 : 0)) > limits.maxExpensiveActions) {
     return { allowed: false, reason: 'expensive_actions_exceeded' }
   }
-  if (state.workflowRunsUsed >= limits.maxWorkflowRuns && action.type === 'run_workflow') {
+  if ((state.workflowRunsUsed + (action.type === 'run_workflow' ? 1 : 0)) > limits.maxWorkflowRuns) {
     return { allowed: false, reason: 'workflow_runs_exceeded' }
   }
-  if (state.oneShotRunsUsed >= limits.maxOneShotRuns && action.type === 'run_oneshot') {
+  if ((state.oneShotRunsUsed + (action.type === 'run_oneshot' ? 1 : 0)) > limits.maxOneShotRuns) {
     return { allowed: false, reason: 'one_shot_runs_exceeded' }
   }
-  if (state.handoffsUsed >= limits.maxHandoffs && action.type === 'request_handoff') {
+  if ((state.handoffsUsed + (action.type === 'request_handoff' ? 1 : 0)) > limits.maxHandoffs) {
     return { allowed: false, reason: 'handoffs_exceeded' }
   }
-  if (state.estimatedCostUnitsUsed >= limits.maxEstimatedCostUnits) {
+  if ((state.estimatedCostUnitsUsed + COST_UNIT[action.costTier]) > limits.maxEstimatedCostUnits) {
     return { allowed: false, reason: 'budget_exceeded', detail: `cost=${state.estimatedCostUnitsUsed}/${limits.maxEstimatedCostUnits}` }
   }
   return { allowed: true }

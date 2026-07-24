@@ -1,18 +1,16 @@
 /**
- * Evidence — Phase 2.2 §十五.
+ * Evidence — Phase 2.3 §十三, §十四.
  *
- * A claim supported (or contradicted) by one or more Observations.
- * Evidence is the building block for Hypothesis confidence updates.
- *
- * Multi-source model: each Evidence carries an array of `EvidenceSource`
- * records. Two parsers producing the same claim → one Evidence with two
- * Sources (instead of two separate Evidences).
+ * Multi-source, identity-stable Evidence. Each Evidence carries a
+ * `sources: EvidenceSource[]` array; `EVIDENCE_UPSERTED` (or
+ * `store.upsertEvidence`) atomically adds/migrates a source into an
+ * Evidence whose fingerprint already exists.
  *
  * Fingerprint identity (per §十五):
  *   taskId | kind | subject | normalizedClaim | polarity
  *
  * Producer info is intentionally excluded from the fingerprint so two
- * different parsers (file / hex / generic) can converge on the same
+ * different parsers (file / hex / generic) converge on the same
  * Evidence.
  */
 
@@ -42,13 +40,24 @@ export interface EvidenceProducer {
 
 export type EvidencePolarity = 'supports' | 'contradicts' | 'neutral'
 
+/** §十五 — semantic Claim Family. The conflict resolver uses this
+ *  to group Evidence into conflict groups. */
+export type EvidenceClaimFamily =
+  | 'file_type'
+  | 'archive_type'
+  | 'encoding_type'
+  | 'binary_arch'
+  | 'flag_value'
+  | 'network_service'
+  | 'generic'
+
 export interface EvidenceSubject {
   artifactId?: string
   valueHash?: string
   entityId?: string
 }
 
-export interface EvidenceSource {
+export interface EvidenceSourceDraft {
   producer: EvidenceProducer
   observationIds: string[]
   artifactIds: string[]
@@ -57,48 +66,48 @@ export interface EvidenceSource {
   createdAt: number
 }
 
+export interface EvidenceSource extends EvidenceSourceDraft {}
+
 export interface Evidence {
   id: string
   taskId: string
   kind: EvidenceKind
+  /** §十五 — for `ParserConflictResolver` grouping. */
+  claimFamily: EvidenceClaimFamily
   subject?: EvidenceSubject
   claim: string
   normalizedClaim: string
   polarity: EvidencePolarity
   confidence: number
   sources: EvidenceSource[]
-  /** §十五 — fingerprint is the identity key. Excludes producer so
-   *  multiple parsers can converge. Computed once at creation. */
   fingerprint: string
   attributes?: Record<string, unknown>
   createdAt: number
   updatedAt: number
 }
 
+/** Multi-source draft. Each Parser/Executor emits one Source; the
+ *  store's `upsertEvidence` merges them into the canonical Evidence. */
 export interface EvidenceDraft {
   kind: EvidenceKind
-  claim: string
+  claimFamily?: EvidenceClaimFamily
   subject?: EvidenceSubject
-  observationIds?: string[]
-  artifactIds?: string[]
-  attemptIds?: string[]
+  claim: string
   polarity?: EvidencePolarity
-  confidence: number
-  producer: EvidenceProducer
+  /** Single producer for the source this draft represents. The
+   *  store upserts this source into the Evidence matching the
+   *  fingerprint. */
+  source: EvidenceSourceDraft
 }
 
 function dedupeStrings(arr: string[]): string[] {
   return [...new Set(arr)]
 }
 
-/** §十五 — normalize a claim for fingerprint stability. Whitespace
- *  collapsed and lower-cased; punctuation preserved. */
 export function normalizeClaim(claim: string): string {
   return claim.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
-/** §十五 — fingerprint excludes producer so two different parsers
- *  converge on the same Evidence. */
 export function evidenceFingerprint(e: {
   taskId: string
   kind: EvidenceKind
@@ -115,57 +124,62 @@ export function evidenceFingerprint(e: {
     .digest('hex')
 }
 
+export function deriveClaimFamilyFromKind(kind: EvidenceKind): EvidenceClaimFamily {
+  switch (kind) {
+    case 'file_signature':
+    case 'known_magic':
+      return 'file_type'
+    case 'embedded_archive':
+      return 'archive_type'
+    case 'encoding_decoded':
+    case 'encoding_layer':
+      return 'encoding_type'
+    case 'binary_protection':
+      return 'binary_arch'
+    case 'flag_candidate_source':
+      return 'flag_value'
+    default:
+      return 'generic'
+  }
+}
+
 export function createEvidence(taskId: string, draft: EvidenceDraft): Evidence {
   if (!taskId) throw new Error('createEvidence: taskId is required')
   if (!draft.claim) throw new Error('createEvidence: claim is required')
-  if (!draft.producer || !draft.producer.type || !draft.producer.id) {
-    throw new Error('createEvidence: producer.type and producer.id are required')
+  if (!draft.source.producer.type || !draft.source.producer.id) {
+    throw new Error('createEvidence: source.producer.type and source.producer.id are required')
   }
-  if (draft.confidence < 0 || draft.confidence > 1 || !Number.isFinite(draft.confidence)) {
-    throw new Error(`createEvidence: confidence must be in [0, 1], got ${draft.confidence}`)
+  if (draft.source.confidence < 0 || draft.source.confidence > 1 || !Number.isFinite(draft.source.confidence)) {
+    throw new Error(`createEvidence: source confidence must be in [0, 1], got ${draft.source.confidence}`)
   }
-  const observationIds = dedupeStrings(draft.observationIds ?? [])
-  const artifactIds = dedupeStrings(draft.artifactIds ?? [])
-  const attemptIds = dedupeStrings(draft.attemptIds ?? [])
-  if (observationIds.length === 0 && artifactIds.length === 0) {
-    throw new Error('createEvidence: at least one observationId or artifactId is required')
-  }
-  const polarity = draft.polarity ?? 'supports'
-  const normalizedClaim = normalizeClaim(draft.claim)
-  const id = `ev_${randomBytes(6).toString('hex')}`
-  return {
-    id,
+  const source = draft.source
+  const fingerprint = evidenceFingerprint({
     taskId,
     kind: draft.kind,
     subject: draft.subject,
     claim: draft.claim,
+    polarity: draft.polarity ?? 'supports',
+  })
+  const id = `ev_${fingerprint.slice(0, 16)}`
+  const normalizedClaim = normalizeClaim(draft.claim)
+  return {
+    id,
+    taskId,
+    kind: draft.kind,
+    claimFamily: draft.claimFamily ?? deriveClaimFamilyFromKind(draft.kind),
+    subject: draft.subject,
+    claim: draft.claim,
     normalizedClaim,
-    polarity,
-    confidence: draft.confidence,
-    sources: [
-      {
-        producer: draft.producer,
-        observationIds,
-        artifactIds,
-        attemptIds,
-        confidence: draft.confidence,
-        createdAt: Date.now(),
-      },
-    ],
-    fingerprint: evidenceFingerprint({ taskId, kind: draft.kind, subject: draft.subject, claim: draft.claim, polarity }),
+    polarity: draft.polarity ?? 'supports',
+    confidence: source.confidence,
+    sources: [{ ...source, createdAt: source.createdAt || Date.now() }],
+    fingerprint,
     attributes: {},
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
 }
 
-/** Merge two Evidence records with the same fingerprint. Combines all
- *  sources. Combined confidence uses the bounded 1−∏(1−c) method
- *  from §十五, capped at 0.99 so converging evidence does not
- *  certify absolute truth.
- *
- *  Producers with the same `type` are down-weighted — they are not
- *  treated as fully independent witnesses. */
 export function mergeEvidence(a: Evidence, b: Evidence): Evidence {
   if (a.taskId !== b.taskId || a.kind !== b.kind || a.normalizedClaim !== b.normalizedClaim || a.polarity !== b.polarity) {
     throw new Error('mergeEvidence: fingerprint mismatch')
@@ -181,7 +195,6 @@ export function mergeEvidence(a: Evidence, b: Evidence): Evidence {
   }
 }
 
-/** Bounded combination: 1 − ∏(1 − c_i), capped at 0.99. */
 export function combineIndependentConfidences(sources: ReadonlyArray<EvidenceSource>): number {
   if (sources.length === 0) return 0
   let p = 1

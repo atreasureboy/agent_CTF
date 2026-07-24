@@ -85,9 +85,12 @@ export const encodingParser: ResultParser = {
       evidence: [{
         kind: 'encoding_layer',
         claim: `input is ${codec} encoded`,
-        confidence: 0.5,
-        producer: { type: 'parser', id: 'encoding' },
         polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'encoding' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.5, createdAt: Date.now(),
+        },
       }],
       suggestedActions: [{
         type: 'run_workflow',

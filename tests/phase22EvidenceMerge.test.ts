@@ -18,19 +18,31 @@ import { createTestTaskState } from './fixtures/createTestTaskState.js'
 describe('Phase 2.2 §二十六 — Evidence merge', () => {
   it('FileParser + HexParser converge into one Evidence with two Sources', () => {
     const a = createEvidence('t', {
-      kind: 'file_signature',
-      claim: 'file is PNG',
-      observationIds: ['o-file'],
-      confidence: 0.85,
-      producer: { type: 'parser', id: 'file' },
-    })
+        kind: 'file_signature',
+        claim: 'file is PNG',
+        polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'file' },
+          observationIds: ['o-file'],
+          artifactIds: [],
+          attemptIds: [],
+          confidence: 0.85,
+          createdAt: 0,
+        },
+      })
     const b = createEvidence('t', {
-      kind: 'file_signature',
-      claim: 'file is PNG',
-      observationIds: ['o-hex'],
-      confidence: 0.98,
-      producer: { type: 'parser', id: 'hex' },
-    })
+        kind: 'file_signature',
+        claim: 'file is PNG',
+        polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'hex' },
+          observationIds: ['o-hex'],
+          artifactIds: [],
+          attemptIds: [],
+          confidence: 0.98,
+          createdAt: 0,
+        },
+      })
     // Identity excludes producer, so a.fingerprint === b.fingerprint.
     expect(a.fingerprint).toBe(b.fingerprint)
     const merged = mergeEvidence(a, b)
@@ -47,14 +59,18 @@ describe('Phase 2.2 §二十六 — Evidence merge', () => {
     const state = createTestTaskState({ taskId: 't' })
     const store = new CTFTaskStateStore(state)
     const png = createEvidence('t', {
-      kind: 'file_signature', claim: 'file is PNG',
-      observationIds: ['o1'], confidence: 0.95,
-      producer: { type: 'parser', id: 'hex' },
+      kind: 'file_signature', claim: 'file is PNG', polarity: 'supports',
+      source: {
+        producer: { type: 'parser', id: 'hex' }, observationIds: ['o1'], artifactIds: [], attemptIds: [],
+        confidence: 0.95, createdAt: 0,
+      },
     })
     const zip = createEvidence('t', {
-      kind: 'file_signature', claim: 'file is ZIP',
-      observationIds: ['o2'], confidence: 0.85, polarity: 'contradicts',
-      producer: { type: 'parser', id: 'file' },
+      kind: 'file_signature', claim: 'file is ZIP', polarity: 'contradicts',
+      source: {
+        producer: { type: 'parser', id: 'file' }, observationIds: ['o2'], artifactIds: [], attemptIds: [],
+        confidence: 0.85, createdAt: 0,
+      },
     })
     store.apply({ type: 'EVIDENCE_ADDED', evidence: png })
     store.apply({ type: 'EVIDENCE_ADDED', evidence: zip })

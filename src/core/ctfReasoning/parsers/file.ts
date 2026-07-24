@@ -105,42 +105,72 @@ export const fileParser: ResultParser = {
     evidence.push({
       kind: 'file_signature',
       claim: `file is ${entry.label} (${entry.mime})`,
-      confidence: 0.95,
-      producer: { type: 'parser', id: 'file' },
       polarity: 'supports',
+      source: {
+        producer: { type: 'parser', id: 'file' },
+        observationIds: [],
+        artifactIds: input.artifactIds,
+        attemptIds: [],
+        confidence: 0.95,
+        createdAt: Date.now(),
+      },
     })
     // Suggest a type-specific next workflow.
     if (['png', 'jpg', 'gif'].includes(entry.ext)) {
       evidence.push({
         kind: 'generic',
         claim: 'image container — image_quick_scan recommended',
-        confidence: 0.7,
-        producer: { type: 'parser', id: 'file' },
         polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'file' },
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.7,
+          createdAt: Date.now(),
+        },
       })
     } else if (['zip', 'gz', '7z', 'rar'].includes(entry.ext)) {
       evidence.push({
         kind: 'embedded_archive',
         claim: 'archive container — extract and triage contents',
-        confidence: 0.7,
-        producer: { type: 'parser', id: 'file' },
         polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'file' },
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.7,
+          createdAt: Date.now(),
+        },
       })
     } else if (['elf', 'macho', 'class'].includes(entry.ext)) {
       evidence.push({
         kind: 'binary_protection',
         claim: 'binary detected — run checksec / reverse specialist',
-        confidence: 0.6,
-        producer: { type: 'parser', id: 'file' },
         polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'file' },
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.6,
+          createdAt: Date.now(),
+        },
       })
     } else if (entry.ext === 'pcap' || entry.ext === 'pcapng') {
       evidence.push({
         kind: 'generic',
         claim: 'packet capture — run pcap triage',
-        confidence: 0.6,
-        producer: { type: 'parser', id: 'file' },
         polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'file' },
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.6,
+          createdAt: Date.now(),
+        },
       })
     }
     return {

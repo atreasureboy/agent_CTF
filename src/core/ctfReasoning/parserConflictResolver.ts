@@ -1,33 +1,30 @@
 /**
- * ParserConflictResolver — Phase 2.2 §十七.
+ * ParserConflictResolver — Phase 2.3 §十五.
  *
- * Decides how to resolve conflicts between parsers producing different
- * conclusions for the same input (e.g. `file` says "data" while
- * `hex_header` says "PNG"). All conflicts are resolved by a strict
- * priority order; the lower-priority conclusion is preserved as an
- * audit observation but does not produce competing Evidence.
+ * Conflict groups evidence by (taskId + subject.artifactId/entityId +
+ * claimFamily). Inside a group the highest-priority Claim wins; lower-
+ * priority Claims are kept as Observations (audit) but the Evidence
+ * layer marks them with conflict metadata.
  *
  * Priority (highest first):
  *   magic_signature > specialized_parser > file_command > generic
  *
- * Encoding conflict (§十七.2):
- *   - Multiple codecs succeed with different outputs → keep each as a
- *     separate decode branch observation (no single Evidence claim).
- *   - Conflict resolution defers to the DecoderTree / readability /
- *     next-layer detection, which this resolver does not score itself.
+ * Encoding conflict (§十七.2 / §十五):
+ *   Multiple codecs succeed with different outputs → keep each as a
+ *   separate decode branch observation; the conflict group is
+ *   claimFamily=encoding_type.
  *
- * Partial success (§十七.3):
- *   - When the tool exit code is non-zero but the output contains
- *     valid artifacts / evidence, surface as `partial` with a warning.
+ * Partial success:
+ *   When the tool exit code is non-zero but valid artifacts / evidence
+ *   exist, surface as `partial` with a warning.
  *
- * Parser failure (§十七.4):
- *   - Per-parser exceptions are captured as `parser_failure` warnings.
- *     The GenericParser runs as a last-resort fallback. Other parsers
- *     are not affected.
+ * Parser failure:
+ *   Per-parser exceptions are captured as `parser_failure` warnings.
  */
 
 import type { ObservationDraft } from './observation.js'
-import type { EvidenceDraft } from './evidence.js'
+import type { EvidenceDraft, EvidenceClaimFamily } from './evidence.js'
+import { deriveClaimFamilyFromKind } from './evidence.js'
 import type { MaterializedResult } from './parserRegistry.js'
 
 export type ParserPriority = 'magic_signature' | 'specialized_parser' | 'file_command' | 'generic'
@@ -36,10 +33,23 @@ export interface ParserConflictResolution {
   /** Observations that survive conflict resolution. */
   observations: ObservationDraft[]
   /** Evidence drafts — only the highest-priority claim wins per
-   *  subject. */
+   *  conflict group. Lower-priority drafts are kept as audit
+   *  Observations (when present) but not as Evidence. */
   evidence: EvidenceDraft[]
-  /** Aggregated warnings including any `parser_failure` markers. */
   warnings: string[]
+}
+
+interface GroupKey {
+  subjectKey: string
+  family: EvidenceClaimFamily
+}
+
+function groupKeyOf(e: EvidenceDraft): GroupKey {
+  const subjectKey = e.subject
+    ? `${e.subject.artifactId ?? ''}|${e.subject.valueHash ?? ''}|${e.subject.entityId ?? ''}`
+    : ''
+  const family = e.claimFamily ?? deriveClaimFamilyFromKind(e.kind)
+  return { subjectKey, family }
 }
 
 export function resolveParserConflicts(
@@ -47,7 +57,7 @@ export function resolveParserConflicts(
 ): ParserConflictResolution {
   const warnings: string[] = []
   const observations: ObservationDraft[] = []
-  const evBySubjectKey = new Map<string, { ev: EvidenceDraft; priority: ParserPriority }>()
+  const evByGroup = new Map<string, { ev: EvidenceDraft; priority: ParserPriority }>()
 
   for (const { parserId, result } of results) {
     const priority = priorityForParser(parserId)
@@ -55,23 +65,23 @@ export function resolveParserConflicts(
       observations.push(o)
     }
     for (const e of result.evidence) {
-      const key = `${e.kind}|${(e.claim ?? '').toLowerCase()}`
-      const existing = evBySubjectKey.get(key)
+      const key = `${groupKeyOf(e).subjectKey}|${groupKeyOf(e).family}`
+      const existing = evByGroup.get(key)
       if (!existing) {
-        evBySubjectKey.set(key, { ev: e, priority })
+        evByGroup.set(key, { ev: e, priority })
         continue
       }
       if (rank(priority) > rank(existing.priority)) {
-        evBySubjectKey.set(key, { ev: e, priority })
+        evByGroup.set(key, { ev: e, priority })
       }
-      // Lower-priority claim: dropped as Evidence (kept as audit
-      // observation via the observations array when present).
+      // Lower-priority claim: kept as audit observation via the
+      // observations array when present in the original result.
     }
   }
 
   return {
     observations,
-    evidence: [...evBySubjectKey.values()].map((x) => x.ev),
+    evidence: [...evByGroup.values()].map((x) => x.ev),
     warnings,
   }
 }
@@ -97,9 +107,6 @@ function rank(p: ParserPriority): number {
   }
 }
 
-/** Surface a tool's partial failure without losing Evidence. The
- *  parser registry uses this when `isError === true` but the
- *  materializer still produced valid Observations / Evidence. */
 export function withPartialWarning(result: MaterializedResult, parserId: string): MaterializedResult {
   return {
     ...result,
@@ -107,8 +114,6 @@ export function withPartialWarning(result: MaterializedResult, parserId: string)
   }
 }
 
-/** Wrap a parser failure. The exception is recorded as a warning;
- *  the parser's `result` (when supplied) is preserved verbatim. */
 export function parserFailureWarning(parserId: string, err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err)
   return `parser_failure: ${parserId}: ${msg}`

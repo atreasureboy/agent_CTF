@@ -34,6 +34,9 @@ import {
   evidenceFingerprint as _ignore,
   mergeEvidence,
 } from './evidence.js'
+
+function ctxAttemptId(id: string): string { return id }
+void ctxAttemptId
 import type { Evidence } from './evidence.js'
 import { buildFlagCandidateId, type FlagCandidateDraft } from './flagCandidate.js'
 import type {
@@ -51,6 +54,10 @@ import type {
   ActionExecutionResult,
   ReasoningResult,
 } from './actionExecutionResult.js'
+import {
+  createCascadeContext,
+  type ReasoningCascadeContext,
+} from './reasoningCascade.js'
 import {
   applyReasoningBudgetConsumption,
   consumeCycle,
@@ -84,7 +91,9 @@ export interface ReasoningCoordinatorOptions {
   store: CTFTaskStateStore
   budgetLimits: BudgetLimits
   heavyApproved: boolean
-  /** Optional executor — defaults to a noop. */
+  /** §五 — Required executor. No fallback Noop; the production
+   *  Runtime MUST inject a concrete adapter. Tests declare
+   *  `mode: 'dry-run'` and supply createNoopStrategyActionExecutor. */
   executor?: StrategyActionExecutor
   /** Cumulative budget limits (overrides the state's defaults when provided). */
   reasoningBudgetLimits?: ReasoningBudgetLimits
@@ -107,6 +116,9 @@ export interface ProcessReasoningInputsInput {
     handoffId?: string
     stepId?: string
   }
+  /** §九 — cascade context. The Coordinator reads depth and
+   *  parent ids from here. */
+  cascade?: ReasoningCascadeContext
   /** §二十三 — completion policy overrides the default. */
   completionPolicy?: CompletionPolicy
   /** Optional flag for completion policy: auto-complete local fixtures
@@ -115,53 +127,43 @@ export interface ProcessReasoningInputsInput {
   autoCompleteLocalFixtures?: boolean
 }
 
-interface CoordinatorInternals {
-  pending: ReturnType<typeof createPendingActionStore>
-  /** Per-task lock promise so concurrent calls serialize. */
-  lockChain: Promise<unknown>
-  selectedActionIds: string[]
-  strategyDecisionIds: string[]
-  finalObservationIds: string[]
-  finalEvidenceIds: string[]
-}
-
-const _internals = new Map<string, CoordinatorInternals>()
-
-function internals(taskId: string): CoordinatorInternals {
-  let i = _internals.get(taskId)
-  if (!i) {
-    i = {
-      pending: createPendingActionStore(),
-      lockChain: Promise.resolve(),
-      selectedActionIds: [],
-      strategyDecisionIds: [],
-      finalObservationIds: [],
-      finalEvidenceIds: [],
-    }
-    _internals.set(taskId, i)
-  }
-  return i
-}
+/** Per-task reasoning lock. Lives outside the module — the
+ *  caller (Runtime instance) owns the chain and can dispose it
+ *  on tear-down. */
+const _taskLocks = new Map<string, Promise<unknown>>()
 
 export async function processNewReasoningInputs(
   options: ReasoningCoordinatorOptions,
   input: ProcessReasoningInputsInput,
 ): Promise<ReasoningResult> {
+  if (!options.executor) {
+    throw new MissingStrategyActionExecutorError()
+  }
   const { taskId } = options
-  const i = internals(taskId)
   // Per-task lock — chain on the existing lock so concurrent calls
   // for the same task are serialized.
-  const next: Promise<unknown> = i.lockChain.then(() =>
-    runCycles(options, input, i),
-  )
-  i.lockChain = next.catch(() => undefined)
-  return next as Promise<ReasoningResult>
+  const prev = _taskLocks.get(taskId) ?? Promise.resolve()
+  const next: Promise<ReasoningResult> = prev
+    .catch(() => undefined)
+    .then(() => runCycles(options, input))
+  _taskLocks.set(taskId, next.catch(() => undefined))
+  return next
+}
+
+class MissingStrategyActionExecutorError extends Error {
+  constructor() {
+    super(
+      'RuntimeStrategyActionExecutor: production Runtime requires a ' +
+        'concrete StrategyActionExecutor. Use createNoopStrategyActionExecutor ' +
+        'only in dry-run mode.',
+    )
+    this.name = 'MissingStrategyActionExecutorError'
+  }
 }
 
 async function runCycles(
   options: ReasoningCoordinatorOptions,
   input: ProcessReasoningInputsInput,
-  i: CoordinatorInternals,
 ): Promise<ReasoningResult> {
   const maxCycles = options.maxStrategyCycles ?? DEFAULT_MAX_STRATEGY_CYCLES
   const maxTotalActions = options.maxTotalStrategyActionsPerTask ?? DEFAULT_MAX_TOTAL_STRATEGY_ACTIONS_PER_TASK
@@ -171,8 +173,14 @@ async function runCycles(
   let stopped = false
   let stopReason: string | undefined
   let cycles = 0
-  // Snapshot budget + observations so we know the loop's contributions.
+  // §十一 — single-call result. IDs returned reflect only this call;
+  // they are not merged with previous calls. _internals Map removed.
+  const selectedActionIds: string[] = []
+  const strategyDecisionIds: string[] = []
+  const finalObservationIds: string[] = []
+  const finalEvidenceIds: string[] = []
   let budget: ReasoningBudgetState = { ...options.state.reasoningBudget }
+  const pending = createPendingActionStore()
 
   // Apply incoming Evidence to HypothesisUpdater first.
   applyHypothesisUpdates(options, input)
@@ -186,11 +194,7 @@ async function runCycles(
       evidenceIds: input.newEvidenceIds,
       hypothesisIds: a.hypothesisIds ?? [],
     }))
-  const newPendingIds = i.pending.add(seed)
-  for (const pid of newPendingIds) {
-    const p = i.pending['size' as never] // placeholder, ignored
-    void p
-  }
+  pending.add(seed)
 
   for (let c = 0; c < maxCycles; c++) {
     if (options.abortSignal?.aborted) {
@@ -231,14 +235,14 @@ async function runCycles(
         budget: { state: budget, limits: options.reasoningBudgetLimits ?? DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: options.heavyApproved },
       })
       store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision })
-      i.strategyDecisionIds.push(decision.id)
+      strategyDecisionIds.push(decision.id)
       stopped = true
       stopReason = stopAction.reason || 'planner emitted stop'
       break
     }
 
     // Pull eligible candidates from the pending store.
-    const eligible = i.pending.listEligible()
+    const eligible = pending.listEligible()
     if (eligible.length === 0) {
       stopped = true
       stopReason = 'no eligible action'
@@ -259,7 +263,7 @@ async function runCycles(
       budget: { state: budget, limits: options.reasoningBudgetLimits ?? DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: options.heavyApproved },
     })
     store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision })
-    i.strategyDecisionIds.push(decision.id)
+    strategyDecisionIds.push(decision.id)
 
     const selected = decision.selectedAction
     if (!selected) {
@@ -289,7 +293,7 @@ async function runCycles(
         basedOnHypothesisIds: selected.hypothesisIds ?? [],
       })
       store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision: deniedDecision })
-      i.strategyDecisionIds.push(deniedDecision.id)
+      strategyDecisionIds.push(deniedDecision.id)
       stopped = true
       stopReason = `budget denied: ${budgetCheck.reason}`
       break
@@ -298,9 +302,9 @@ async function runCycles(
     // Build Attempt and emit ATTEMPT_STARTED.
     const attempt = buildAttempt(options, selected, cycleCounter)
     store.apply({ type: 'ATTEMPT_STARTED', attempt })
-    i.selectedActionIds.push(attempt.id)
+    selectedActionIds.push(attempt.id)
     // §二十二 — PendingAction FSM: pending → selected.
-    markPendingSelected(i, selected, attempt.id)
+    markPendingSelected(pending, selected, attempt.id)
 
     // Update in-flight + budget BEFORE execution.
     const tier = selected.costTier === 'expensive' ? 'heavy' : selected.costTier === 'normal' ? 'medium' : 'fast'
@@ -356,8 +360,8 @@ async function runCycles(
         completedAt,
       })
       // §二十二 — PendingAction FSM: selected → rejected.
-      const pid = pendingIdFor(i, selected)
-      if (pid) i.pending.reject(pid)
+      const pid = pendingIdFor(pending, selected)
+      if (pid) pending.reject(pid)
       continue
     }
     if (execResult.status === 'failed') {
@@ -379,8 +383,8 @@ async function runCycles(
         completedAt,
       })
       // §二十二 — PendingAction FSM: selected → rejected.
-      const pid2 = pendingIdFor(i, selected)
-      if (pid2) i.pending.reject(pid2)
+      const pid2 = pendingIdFor(pending, selected)
+      if (pid2) pending.reject(pid2)
       continue
     }
 
@@ -401,42 +405,39 @@ async function runCycles(
     const evidenceIds: string[] = []
     const artifactIds: string[] = []
     const flagCandidateIds: string[] = []
-    for (const draft of drafts.observations) {
-      const obs = createObservation(options.taskId, draft)
-      store.apply({ type: 'OBSERVATION_ADDED', observation: obs })
-      observationIds.push(obs.id)
-      i.finalObservationIds.push(obs.id)
-    }
-    // §六 — Evidence drafts without observationIds/artifactIds are
-    // auto-bound to the just-created observations from this batch.
-    // This keeps parsers simple while preserving the invariant.
-    for (const draft of drafts.evidence) {
-      if ((draft.observationIds?.length ?? 0) === 0 && (draft.artifactIds?.length ?? 0) === 0) {
-        draft.observationIds = [...observationIds]
+    // §七 — if the run already projected, the Coordinator must NOT
+    // re-apply the drafts. Simply attach the run's executionRefs to the
+    // Attempt's product ids without re-emitting events.
+    const alreadyProjected = execResult.resultAlreadyProjected === true
+    if (!alreadyProjected) {
+      for (const draft of drafts.observations) {
+        const obs = createObservation(options.taskId, draft)
+        store.apply({ type: 'OBSERVATION_ADDED', observation: obs })
+        observationIds.push(obs.id)
+        finalObservationIds.push(obs.id)
       }
-    }
-    for (const draft of drafts.evidence) {
-      // §十五 — if an existing Evidence shares the same fingerprint,
-      // merge into the existing record via EVIDENCE_MERGED. Otherwise
-      // add a fresh Evidence.
-      const candidateFp = _ignore({
-        taskId: options.taskId,
-        kind: draft.kind,
-        subject: undefined,
-        claim: draft.claim,
-        polarity: draft.polarity ?? 'supports',
-      })
-      const ev = createEvidence(options.taskId, draft)
-      const existing = store.getState().evidence.find((e) => e.fingerprint === candidateFp)
-      if (existing) {
-        store.apply({ type: 'EVIDENCE_MERGED', evidenceId: existing.id, mergedFrom: ev.id })
-        evidenceIds.push(existing.id)
-        i.finalEvidenceIds.push(existing.id)
-      } else {
-        store.apply({ type: 'EVIDENCE_ADDED', evidence: ev })
-        evidenceIds.push(ev.id)
-        i.finalEvidenceIds.push(ev.id)
+      for (const draft of drafts.evidence) {
+        // §十三 — auto-bind missing observation references from this
+        // batch, then upsert.
+        const source = {
+          ...draft.source,
+          observationIds: draft.source.observationIds.length > 0
+            ? draft.source.observationIds
+            : observationIds,
+          attemptIds: [...draft.source.attemptIds, ctxAttemptId(attempt.id)],
+        }
+        const ev = createEvidence(options.taskId, {
+          ...draft,
+          source,
+        })
+        const result = store.upsertEvidence(ev)
+        evidenceIds.push(result.evidenceId)
+        finalEvidenceIds.push(result.evidenceId)
       }
+    } else {
+      // Surface the executor's executionRefs on the Attempt via id
+      // bookkeeping even when we skip re-applying drafts.
+      void drafts
     }
     for (const draft of drafts.flagCandidateDrafts) {
       const candidate = flagCandidateFromDraft(options.taskId, draft, attempt.id)
@@ -465,8 +466,8 @@ async function runCycles(
       completedAt: Date.now(),
     })
     // §二十二 — PendingAction FSM: selected → executed.
-    const pidExec = pendingIdFor(i, selected)
-    if (pidExec) i.pending.markExecuted(pidExec)
+    const pidExec = pendingIdFor(pending, selected)
+    if (pidExec) pending.markExecuted(pidExec)
 
     // §二十三 — validated FlagCandidate triggers stop.
     const policy = input.completionPolicy ?? DEFAULT_COMPLETION_POLICY
@@ -498,7 +499,7 @@ async function runCycles(
         evidenceIds,
         hypothesisIds: a.hypothesisIds ?? [],
       }))
-      i.pending.add(nextSeed)
+      pending.add(nextSeed)
     }
   }
 
@@ -506,10 +507,10 @@ async function runCycles(
     cycles,
     stopped,
     stopReason,
-    selectedActionIds: [...i.selectedActionIds],
-    strategyDecisionIds: [...i.strategyDecisionIds],
-    finalObservationIds: [...i.finalObservationIds],
-    finalEvidenceIds: [...i.finalEvidenceIds],
+    selectedActionIds: [...selectedActionIds],
+    strategyDecisionIds: [...strategyDecisionIds],
+    finalObservationIds: [...finalObservationIds],
+    finalEvidenceIds: [...finalEvidenceIds],
   }
 }
 
@@ -641,18 +642,25 @@ function applyHypothesisUpdates(
   }
 }
 
-function markPendingSelected(i: CoordinatorInternals, action: SuggestedAction, _attemptId: string): string | undefined {
-  const items = i.pending.listEligible()
+function markPendingSelected(
+  pending: ReturnType<typeof createPendingActionStore>,
+  action: SuggestedAction,
+  _attemptId: string,
+): string | undefined {
+  const items = pending.listEligible()
   const match = items.find((p) => p.action === action || sameAction(p.action, action))
   if (match) {
-    i.pending.select(match.id)
+    pending.select(match.id)
     return match.id
   }
   return undefined
 }
 
-function pendingIdFor(i: CoordinatorInternals, action: SuggestedAction): string | undefined {
-  const items = i.pending.listEligible()
+function pendingIdFor(
+  pending: ReturnType<typeof createPendingActionStore>,
+  action: SuggestedAction,
+): string | undefined {
+  const items = pending.listEligible()
   const match = items.find((p) => p.action === action || sameAction(p.action, action))
   if (match) return match.id
   // After a transition, listEligible only returns pending — look up

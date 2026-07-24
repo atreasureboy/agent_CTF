@@ -53,9 +53,12 @@ export const binwalkParser: ResultParser = {
         evidence.push({
           kind: 'embedded_archive',
           claim: `${kind.label} embedded at ${offset}`,
-          confidence: 0.85,
-          producer: { type: 'parser', id: 'binwalk' },
           polarity: 'supports',
+          source: {
+            producer: { type: 'parser', id: 'binwalk' },
+            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+            confidence: 0.85, createdAt: Date.now(),
+          },
         })
         actions.push({
           type: 'call_tool',
@@ -71,9 +74,12 @@ export const binwalkParser: ResultParser = {
       evidence.push({
         kind: 'negative_result',
         claim: 'binwalk: no embedded signatures detected',
-        confidence: 0.6,
-        producer: { type: 'parser', id: 'binwalk' },
         polarity: 'neutral',
+        source: {
+          producer: { type: 'parser', id: 'binwalk' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.6, createdAt: Date.now(),
+        },
       })
     }
     return { observations, evidence, suggestedActions: actions, flagCandidateDrafts: [], warnings: [], rawArtifactIds: input.artifactIds }

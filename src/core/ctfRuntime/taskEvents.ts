@@ -131,6 +131,11 @@ export type CTFTaskEvent =
   /* ─── Phase 2.1 §六 — structured reasoning events ──────────────────── */
   | { type: 'OBSERVATION_ADDED'; observation: Observation }
   | { type: 'EVIDENCE_ADDED'; evidence: Evidence }
+  | {
+      type: 'EVIDENCE_UPSERTED'
+      evidence: Evidence
+      created: boolean
+    }
   | { type: 'EVIDENCE_MERGED'; evidenceId: string; mergedFrom: string }
   | { type: 'HYPOTHESIS_PROPOSED'; hypothesis: CTFHypothesis }
   | { type: 'HYPOTHESIS_STATUS_CHANGED'; hypothesisId: string; from: CTFHypothesis['status']; to: CTFHypothesis['status']; reason?: string }

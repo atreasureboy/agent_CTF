@@ -46,9 +46,12 @@ export const stringsParser: ResultParser = {
       evidence.push({
         kind: 'generic',
         claim: `suspicious keywords present: ${[...keywords].slice(0, 5).join(', ')}`,
-        confidence: 0.5,
-        producer: { type: 'parser', id: 'strings' },
         polarity: 'neutral',
+        source: {
+          producer: { type: 'parser', id: 'strings' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.5, createdAt: Date.now(),
+        },
       })
     }
     const flagCandidateDrafts: MaterializedResult['flagCandidateDrafts'] = []

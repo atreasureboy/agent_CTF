@@ -1,3 +1,4 @@
+import { createNoopStrategyActionExecutor } from '../src/core/ctfReasoning/runtimeStrategyActionExecutor.js'
 /**
  * Phase 2.2 §二十七 — Budget tests.
  *
@@ -56,10 +57,10 @@ describe('Phase 2.2 §二十七 — cumulative task budget', () => {
       taskId: 'bdg',
       state,
       store,
+      executor: createNoopStrategyActionExecutor(),
       budgetLimits: { fastConcurrency: 4, mediumConcurrency: 2, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 4 },
       heavyApproved: false,
       reasoningBudgetLimits: { ...DEFAULT_REASONING_BUDGET_LIMITS, maxActions: 2, maxCheapActions: 1 },
-      executor,
     }, {
       source: 'main-agent',
       newObservationIds: [],

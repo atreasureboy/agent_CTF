@@ -52,9 +52,12 @@ export const checksecParser: ResultParser = {
       evidence.push({
         kind: 'binary_protection',
         claim: 'binary protection summary extracted',
-        confidence: 0.9,
-        producer: { type: 'parser', id: 'checksec' },
         polarity: 'neutral',
+        source: {
+          producer: { type: 'parser', id: 'checksec' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.9, createdAt: Date.now(),
+        },
       })
     }
     return { observations, evidence, suggestedActions: [], flagCandidateDrafts: [], warnings: [], rawArtifactIds: input.artifactIds }

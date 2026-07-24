@@ -1,5 +1,5 @@
 /**
- * ResultMerger — Phase 2.2 §十六.
+ * ResultMerger — Phase 2.3 §十四, §十六.
  *
  * Unifies observations, evidence, suggested actions, and flag
  * candidates produced by multiple parsers / materializers into a
@@ -10,7 +10,8 @@
  *     confidence.
  *   - Merges evidence with the same identity (taskId + kind +
  *     subject + normalizedClaim + polarity) using bounded confidence
- *     combination. Sources from both records are preserved.
+ *     combination. Sources from both records are preserved (no
+ *     producer loss).
  *   - Dedupes suggested actions by (type, targetId, fingerprint of
  *     normalized input + artifact ids + hypothesis ids). When
  *     deduped, priority = max, reason = union, costTier = higher
@@ -26,9 +27,11 @@ import { createHash } from 'crypto'
 import type { ObservationDraft } from './observation.js'
 import type {
   Evidence,
+  EvidenceClaimFamily,
   EvidenceDraft,
+  EvidenceSourceDraft,
 } from './evidence.js'
-import { combineIndependentConfidences } from './evidence.js'
+import { combineIndependentConfidences, deriveClaimFamilyFromKind, normalizeClaim } from './evidence.js'
 import type { SuggestedAction, CostTier } from './suggestedAction.js'
 import type { FlagCandidateDraft } from './flagCandidate.js'
 import type { MaterializedResult } from './parserRegistry.js'
@@ -47,9 +50,28 @@ function fingerprintEvidence(e: EvidenceDraft | Evidence): string {
   const subjectKey = subj
     ? `${subj.artifactId ?? ''}|${subj.valueHash ?? ''}|${subj.entityId ?? ''}`
     : ''
-  const normalized = (e.claim ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const claim = ('claim' in e ? e.claim : '') ?? ''
+  const normalized = normalizeClaim(claim)
   const taskId = (e as { taskId?: string }).taskId ?? ''
-  return `${taskId}|${e.kind}|${subjectKey}|${normalized}|${e.polarity ?? 'supports'}`
+  const polarity = ('polarity' in e ? (e.polarity ?? 'supports') : 'supports')
+  return `${taskId}|${e.kind}|${subjectKey}|${normalized}|${polarity}`
+}
+
+function claimFamilyFor(d: EvidenceDraft): EvidenceClaimFamily {
+  return d.claimFamily ?? deriveClaimFamilyFromKind(d.kind)
+}
+
+/** Convert a single-source EvidenceDraft back into the canonical
+ *  `EvidenceSourceDraft` shape that the state store uses. */
+export function evidenceDraftToSource(d: EvidenceDraft): EvidenceSourceDraft {
+  return {
+    producer: d.source.producer,
+    observationIds: d.source.observationIds,
+    artifactIds: d.source.artifactIds,
+    attemptIds: d.source.attemptIds,
+    confidence: d.source.confidence,
+    createdAt: d.source.createdAt,
+  }
 }
 
 function fingerprintAction(a: SuggestedAction): string {
@@ -145,19 +167,37 @@ export function createResultMerger(): ResultMerger {
           if (!existing) {
             evByKey.set(k, e)
           } else {
-            // Bounded confidence combination; keep the stronger claim
-            // wording and the more complete producer.
-            const combined = combineIndependentConfidences([
-              { producer: existing.producer, observationIds: [], artifactIds: [], attemptIds: [], confidence: existing.confidence, createdAt: 0 },
-              { producer: e.producer, observationIds: [], artifactIds: [], attemptIds: [], confidence: e.confidence, createdAt: 0 },
-            ])
+            // §十四 — merge Sources from both drafts. We keep both
+            // producers so the second parser is not dropped. Each
+            // draft carries exactly one source (its own producer).
+            const sources = [existing.source, e.source]
+            // Bounded confidence combination: pretend the two
+            // sources are independent witnesses and combine. The
+            // Evidence's confidence is recomputed by the state
+            // store's reducer when these are upserted.
+            const combined = combineIndependentConfidences(
+              sources.map((s) => ({
+                producer: s.producer,
+                observationIds: [],
+                artifactIds: [],
+                attemptIds: [],
+                confidence: s.confidence,
+                createdAt: 0,
+              })),
+            )
             evByKey.set(k, {
               ...existing,
-              confidence: combined,
-              // Keep both observation / artifact references
-              observationIds: dedupe([...(existing.observationIds ?? []), ...(e.observationIds ?? [])]),
-              artifactIds: dedupe([...(existing.artifactIds ?? []), ...(e.artifactIds ?? [])]),
-              attemptIds: dedupe([...(existing.attemptIds ?? []), ...(e.attemptIds ?? [])]),
+              claimFamily: existing.claimFamily ?? claimFamilyFor(e),
+              source: {
+                producer: existing.source.producer.id + ',' + e.source.producer.id === existing.source.producer.id
+                  ? existing.source.producer
+                  : { type: existing.source.producer.type, id: 'merged:' + existing.source.producer.id + '+' + e.source.producer.id },
+                observationIds: dedupe([...(existing.source.observationIds ?? []), ...(e.source.observationIds ?? [])]),
+                artifactIds: dedupe([...(existing.source.artifactIds ?? []), ...(e.source.artifactIds ?? [])]),
+                attemptIds: dedupe([...(existing.source.attemptIds ?? []), ...(e.source.attemptIds ?? [])]),
+                confidence: combined,
+                createdAt: Math.max(existing.source.createdAt || 0, e.source.createdAt || 0) || Date.now(),
+              },
             })
           }
         }

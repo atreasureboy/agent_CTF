@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%3E%3D20-339933?logo=node.js)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-577%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-586%20passed-brightgreen)]()
 
 > `ovolv999 "任何你需要它完成的任务"`
 
@@ -191,6 +191,51 @@ Orchestrator.processReasoningInput({ source, newObservationIds, newEvidenceIds, 
 - **每 Task 推理锁** — 同一 Task 的多个推理循环串行；不同 Task 可并行。
 
 完整文档：`docs/architecture/phase-2.2-reasoning-main-path.md`；测试覆盖 `tests/phase22*.test.ts`、`tests/ctfReasoning.test.ts`、`tests/ctfReasoningAudit.test.ts`。
+
+## CTF 真实动作闭环 (Phase 2.3)
+
+Phase 2.3 把结构化推理闭环接到真实 Runtime：每个 Strategy Action 都通过
+`RuntimeStrategyActionExecutor` 真正调用 Workflow / Tool / OneShot /
+Handoff / Flag Validator；同 Cascade 内不会重复触发；PendingAction 仅在
+TaskState 中持久化；Evidence 通过 `EVIDENCE_UPSERTED` 原子合并多来源。
+
+```
+Run Output (Main Agent / Workflow / OneShot / Specialist)
+  → StructuredOutputHandler (cascade-aware dedup)
+  → ReasoningCoordinator.processNewReasoningInputs (per-task lock)
+    ↳ HypothesisUpdater (deterministic; Revision on terminal conflict)
+    ↳ StrategyPlanner (uses pendingAction + hypothesis + cost + freshness)
+    ↳ StrategyActionExecutor (REAL Runtime, no Noop fallback)
+       ↳ run_workflow / run_oneshot / call_tool / request_handoff / verify_flag
+    ↳ ResultMaterializer → ResultMerger → ParserConflictResolver
+    ↳ EVIDENCE_UPSERTED (multi-source merge) + PENDING_ACTION_* + REASONING_BUDGET_CONSUMED
+  → Attempt bound (Observation/Evidence/Artifact/Candidate ids set ONCE)
+  → STOP / next Cycle / TASK_COMPLETED
+```
+
+### 不变量 (Phase 2.3)
+
+- **真实执行** — 生产 Runtime 必须注入 production Executor；Noop 仅在
+  显式 `mode: 'dry-run'` 中允许。
+- **Stop 是真正的循环终止** — Executor 不接受 stop Action；Coordinator
+  在创建 Attempt 前处理。
+- **6 类 Action Adapter** — `createRuntimeStrategyActionExecutor(surface)`
+  分别处理 run_workflow / run_oneshot / call_tool / request_handoff /
+  verify_flag。
+- **Cascade 防重入** — 同 Cascade 内处理一次；depth 上限 8；超过则跳过。
+- **Hypothesis 状态机 + Revision** — terminal hypothesis 收到新冲突
+  Evidence 时创建 `revisionOf` 新 hypothesis；不回归。
+- **PendingAction 仅 TaskState** — 移除模块级 `_internals` Map。
+- **EVIDENCE_UPSERTED** — 原子合并 sources / observationIds /
+  artifactIds / attemptIds，重算有界 confidence (≤0.99)。
+- **Conflict claim-family** — 按 (taskId + subject + claimFamily)
+  分组；Magic > SpecializedParser > file_command > generic。
+- **预算预测检查** — `used + actionCost > max` 而非 `used >= max`。
+- **Workflow PARTIAL/FAILED/CANCELLED** — 独立事件，partial 仍可产生
+  Evidence 进入 Reasoning。
+
+完整文档：`docs/architecture/phase-2.3-real-action-loop.md`；测试覆盖
+`tests/phase22ReasoningMainPath.test.ts`。
 
 ## 核心概念
 

@@ -1,3 +1,4 @@
+import { createNoopStrategyActionExecutor } from '../src/core/ctfReasoning/runtimeStrategyActionExecutor.js'
 /**
  * Phase 2.2 — Reasoning layer tests.
  *
@@ -109,30 +110,39 @@ describe('Observation', () => {
 })
 
 describe('Evidence — Phase 2.2 §十五 multi-source', () => {
-  it('refuses no source', () => {
+  it('refuses missing producer', () => {
     expect(() => createEvidence('t', {
-      kind: 'generic', claim: 'c', producer: { type: 'parser', id: 'p' }, confidence: 0.5,
+      kind: 'generic', claim: 'c',
+      source: {
+        producer: { type: 'parser', id: '' }, observationIds: [], artifactIds: [], attemptIds: [],
+        confidence: 0.5, createdAt: 0,
+      },
     })).toThrow()
   })
   it('fingerprint excludes producer so two parsers converge', () => {
     const a = evidenceFingerprint({ taskId: 't', kind: 'generic', claim: 'file is PNG', polarity: 'supports' })
     const b = evidenceFingerprint({ taskId: 't', kind: 'generic', claim: 'file is PNG', polarity: 'supports' })
     expect(a).toBe(b)
-    // The producer is not in the fingerprint; the claim alone suffices.
   })
   it('merges sources and unions observation/artifact/attempt ids', () => {
     const a = createEvidence('t', {
-      kind: 'file_signature', claim: 'file is PNG', observationIds: ['o1'], artifactIds: ['art1'],
-      producer: { type: 'parser', id: 'file' }, confidence: 0.85,
+      kind: 'file_signature', claim: 'file is PNG',
+      source: {
+        producer: { type: 'parser', id: 'file' }, observationIds: ['o1'], artifactIds: ['art1'], attemptIds: [],
+        confidence: 0.85, createdAt: 0,
+      },
     })
     const b = createEvidence('t', {
-      kind: 'file_signature', claim: 'file is PNG', observationIds: ['o2'], artifactIds: ['art1'],
-      producer: { type: 'parser', id: 'hex' }, confidence: 0.98,
+      kind: 'file_signature', claim: 'file is PNG',
+      source: {
+        producer: { type: 'parser', id: 'hex' }, observationIds: ['o2'], artifactIds: ['art1'], attemptIds: [],
+        confidence: 0.98, createdAt: 0,
+      },
     })
     const merged = mergeEvidence(a, b)
     expect(merged.sources.length).toBe(2)
     expect(merged.confidence).toBeGreaterThanOrEqual(0.98)
-    expect(merged.confidence).toBeLessThanOrEqual(0.99) // bounded
+    expect(merged.confidence).toBeLessThanOrEqual(0.99)
   })
   it('combineIndependentConfidences bounded at 0.99', () => {
     const v = combineIndependentConfidences([
@@ -245,6 +255,7 @@ describe('WorkflowCondition evaluator', () => {
   state.evidence = [
     {
       id: 'e1', taskId: 't1', kind: 'file_signature', claim: 'PNG image',
+      claimFamily: 'file_type',
       normalizedClaim: 'png image', polarity: 'supports', confidence: 0.9,
       sources: [{ producer: { type: 'parser', id: 'file' }, observationIds: ['o1'], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: 0 }],
       fingerprint: 'fp', attributes: {}, createdAt: 0, updatedAt: 0,
@@ -296,7 +307,9 @@ describe('WorkflowCondition evaluator', () => {
   it('scope-restricts evidence_exists to a producerId filter (§十二)', () => {
     const liveState = emptyState()
     liveState.evidence = [
-      { id: 'e1', taskId: 't1', kind: 'file_signature', claim: 'PNG', normalizedClaim: 'png', polarity: 'supports',
+      { id: 'e1', taskId: 't1', kind: 'file_signature', claim: 'PNG',
+        claimFamily: 'file_type',
+        normalizedClaim: 'png', polarity: 'supports',
         confidence: 0.9,
         sources: [{ producer: { type: 'parser', id: 'hex' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: 0 }],
         fingerprint: 'fp1', attributes: {}, createdAt: 0, updatedAt: 0 },
@@ -485,10 +498,12 @@ describe('ReasoningCoordinator — Phase 2.2 §四–§八', () => {
                 {
                   kind: 'file_signature' as const,
                   claim: 'tool completed',
-                  confidence: 0.5,
-                  artifactIds: ['a_stub'],
-                  producer: { type: 'parser' as const, id: 'tool-stub' },
                   polarity: 'neutral' as const,
+                  source: {
+                    producer: { type: 'parser' as const, id: 'tool-stub' },
+                    observationIds: [], artifactIds: ['a_stub'], attemptIds: [],
+                    confidence: 0.5, createdAt: 0,
+                  },
                 },
               ],
               suggestedActions: [],
@@ -526,6 +541,7 @@ describe('ReasoningCoordinator — Phase 2.2 §四–§八', () => {
       taskId: 'stop-test',
       state,
       store,
+      executor: createNoopStrategyActionExecutor(),
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
       heavyApproved: false,
     }, {
@@ -552,6 +568,7 @@ describe('ReasoningCoordinator — Phase 2.2 §四–§八', () => {
       taskId: 'pre-stopped',
       state,
       store,
+      executor: createNoopStrategyActionExecutor(),
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
       heavyApproved: false,
     }, {

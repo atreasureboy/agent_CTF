@@ -65,9 +65,12 @@ export const genericParser: ResultParser = {
       evidence.push({
         kind: input.isError ? 'tool_failure' : 'tool_unavailable',
         claim: redactSecrets(`${toolLabel} exit=${exitCode}`),
-        confidence: 0.5,
-        producer: { type: 'parser', id: 'generic' },
         polarity: 'neutral',
+        source: {
+          producer: { type: 'parser', id: 'generic' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.5, createdAt: Date.now(),
+        },
       })
     }
 

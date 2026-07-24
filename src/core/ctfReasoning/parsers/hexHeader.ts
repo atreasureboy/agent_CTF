@@ -86,9 +86,12 @@ export const hexHeaderParser: ResultParser = {
       evidence: [{
         kind: 'known_magic',
         claim: `file header matches ${label}`,
-        confidence: 0.85,
-        producer: { type: 'parser', id: 'hex-header' },
         polarity: 'supports',
+        source: {
+          producer: { type: 'parser', id: 'hex-header' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.85, createdAt: Date.now(),
+        },
       }],
       suggestedActions: [],
       flagCandidateDrafts: [],

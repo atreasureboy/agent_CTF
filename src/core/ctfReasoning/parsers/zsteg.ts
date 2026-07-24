@@ -32,9 +32,12 @@ export const zstegParser: ResultParser = {
         evidence: [{
           kind: 'negative_result',
           claim: 'image does not appear to contain steganographic payload',
-          confidence: 0.6,
-          producer: { type: 'parser', id: 'zsteg' },
           polarity: 'neutral',
+          source: {
+            producer: { type: 'parser', id: 'zsteg' },
+            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+            confidence: 0.6, createdAt: Date.now(),
+          },
         }],
         suggestedActions: [],
         flagCandidateDrafts: [],
@@ -93,9 +96,12 @@ export const zstegParser: ResultParser = {
           evidence.push({
             kind: 'flag_candidate_source',
             claim: 'stego channel produced a flag-like string',
-            confidence: 0.75,
-            producer: { type: 'parser', id: 'zsteg' },
             polarity: 'supports',
+            source: {
+              producer: { type: 'parser', id: 'zsteg' },
+              observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+              confidence: 0.75, createdAt: Date.now(),
+            },
           })
         }
       } else {
@@ -106,9 +112,12 @@ export const zstegParser: ResultParser = {
       evidence.push({
         kind: 'negative_result',
         claim: 'zsteg: no meaningful channels',
-        confidence: 0.5,
-        producer: { type: 'parser', id: 'zsteg' },
         polarity: 'neutral',
+        source: {
+          producer: { type: 'parser', id: 'zsteg' },
+          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
+          confidence: 0.5, createdAt: Date.now(),
+        },
       })
     }
     return {

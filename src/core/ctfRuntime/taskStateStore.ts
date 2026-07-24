@@ -31,6 +31,7 @@ import {
 } from './taskState.js'
 import { combineIndependentConfidences } from '../ctfReasoning/evidence.js'
 import type { CTFTaskEvent, TaskStateListener, Unsubscribe } from './taskEvents.js'
+import type { Evidence } from '../ctfReasoning/evidence.js'
 import { createInitialReasoningBudgetState } from '../ctfReasoning/reasoningBudget.js'
 
 export class TaskStateStoreError extends Error {
@@ -168,6 +169,21 @@ export class CTFTaskStateStore {
       }
     }
     return this.state
+  }
+
+  /** §十三 — atomic Evidence upsert. Computes the fingerprint,
+   *  applies EVIDENCE_UPSERTED, and returns the canonical
+   *  evidenceId. */
+  upsertEvidence(evidence: Evidence): { state: Readonly<CTFTaskState>; evidenceId: string; created: boolean } {
+    const stateBefore = this.state
+    this.apply({ type: 'EVIDENCE_UPSERTED', evidence, created: false })
+    const stateAfter = this.state
+    const existing = stateBefore.evidence.find((e) => e.fingerprint === evidence.fingerprint)
+    return {
+      state: stateAfter,
+      evidenceId: existing?.id ?? evidence.id,
+      created: !existing,
+    }
   }
 
   private guardAcceptsEvent(event: CTFTaskEvent): void {
@@ -618,6 +634,30 @@ function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
         throw new TaskStateStoreError(`Evidence ${event.evidence.id} already exists`)
       }
       return { ...state, evidence: [...state.evidence, event.evidence] }
+    }
+
+    case 'EVIDENCE_UPSERTED': {
+      // §十三 — atomic upsert: if a record with the same fingerprint
+      // exists, migrate the new source into it; otherwise create a new
+      // record from the supplied Evidence.
+      const incoming = event.evidence
+      const existing = state.evidence.find((e) => e.fingerprint === incoming.fingerprint)
+      if (existing) {
+        const sources = [...existing.sources, ...incoming.sources]
+        const combined = combineIndependentConfidences(sources)
+        const merged = {
+          ...existing,
+          subject: existing.subject ?? incoming.subject,
+          sources,
+          confidence: combined,
+          updatedAt: Date.now(),
+        }
+        return {
+          ...state,
+          evidence: state.evidence.map((e) => (e.id === existing.id ? merged : e)),
+        }
+      }
+      return { ...state, evidence: [...state.evidence, incoming] }
     }
 
     case 'EVIDENCE_MERGED': {

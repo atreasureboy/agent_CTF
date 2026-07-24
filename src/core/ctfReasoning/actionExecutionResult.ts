@@ -41,6 +41,10 @@ export type ActionExecutionResult =
       status: 'executed'
       materializedResult: MaterializedResult
       executionRefs: ExecutionRefs
+      /** §七 — when the run has already projected its Observations /
+       *  Evidence into TaskState via the orchestrator's projector
+       *  chain, the Coordinator does NOT re-apply the drafts. */
+      resultAlreadyProjected?: boolean
     }
   | {
       status: 'skipped'
