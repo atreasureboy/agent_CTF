@@ -72,3 +72,12 @@ temp/
 coverage/
 .nyc_output/
 .claude/
+
+# External comparison repos
+CHYing-agent/
+CAI/
+HackSynth/
+ctf-agent/
+cyber-zero/
+nyuctf_agents/
+swe-agent/
