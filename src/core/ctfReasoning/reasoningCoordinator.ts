@@ -139,6 +139,15 @@ export interface ProcessReasoningInputsInput {
   /** Original raw prompt; surfaced to the AutoPrompter for
    *  framing. */
   rawPrompt?: string
+  /** C3-real — optional LMSummarizer invoked between cycles when
+   *  observations exceed `compactionThreshold` (default 64). The
+   *  summary is recorded as a diagnostic and the LLM context is
+   *  the responsibility of the operator's LLM client. Production
+   *  wires a real LMSummarizer; tests omit it. */
+  lmSummarizer?: import('./lmSummarizer.js').LMSummarizer
+  /** When the observation count exceeds this number, the
+   *  Coordinator invokes the LMSummarizer. Default 64. */
+  compactionThreshold?: number
 }
 
 /** Per-task reasoning lock. Lives outside the module — the
@@ -213,6 +222,32 @@ async function runCycles(
 
   // Apply incoming Evidence to HypothesisUpdater first.
   applyHypothesisUpdates(options, input)
+
+  // C3-real — LMSummarizer hook. If an LMSummarizer is configured
+  // and the current observations exceed the threshold, run a
+  // summary. The summary is recorded as a diagnostic; the LLM
+  // context window itself is the operator's responsibility.
+  if (input.lmSummarizer) {
+    const threshold = input.compactionThreshold ?? 64
+    const liveState = store.getState()
+    if (liveState.observations.length >= threshold) {
+      try {
+        const summary = await input.lmSummarizer.summarize({
+          taskId: options.taskId,
+          observations: liveState.observations,
+          maxLength: 1500,
+        })
+        options.store.apply({
+          type: 'REASONING_FAILED',
+          source: 'main-agent',
+          error: { message: `lm-summary: ${summary.text.slice(0, 200)}` },
+          at: Date.now(),
+        })
+      } catch {
+        // LMSummarizer failure is non-fatal.
+      }
+    }
+  }
 
   // Phase B1 — AutoPrompter. When an AutoPrompter is configured, run
   // it before the first cycle and record its notes as a diagnostic
