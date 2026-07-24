@@ -165,6 +165,7 @@ export function buildStateForChallenge(challenge: BenchChallenge, taskId: string
         sourceEvidenceIds: [],
         sourceArtifactIds: [],
         sourceRunIds: [],
+        transformChain: undefined,
         confidence: 0.99,
         validation: {
           patternMatched: true,
@@ -177,6 +178,9 @@ export function buildStateForChallenge(challenge: BenchChallenge, taskId: string
         source: 'manual',
         sourceId: undefined,
         matchedPattern: true,
+        submittedAt: undefined,
+        submitResult: undefined,
+        notes: undefined,
         createdAt: 0,
         updatedAt: 0,
       },
@@ -185,7 +189,7 @@ export function buildStateForChallenge(challenge: BenchChallenge, taskId: string
     degraded: false,
     createdAt: 0,
     updatedAt: 0,
-  } as CTFTaskState
+  } as unknown as CTFTaskState
 }
 
 export interface BenchRunOptions {
