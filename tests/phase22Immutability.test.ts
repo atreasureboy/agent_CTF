@@ -77,7 +77,7 @@ describe('Phase 2.2 §十八 — TaskState immutability', () => {
     const store = new CTFTaskStateStore(state)
     // The context's abortSignal survives deepFreeze and can still be aborted.
     const s = store.getState()
-    expect(s.context.abortSignal.aborted).toBe(false)
+    expect(s.context.abortSignal?.aborted).toBe(false)
   })
 
   it('duplicate ID throws on apply', () => {
