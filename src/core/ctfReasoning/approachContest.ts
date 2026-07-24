@@ -80,7 +80,7 @@ export function createApproachContestExecutor(options: ApproachContestOptions): 
         const partials: MaterializedResult[] = settled
           .filter((s) => s.status === 'fulfilled')
           .map((s) => (s as PromiseFulfilledResult<{ framing: ApproachContestFraming; res: ActionExecutionResult }>).value)
-          .filter((w) => w.res.status === 'executed')
+          .filter((w): w is { framing: ApproachContestFraming; res: Extract<ActionExecutionResult, { status: 'executed' }> } => w.res.status === 'executed')
           .map((w) => w.res.materializedResult)
         return mergeContestResult(winner.res, winner.framing.id, partials, ctx.attempt.id)
       } finally {

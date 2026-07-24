@@ -18,10 +18,12 @@ const flagAction: SuggestedAction = {
 
 function makeFramer(id: string, prompt: string, delayMs: number, flag?: string): {
   id: string
+  prompt: string
   executor: StrategyActionExecutor
 } {
   return {
     id,
+    prompt,
     executor: {
       async execute(_ctx: StrategyActionExecutorContext): Promise<ActionExecutionResult> {
         if (delayMs) await new Promise((r) => setTimeout(r, delayMs))
