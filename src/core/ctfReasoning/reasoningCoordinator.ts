@@ -129,6 +129,16 @@ export interface ProcessReasoningInputsInput {
    *  when a flag candidate is validated. Default false (real contests
    *  wait for human / platform verification per §二十三). */
   autoCompleteLocalFixtures?: boolean
+  /** Phase B1 — optional AutoPrompter. When set, the Coordinator
+   *  calls it before the first cycle to generate a category-aware
+   *  framing note. Production wires an LLM-driven adapter; tests
+   *  supply `TemplateAutoPrompter`. */
+  autoPrompter?: import('./autoPrompter.js').AutoPrompter
+  /** Category for the AutoPrompter. */
+  category?: import('../toolBroker/categoryToolset.js').ChallengeCategory
+  /** Original raw prompt; surfaced to the AutoPrompter for
+   *  framing. */
+  rawPrompt?: string
 }
 
 /** Per-task reasoning lock. Lives outside the module — the
@@ -203,6 +213,33 @@ async function runCycles(
 
   // Apply incoming Evidence to HypothesisUpdater first.
   applyHypothesisUpdates(options, input)
+
+  // Phase B1 — AutoPrompter. When an AutoPrompter is configured, run
+  // it before the first cycle and record its notes as a diagnostic
+  // for the audit log. The framing itself is not injected into the
+  // planner prompt here (the planner is deterministic); the framing
+  // is a hint surfaced to the operator / next cycle's input.
+  if (input.autoPrompter && input.category) {
+    try {
+      const framed = await input.autoPrompter.generate({
+        taskId: options.taskId,
+        category: input.category,
+        rawPrompt: input.rawPrompt ?? '',
+        suggestedActions: input.suggestedActions,
+      })
+      // Surface framing as a diagnostic. (We don't write back to
+      // input because ProcessReasoningInputsInput is a parameter
+      // the caller owns.)
+      options.store.apply({
+        type: 'REASONING_FAILED', // we reuse this event for audit.
+        source: 'main-agent',
+        error: { message: `auto-prompt framing: ${framed.framing.slice(0, 200)}` },
+        at: Date.now(),
+      })
+    } catch {
+      // AutoPrompter failure is non-fatal.
+    }
+  }
 
   // Seed pending store with the new suggested actions (excluding stop).
   const seed = input.suggestedActions
