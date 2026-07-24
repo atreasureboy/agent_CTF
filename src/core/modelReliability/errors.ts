@@ -1,3 +1,19 @@
+export type ModelInvocationFailureKind =
+  | 'routing_rejected'
+  | 'role_denied'
+  | 'capability_missing'
+  | 'provider_unavailable'
+  | 'provider_429'
+  | 'provider_5xx'
+  | 'timeout'
+  | 'first_token_timeout'
+  | 'stream_interrupted'
+  | 'empty_response'
+  | 'schema_failure'
+  | 'tool_argument_failure'
+  | 'cancelled'
+  | 'consumer_cancelled'
+
 export class NoEligibleModelError extends Error {
   public readonly role: string
   public readonly requiredCapabilities?: string[]

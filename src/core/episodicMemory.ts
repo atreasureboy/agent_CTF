@@ -20,11 +20,11 @@ export interface EpisodicMemoryEntry {
   id: string
   turn: number
   toolName: string
-  inputSummary: string   // truncated input
-  resultSummary: string  // truncated result
+  inputSummary: string // truncated input
+  resultSummary: string // truncated result
   outcome: 'success' | 'failure' | 'partial'
-  duration?: number      // ms
-  timestamp: string      // ISO 8601
+  duration?: number // ms
+  timestamp: string // ISO 8601
 }
 
 function nextId(): string {
@@ -42,7 +42,11 @@ export class EpisodicMemory {
 
   constructor(projectDir: string) {
     const memDir = join(projectDir, 'memory')
-    try { mkdirSync(memDir, { recursive: true }) } catch { /* best-effort */ }
+    try {
+      mkdirSync(memDir, { recursive: true })
+    } catch {
+      /* best-effort */
+    }
     this.filePath = join(memDir, 'episodes.jsonl')
   }
 
@@ -75,7 +79,9 @@ export class EpisodicMemory {
         // First write — direct appendFileSync is safe (creates the file).
         appendFileSync(this.filePath, line, 'utf8')
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     return full
   }
 
@@ -101,11 +107,19 @@ export class EpisodicMemory {
           const tmp = `${this.filePath}.tmp.${process.pid}`
           writeFileSync(tmp, kept.join('\n') + '\n', 'utf8')
           renameSync(tmp, this.filePath)
-        } catch { /* best-effort rotation; in-memory slice still correct */ }
+        } catch {
+          /* best-effort rotation; in-memory slice still correct */
+        }
       }
-      return kept.map((l) => {
-        try { return JSON.parse(l) as EpisodicMemoryEntry } catch { return null }
-      }).filter((e): e is EpisodicMemoryEntry => e !== null)
+      return kept
+        .map((l) => {
+          try {
+            return JSON.parse(l) as EpisodicMemoryEntry
+          } catch {
+            return null
+          }
+        })
+        .filter((e): e is EpisodicMemoryEntry => e !== null)
     } catch {
       return []
     }

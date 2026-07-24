@@ -1,10 +1,5 @@
 export type ModelHealthStatus =
-  | 'healthy'
-  | 'degraded'
-  | 'circuit_open'
-  | 'half_open'
-  | 'quota_limited'
-  | 'unavailable'
+  'healthy' | 'degraded' | 'circuit_open' | 'half_open' | 'quota_limited' | 'unavailable'
 
 export interface ModelHealthRecord {
   modelId: string
@@ -23,6 +18,8 @@ export interface ModelHealthRecord {
   loopTimestamps: number[]
 
   successfulRuns: number
+  successCount?: number
+  failureCount?: number
 
   lastSuccessAt?: number
   lastFailureAt?: number
@@ -75,6 +72,7 @@ export class ModelHealthStore {
   public recordSuccess(modelId: string, taskId?: string): void {
     const rec = this.getRecord(modelId, taskId)
     rec.successfulRuns++
+    rec.successCount = rec.successfulRuns
     rec.lastSuccessAt = Date.now()
 
     // Reset consecutive failures on success
@@ -91,13 +89,18 @@ export class ModelHealthStore {
 
   public recordFailure(
     modelId: string,
-    type: 'schema' | 'toolArg' | 'timeout' | 'loop' | 'empty' | 'provider',
+    type: 'schema' | 'toolArg' | 'timeout' | 'loop' | 'empty' | 'provider' | 'role',
     reason?: string,
     taskId?: string,
   ): void {
     const rec = this.getRecord(modelId, taskId)
     const now = Date.now()
     rec.lastFailureAt = now
+
+    if (type === 'role') {
+      // Role policy rejections do NOT penalize model content health
+      return
+    }
 
     switch (type) {
       case 'schema':
@@ -124,6 +127,11 @@ export class ModelHealthStore {
         rec.totalToolArgumentFailures++
         break
     }
+
+    rec.failureCount =
+      (rec.totalSchemaFailures || 0) +
+      (rec.totalToolArgumentFailures || 0) +
+      (rec.totalProviderFailures || 0)
 
     if (rec.status === 'healthy') {
       rec.status = 'degraded'

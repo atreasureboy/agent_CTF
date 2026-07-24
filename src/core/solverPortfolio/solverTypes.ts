@@ -54,6 +54,57 @@ export interface SolverChallengeInput {
   signal?: AbortSignal
 }
 
+export class SolverUnavailableError extends Error {
+  constructor(solverId: string, reason: string) {
+    super(`Solver '${solverId}' unavailable: ${reason}`)
+    this.name = 'SolverUnavailableError'
+  }
+}
+
+export type SolverEvent =
+  | {
+      type: 'status'
+      status: SolverRunStatus
+      timestamp: number
+    }
+  | {
+      type: 'tool_call_started'
+      toolId: string
+      attemptFingerprint: string
+      timestamp: number
+    }
+  | {
+      type: 'tool_call_completed'
+      toolId: string
+      attemptId: string
+      observationIds: string[]
+      evidenceIds: string[]
+      artifactIds: string[]
+      timestamp: number
+    }
+  | {
+      type: 'hypothesis_updated'
+      hypothesisIds: string[]
+      timestamp: number
+    }
+  | {
+      type: 'candidate_detected'
+      candidateId: string
+      timestamp: number
+    }
+  | {
+      type: 'progress'
+      summary: string
+      sourceIds: string[]
+      timestamp: number
+    }
+  | {
+      type: 'warning'
+      code: string
+      message: string
+      timestamp: number
+    }
+
 export interface ExternalObservationDraft {
   summary: string
   confidence: number
@@ -73,13 +124,7 @@ export interface ExternalArtifactDraft {
 export interface ExternalSolverResult {
   runId: string
   solverId: string
-  status:
-    | 'completed'
-    | 'flag_candidate'
-    | 'gave_up'
-    | 'cancelled'
-    | 'failed'
-    | 'quota_error'
+  status: 'completed' | 'flag_candidate' | 'gave_up' | 'cancelled' | 'failed' | 'quota_error'
 
   observations: ExternalObservationDraft[]
   artifacts: ExternalArtifactDraft[]

@@ -16,7 +16,10 @@ import { BUILTIN_WORKFLOWS } from './builtins.js'
  */
 const populatedRegistries = new WeakSet<WorkflowRegistry>()
 
-export function ensureWorkflowsRegistered(registry: WorkflowRegistry, opts: { force?: boolean } = {}): void {
+export function ensureWorkflowsRegistered(
+  registry: WorkflowRegistry,
+  opts: { force?: boolean } = {},
+): void {
   if (!opts.force && populatedRegistries.has(registry)) return
   for (const w of BUILTIN_WORKFLOWS) registry.upsert(w)
   populatedRegistries.add(registry)

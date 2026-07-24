@@ -11,10 +11,16 @@ export type ModelRole =
   | 'flag_discriminator'
   | 'reporter'
 
+export type ModelTrustLevel = 'auxiliary' | 'standard' | 'privileged'
+
 export const ModelCapabilityProfileSchema = z.object({
   id: z.string(),
-  provider: z.string(),
-  model: z.string(),
+  providerId: z.string().default('openai-compatible'),
+  providerModelName: z.string().default('gpt-4o'),
+  provider: z.string().default('openai-compatible'),
+  model: z.string().default('gpt-4o'),
+  trustLevel: z.enum(['auxiliary', 'standard', 'privileged']).default('standard'),
+  reliabilityClass: z.enum(['auxiliary', 'standard', 'privileged']).default('standard'),
 
   contextWindow: z.number().positive(),
 
@@ -71,8 +77,12 @@ export type ModelCapabilityProfile = z.infer<typeof ModelCapabilityProfileSchema
  */
 export const DEFAULT_CONSERVATIVE_PROFILE: ModelCapabilityProfile = {
   id: 'default-conservative',
+  providerId: 'unknown',
+  providerModelName: 'default',
   provider: 'unknown',
   model: 'default',
+  trustLevel: 'auxiliary',
+  reliabilityClass: 'auxiliary',
   contextWindow: 16384,
   capabilities: {
     toolCalling: true,

@@ -21,10 +21,7 @@ export interface OneshotDeps {
   manifestsDir?: string
 }
 
-export async function runOneshotCommand(
-  argv: string[],
-  deps: OneshotDeps,
-): Promise<number> {
+export async function runOneshotCommand(argv: string[], deps: OneshotDeps): Promise<number> {
   const { stdout } = deps
   const sub = argv[0]
   const cwd = process.cwd()

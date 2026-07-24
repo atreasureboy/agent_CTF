@@ -16,11 +16,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
-import type {
-  OneShotManifest,
-  OneShotResult,
-  OneShotStatus,
-} from './types.js'
+import type { OneShotManifest, OneShotResult, OneShotStatus } from './types.js'
 import type { OneShotRunner, RunnerInputs } from './runner.js'
 
 /**
@@ -39,11 +35,30 @@ function buildSafeEnv(inputsEnv?: Record<string, string>): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   // Always-pass-through safe vars.
   const ALLOW = new Set([
-    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL',
-    'LC_CTYPE', 'LC_MESSAGES', 'LC_COLLATE', 'TMPDIR', 'TMP', 'TEMP',
-    'TZ', 'PWD', 'OLDPWD', 'TERM', 'COLORTERM', 'NODE_PATH',
-    'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
-    'XDG_CACHE_HOME', 'XDG_STATE_HOME',
+    'PATH',
+    'HOME',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'LANG',
+    'LC_ALL',
+    'LC_CTYPE',
+    'LC_MESSAGES',
+    'LC_COLLATE',
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+    'TZ',
+    'PWD',
+    'OLDPWD',
+    'TERM',
+    'COLORTERM',
+    'NODE_PATH',
+    'XDG_RUNTIME_DIR',
+    'XDG_CONFIG_HOME',
+    'XDG_DATA_HOME',
+    'XDG_CACHE_HOME',
+    'XDG_STATE_HOME',
   ])
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue
@@ -102,7 +117,15 @@ export class ProcessRunner implements OneShotRunner {
           detached: process.platform !== 'win32',
         })
       } catch (err) {
-        resolve(this.fail(runId, manifest, startedAt, 'failed', `spawn failed: ${(err as Error).message}`))
+        resolve(
+          this.fail(
+            runId,
+            manifest,
+            startedAt,
+            'failed',
+            `spawn failed: ${(err as Error).message}`,
+          ),
+        )
         return
       }
 
@@ -153,12 +176,20 @@ export class ProcessRunner implements OneShotRunner {
       // Timeout — kill the process group after the manifest's cap.
       const timeoutMs = manifest.resources.timeoutSeconds * 1000
       const timeoutHandle = setTimeout(() => {
-        try { this.killGroup(child, 'SIGKILL') } catch { /* ignore */ }
+        try {
+          this.killGroup(child, 'SIGKILL')
+        } catch {
+          /* ignore */
+        }
       }, timeoutMs)
 
       // Abort — propagate parent cancel.
       const onAbort = (): void => {
-        try { this.killGroup(child, 'SIGKILL') } catch { /* ignore */ }
+        try {
+          this.killGroup(child, 'SIGKILL')
+        } catch {
+          /* ignore */
+        }
       }
       if (signal) {
         // §P1 audit fix — register the listener FIRST, then re-check
@@ -254,7 +285,11 @@ export class ProcessRunner implements OneShotRunner {
 
   private killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
     if (process.platform === 'win32' || !child.pid) {
-      try { child.kill(signal) } catch { /* ignore */ }
+      try {
+        child.kill(signal)
+      } catch {
+        /* ignore */
+      }
       return
     }
     // Negative pid → process group kill. Falls back to direct kill if
@@ -262,7 +297,11 @@ export class ProcessRunner implements OneShotRunner {
     try {
       process.kill(-child.pid, signal)
     } catch {
-      try { child.kill(signal) } catch { /* ignore */ }
+      try {
+        child.kill(signal)
+      } catch {
+        /* ignore */
+      }
     }
   }
 

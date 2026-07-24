@@ -11,6 +11,7 @@ export interface SolverRunHandle {
   solverId: string
 
   wait(): Promise<ExternalSolverResult>
+  events?(): AsyncIterable<import('./solverTypes.js').SolverEvent>
   sendGuidance(message: OperatorMessage): Promise<void>
   cancel(reason: string): Promise<void>
   inspect(): Promise<SolverRunRecord>

@@ -111,7 +111,9 @@ export function listFixtureSpecs(specsRoot: string): BenchmarkFixtureSpec[] {
     try {
       const obj = JSON.parse(readFileSync(join(specsRoot, file), 'utf8')) as BenchmarkFixtureSpec
       out.push(obj)
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return out
 }
@@ -129,8 +131,8 @@ export function synthesizeBenchmarkRow(
   // Mode C uses background one-shots which return summaries instantly.
   const factor = mode === 'A' ? 3.0 : mode === 'B' ? 1.6 : 1.0
   const timeToFirstTool = (base * factor) | 0
-  const timeToFirstFinding = timeToFirstTool + (base * factor) | 0
-  const timeToCandidate = timeToFirstFinding + (base * factor) | 0
+  const timeToFirstFinding = (timeToFirstTool + base * factor) | 0
+  const timeToCandidate = (timeToFirstFinding + base * factor) | 0
   const isSpec = 'expectedSelectedManifestIds' in fixture
   const expected = isSpec ? fixture.expectedSelectedManifestIds : []
   const expectedCats = isSpec ? fixture.expectedFindingCategories : []
@@ -138,9 +140,11 @@ export function synthesizeBenchmarkRow(
   const expectedKinds = isSpec ? fixture.expectedArtifactKinds : []
   const maxDur = isSpec ? fixture.maxDurationMs : 5000
   const maxFP = isSpec ? fixture.maxFalsePositiveFindings : 3
-  const duration = mode === 'A' ? base * factor * 2 : mode === 'B' ? base * factor : base * factor * 0.5
+  const duration =
+    mode === 'A' ? base * factor * 2 : mode === 'B' ? base * factor : base * factor * 0.5
   const timedOut = duration > maxDur
-  const candidates = mode === 'A' ? 0 : expectedCands.length > 0 ? expectedCands.length : Math.random() > 0.5 ? 1 : 0
+  const candidates =
+    mode === 'A' ? 0 : expectedCands.length > 0 ? expectedCands.length : Math.random() > 0.5 ? 1 : 0
   return {
     fixture: fixture.path,
     mode,
@@ -176,28 +180,58 @@ export interface BenchmarkQualityMetrics {
 
 export interface BenchmarkSummary {
   rows: BenchmarkRow[]
-  byMode: Record<'A' | 'B' | 'C', {
-    avgTimeToFirstToolMs: number
-    avgTimeToFirstFindingMs: number
-    avgTimeToCandidateMs: number
-    avgCandidates: number
-    avgManualScripts: number
-    avgFailures: number
-  }>
+  byMode: Record<
+    'A' | 'B' | 'C',
+    {
+      avgTimeToFirstToolMs: number
+      avgTimeToFirstFindingMs: number
+      avgTimeToCandidateMs: number
+      avgCandidates: number
+      avgManualScripts: number
+      avgFailures: number
+    }
+  >
   quality: BenchmarkQualityMetrics
 }
 
 /** Reduce per-row metrics into a top-line quality summary. */
 export function summarizeBenchmark(rows: BenchmarkRow[]): BenchmarkSummary {
   const byMode: BenchmarkSummary['byMode'] = {
-    A: { avgTimeToFirstToolMs: 0, avgTimeToFirstFindingMs: 0, avgTimeToCandidateMs: 0, avgCandidates: 0, avgManualScripts: 0, avgFailures: 0 },
-    B: { avgTimeToFirstToolMs: 0, avgTimeToFirstFindingMs: 0, avgTimeToCandidateMs: 0, avgCandidates: 0, avgManualScripts: 0, avgFailures: 0 },
-    C: { avgTimeToFirstToolMs: 0, avgTimeToFirstFindingMs: 0, avgTimeToCandidateMs: 0, avgCandidates: 0, avgManualScripts: 0, avgFailures: 0 },
+    A: {
+      avgTimeToFirstToolMs: 0,
+      avgTimeToFirstFindingMs: 0,
+      avgTimeToCandidateMs: 0,
+      avgCandidates: 0,
+      avgManualScripts: 0,
+      avgFailures: 0,
+    },
+    B: {
+      avgTimeToFirstToolMs: 0,
+      avgTimeToFirstFindingMs: 0,
+      avgTimeToCandidateMs: 0,
+      avgCandidates: 0,
+      avgManualScripts: 0,
+      avgFailures: 0,
+    },
+    C: {
+      avgTimeToFirstToolMs: 0,
+      avgTimeToFirstFindingMs: 0,
+      avgTimeToCandidateMs: 0,
+      avgCandidates: 0,
+      avgManualScripts: 0,
+      avgFailures: 0,
+    },
   }
   const counts: Record<'A' | 'B' | 'C', number> = { A: 0, B: 0, C: 0 }
-  let tp = 0, fp = 0, fn = 0
-  let candidatesMatched = 0, candidatesExpected = 0
-  let runsSucceeded = 0, runsTimedOut = 0, runsCancelled = 0, runsCleanlyCancelled = 0
+  let tp = 0,
+    fp = 0,
+    fn = 0
+  let candidatesMatched = 0,
+    candidatesExpected = 0
+  let runsSucceeded = 0,
+    runsTimedOut = 0,
+    runsCancelled = 0,
+    runsCleanlyCancelled = 0
   let falsePositives = 0
   const durations: number[] = []
   for (const r of rows) {
@@ -233,11 +267,9 @@ export function summarizeBenchmark(rows: BenchmarkRow[]): BenchmarkSummary {
   }
   const total = tp + fp
   const precision = total === 0 ? 1 : tp / total
-  const recall = (tp + fn) === 0 ? 1 : tp / (tp + fn)
+  const recall = tp + fn === 0 ? 1 : tp / (tp + fn)
   durations.sort((a, b) => a - b)
-  const median = durations.length === 0
-    ? 0
-    : durations[Math.floor(durations.length / 2)] ?? 0
+  const median = durations.length === 0 ? 0 : (durations[Math.floor(durations.length / 2)] ?? 0)
   return {
     rows,
     byMode,
@@ -245,11 +277,13 @@ export function summarizeBenchmark(rows: BenchmarkRow[]): BenchmarkSummary {
       selectionPrecision: +precision.toFixed(3),
       selectionRecall: +recall.toFixed(3),
       runSuccessRate: rows.length === 0 ? 0 : +(runsSucceeded / rows.length).toFixed(3),
-      findingPrecision: (tp + falsePositives) === 0 ? 1 : +(tp / (tp + falsePositives)).toFixed(3),
-      candidateRecall: candidatesExpected === 0 ? 1 : +(candidatesMatched / candidatesExpected).toFixed(3),
+      findingPrecision: tp + falsePositives === 0 ? 1 : +(tp / (tp + falsePositives)).toFixed(3),
+      candidateRecall:
+        candidatesExpected === 0 ? 1 : +(candidatesMatched / candidatesExpected).toFixed(3),
       falsePositiveCount: falsePositives,
       timeoutRate: rows.length === 0 ? 0 : +(runsTimedOut / rows.length).toFixed(3),
-      cancellationSuccess: runsCancelled === 0 ? 1 : +(runsCleanlyCancelled / runsCancelled).toFixed(3),
+      cancellationSuccess:
+        runsCancelled === 0 ? 1 : +(runsCleanlyCancelled / runsCancelled).toFixed(3),
       medianDurationMs: median,
     },
   }
@@ -261,9 +295,11 @@ export function formatBenchmarkSummary(s: BenchmarkSummary): string {
   for (const m of ['A', 'B', 'C'] as const) {
     const r = s.byMode[m]
     const label =
-      m === 'A' ? 'A: pure agent + Bash/Python'
-      : m === 'B' ? 'B: specialist + single tools'
-      : 'C: specialist + one-shot'
+      m === 'A'
+        ? 'A: pure agent + Bash/Python'
+        : m === 'B'
+          ? 'B: specialist + single tools'
+          : 'C: specialist + one-shot'
     lines.push(`  ${label}`)
     lines.push(
       `    tool=${r.avgTimeToFirstToolMs}ms finding=${r.avgTimeToFirstFindingMs}ms ` +
@@ -291,9 +327,7 @@ export function formatBenchmarkSummary(s: BenchmarkSummary): string {
  */
 export function runBenchmark(cfg: BenchmarkConfig): BenchmarkSummary {
   void readFileSync // acknowledged for completeness
-  const fixtures = cfg.specsRoot
-    ? listFixtureSpecs(cfg.specsRoot)
-    : listFixtures(cfg.fixturesRoot)
+  const fixtures = cfg.specsRoot ? listFixtureSpecs(cfg.specsRoot) : listFixtures(cfg.fixturesRoot)
   const rows: BenchmarkRow[] = []
   for (const f of fixtures) {
     for (const m of ['A', 'B', 'C'] as const) {

@@ -26,10 +26,7 @@ export interface DoctorDeps {
   manifestsDir?: string
 }
 
-export async function runDoctorCommand(
-  argv: string[],
-  deps: DoctorDeps,
-): Promise<number> {
+export async function runDoctorCommand(argv: string[], deps: DoctorDeps): Promise<number> {
   const { stdout, stderr } = deps
   const showOneshot = argv.includes('--oneshot')
   const cwd = process.cwd()

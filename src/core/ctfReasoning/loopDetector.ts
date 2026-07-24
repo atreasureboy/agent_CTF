@@ -70,12 +70,18 @@ export function checkRepeat(
 }
 
 function extractCveId(action: SuggestedAction): string | undefined {
-  const blob = action.type === 'call_tool' ? inputToStringForLoop(action.input)
-    : action.type === 'request_handoff' ? inputToStringForLoop({ objective: action.objective })
-    : action.type === 'run_workflow' ? inputToStringForLoop(action.inputs)
-    : action.type === 'verify_flag' ? inputToStringForLoop({ candidateId: action.candidateId })
-    : action.type === 'run_oneshot' ? inputToStringForLoop({ options: action.options ?? {} })
-    : ''
+  const blob =
+    action.type === 'call_tool'
+      ? inputToStringForLoop(action.input)
+      : action.type === 'request_handoff'
+        ? inputToStringForLoop({ objective: action.objective })
+        : action.type === 'run_workflow'
+          ? inputToStringForLoop(action.inputs)
+          : action.type === 'verify_flag'
+            ? inputToStringForLoop({ candidateId: action.candidateId })
+            : action.type === 'run_oneshot'
+              ? inputToStringForLoop({ options: action.options ?? {} })
+              : ''
   const m = blob.match(CVE_ID_RE)
   return m?.[0]?.toUpperCase()
 }
@@ -96,19 +102,29 @@ function inputToStringForLoop(input: unknown): string {
 
 function fingerprintOf(action: SuggestedAction): string {
   const kind: 'oneshot' | 'workflow' | 'tool' | 'handoff' | 'verification' | 'manual' =
-    action.type === 'run_oneshot' ? 'oneshot' :
-    action.type === 'run_workflow' ? 'workflow' :
-    action.type === 'call_tool' ? 'tool' :
-    action.type === 'request_handoff' ? 'handoff' :
-    action.type === 'verify_flag' ? 'verification' :
-    'manual'
+    action.type === 'run_oneshot'
+      ? 'oneshot'
+      : action.type === 'run_workflow'
+        ? 'workflow'
+        : action.type === 'call_tool'
+          ? 'tool'
+          : action.type === 'request_handoff'
+            ? 'handoff'
+            : action.type === 'verify_flag'
+              ? 'verification'
+              : 'manual'
   const targetId =
-    action.type === 'run_oneshot' ? action.manifestId :
-    action.type === 'run_workflow' ? action.workflowId :
-    action.type === 'call_tool' ? action.toolId :
-    action.type === 'request_handoff' ? action.capability :
-    action.type === 'verify_flag' ? action.candidateId :
-    'stop'
+    action.type === 'run_oneshot'
+      ? action.manifestId
+      : action.type === 'run_workflow'
+        ? action.workflowId
+        : action.type === 'call_tool'
+          ? action.toolId
+          : action.type === 'request_handoff'
+            ? action.capability
+            : action.type === 'verify_flag'
+              ? action.candidateId
+              : 'stop'
   // Use the canonical AttemptFingerprint path so the planner's
   // dedup and the loop detector share one canonical identifier.
   return createAttemptFingerprint({
@@ -120,12 +136,17 @@ function fingerprintOf(action: SuggestedAction): string {
 
 export function fingerprintForHistory(action: SuggestedAction, at: number): LoopDetectorEntry {
   const targetId =
-    action.type === 'run_oneshot' ? action.manifestId :
-    action.type === 'run_workflow' ? action.workflowId :
-    action.type === 'call_tool' ? action.toolId :
-    action.type === 'request_handoff' ? action.capability :
-    action.type === 'verify_flag' ? action.candidateId :
-    'stop'
+    action.type === 'run_oneshot'
+      ? action.manifestId
+      : action.type === 'run_workflow'
+        ? action.workflowId
+        : action.type === 'call_tool'
+          ? action.toolId
+          : action.type === 'request_handoff'
+            ? action.capability
+            : action.type === 'verify_flag'
+              ? action.candidateId
+              : 'stop'
   return {
     fingerprint: fingerprintOf(action),
     actionType: action.type,

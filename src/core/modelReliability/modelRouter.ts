@@ -59,12 +59,17 @@ export class ModelRouter {
         const isTripped = this.circuitBreaker.shouldTripCircuit(health)
 
         let rejectReason: string | undefined
+        const pId = prefProfile.providerId || prefProfile.provider
         if (isTripped || health.status === 'unavailable') {
           rejectReason = `Circuit open or status=${health.status}`
         } else if (!prefProfile.allowedRoles.includes(input.role)) {
           rejectReason = `Role '${input.role}' not in allowedRoles of preferred model`
-        } else if (input.hasProvider && !input.hasProvider(prefProfile.provider)) {
-          rejectReason = `Provider '${prefProfile.provider}' not available`
+        } else if (
+          input.hasProvider &&
+          !input.hasProvider(pId) &&
+          !input.hasProvider(prefProfile.provider)
+        ) {
+          rejectReason = `Provider '${pId}' not available`
         } else if (input.requiredCapabilities) {
           for (const cap of input.requiredCapabilities) {
             if (!(prefProfile.capabilities as Record<string, boolean>)[cap]) {
@@ -121,10 +126,15 @@ export class ModelRouter {
         continue
       }
 
-      if (input.hasProvider && !input.hasProvider(prof.provider)) {
+      const candidatePId = prof.providerId || prof.provider
+      if (
+        input.hasProvider &&
+        !input.hasProvider(candidatePId) &&
+        !input.hasProvider(prof.provider)
+      ) {
         rejectedModels.push({
           modelId: prof.id,
-          reason: `Provider '${prof.provider}' not available`,
+          reason: `Provider '${candidatePId}' not available`,
         })
         continue
       }

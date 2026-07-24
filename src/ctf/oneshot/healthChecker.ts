@@ -10,11 +10,7 @@ import { spawnSync } from 'child_process'
 import { request as httpRequest } from 'http'
 import { request as httpsRequest } from 'https'
 import { URL } from 'url'
-import type {
-  DoctorRow,
-  DoctorStatus,
-  OneShotManifest,
-} from './types.js'
+import type { DoctorRow, DoctorStatus, OneShotManifest } from './types.js'
 import type { OneShotCatalog } from './catalog.js'
 
 export interface HealthCheckerDeps {
@@ -64,10 +60,7 @@ export class HealthChecker {
       return row
     }
 
-    if (
-      manifest.scheduling.costTier === 'heavy' &&
-      !manifest.enabledByDefault
-    ) {
+    if (manifest.scheduling.costTier === 'heavy' && !manifest.enabledByDefault) {
       // Heavy-tier manifests require explicit enable per §十四.
       row.status = 'DISABLED_HEAVY'
       row.reason = 'heavy tier requires explicit enable'
@@ -123,9 +116,13 @@ export class HealthChecker {
 
     // Custom healthcheck command.
     if (manifest.healthcheck?.command && this.deps.execute !== false) {
-      const res = spawnSync(manifest.healthcheck.command[0], manifest.healthcheck.command.slice(1), {
-        stdio: 'ignore',
-      })
+      const res = spawnSync(
+        manifest.healthcheck.command[0],
+        manifest.healthcheck.command.slice(1),
+        {
+          stdio: 'ignore',
+        },
+      )
       if (res.status !== 0) {
         row.status = 'UNAVAILABLE'
         row.reason = `healthcheck command exit ${res.status}`
@@ -143,13 +140,10 @@ export class HealthChecker {
       const u = new URL(manifest.runner.endpoint)
       const lib = u.protocol === 'https:' ? httpsRequest : httpRequest
       const probe = new Promise<boolean>((resolve) => {
-        const req = lib(
-          { method: 'GET', hostname: u.hostname, port: u.port, path: '/' },
-          (res) => {
-            resolve(res.statusCode !== undefined && res.statusCode < 500)
-            res.resume()
-          },
-        )
+        const req = lib({ method: 'GET', hostname: u.hostname, port: u.port, path: '/' }, (res) => {
+          resolve(res.statusCode !== undefined && res.statusCode < 500)
+          res.resume()
+        })
         req.on('error', () => resolve(false))
         req.setTimeout(2000, () => {
           req.destroy()
@@ -210,10 +204,7 @@ export class HealthChecker {
       return row
     }
 
-    if (
-      manifest.scheduling.costTier === 'heavy' &&
-      !manifest.enabledByDefault
-    ) {
+    if (manifest.scheduling.costTier === 'heavy' && !manifest.enabledByDefault) {
       // Heavy-tier manifests require explicit enable per §十四. The Doctor
       // surfaces this state so operators know the integration exists but
       // is gated.
@@ -243,18 +234,12 @@ export class HealthChecker {
       }
     }
 
-    if (
-      manifest.network.mode === 'contest-target-only' &&
-      !this.deps.networkAdapterPresent
-    ) {
+    if (manifest.network.mode === 'contest-target-only' && !this.deps.networkAdapterPresent) {
       row.status = 'DISABLED_SCOPE_REQUIRED'
       row.reason = 'contest-target-only requires configured network adapter'
       return row
     }
-    if (
-      manifest.network.mode === 'outbound-readonly' &&
-      !this.deps.outboundReadonlyApproved
-    ) {
+    if (manifest.network.mode === 'outbound-readonly' && !this.deps.outboundReadonlyApproved) {
       row.status = 'DISABLED_SCOPE_REQUIRED'
       row.reason = 'outbound-readonly requires operator approval'
       return row
@@ -276,7 +261,11 @@ export class HealthChecker {
     if (manifest.runner.type === 'process' && this.deps.execute !== false) {
       const head = manifest.runner.command?.[0]
       if (head) {
-        const probe = spawnSync('sh', ['-c', `command -v ${JSON.stringify(head)} >/dev/null 2>&1`], { stdio: 'ignore' })
+        const probe = spawnSync(
+          'sh',
+          ['-c', `command -v ${JSON.stringify(head)} >/dev/null 2>&1`],
+          { stdio: 'ignore' },
+        )
         if (probe.status !== 0) {
           row.status = 'UNAVAILABLE'
           row.reason = `binary missing: ${head}`
@@ -285,7 +274,9 @@ export class HealthChecker {
       }
     }
     if (manifest.runner.type === 'container' && this.deps.execute !== false) {
-      const probe = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: 'ignore' })
+      const probe = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
+        stdio: 'ignore',
+      })
       if (probe.status !== 0) {
         row.status = 'UNAVAILABLE'
         row.reason = 'binary missing: docker'

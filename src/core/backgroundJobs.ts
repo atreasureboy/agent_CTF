@@ -19,7 +19,15 @@
  */
 
 import { randomBytes } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, renameSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  unlinkSync,
+  renameSync,
+} from 'fs'
 import { dirname, join } from 'path'
 
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
@@ -140,7 +148,7 @@ export class BackgroundJobManager {
   ) {
     this.maxPerAgent = opts.maxPerAgent ?? 4
     this.maxPerTask = opts.maxPerTask ?? 16
-    this.globalTimeoutMs = opts.globalTimeoutMs ?? 3_600_000  // 1h
+    this.globalTimeoutMs = opts.globalTimeoutMs ?? 3_600_000 // 1h
     mkdirSync(opts.taskWorkspaceDir, { recursive: true })
   }
 
@@ -213,7 +221,9 @@ export class BackgroundJobManager {
     try {
       const line = JSON.stringify({ id: job.id, status: job.status, startedAt: job.startedAt })
       writeFileSync(indexPath, `${line}\n`, { encoding: 'utf8', flag: 'a' })
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   private reconcileRunningCount(taskId: string): number {
@@ -298,10 +308,10 @@ export class BackgroundJobManager {
       // the dispatcher can recover the structured OneShotResult.
       if (out.__oneShotPayload) job.payload = out.__oneShotPayload
       // Precedence: cancelled > failed > success. When the user cancels,
-// the runner may still surface an error message (e.g. "Command
-// cancelled.") so we honour the abort signal as the source of truth.
-// §round-2 audit fix — only overwrite the operator-supplied
-// `cancelReason` when none was set by `cancel()`.
+      // the runner may still surface an error message (e.g. "Command
+      // cancelled.") so we honour the abort signal as the source of truth.
+      // §round-2 audit fix — only overwrite the operator-supplied
+      // `cancelReason` when none was set by `cancel()`.
       if (signal.aborted) {
         job.status = 'cancelled'
         if (!job.cancelReason) job.cancelReason = (signal.reason as string) ?? 'cancelled'
@@ -356,7 +366,7 @@ export class BackgroundJobManager {
   /** Wait until the job leaves the running state. Returns the final Job. */
   wait(id: string, timeoutMs: number = 30_000): Promise<BackgroundJob> {
     const job = this.jobs.get(id)
-    if (!job) return Promise.resolve(this.status(id) ?? this.recoverFromDisk(id) as BackgroundJob)
+    if (!job) return Promise.resolve(this.status(id) ?? (this.recoverFromDisk(id) as BackgroundJob))
     if (job.status !== 'running' && job.status !== 'pending') return Promise.resolve(job)
 
     return new Promise((resolve, reject) => {
@@ -454,7 +464,9 @@ export class BackgroundJobManager {
         try {
           unlinkSync(file)
           removed++
-        } catch { /* best-effort */ }
+        } catch {
+          /* best-effort */
+        }
       }
     }
     return removed

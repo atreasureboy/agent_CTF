@@ -18,7 +18,10 @@ import type { BudgetLimits, OneShotLane } from './types.js'
 import { DEFAULT_BUDGET_LIMITS } from './types.js'
 
 export class BudgetExceededError extends Error {
-  constructor(message: string, readonly reason: string) {
+  constructor(
+    message: string,
+    readonly reason: string,
+  ) {
     super(message)
     this.name = 'BudgetExceededError'
   }

@@ -42,10 +42,17 @@ import type {
 } from '../../core/backgroundJobs.js'
 import { newEvidenceDir } from './evidenceCollector.js'
 import { createOneShotResultStore, type OneShotResultStore } from './resultStore.js'
-import { createLinkedAbortController, type LinkedAbortController } from '../../core/ctfRuntime/linkedAbortController.js'
+import {
+  createLinkedAbortController,
+  type LinkedAbortController,
+} from '../../core/ctfRuntime/linkedAbortController.js'
 import type { CTFTaskOrchestrator } from '../../core/ctfRuntime/taskOrchestrator.js'
 import type { TaskExecutionContext } from '../../core/ctfRuntime/taskExecutionContext.js'
-import type { CTFAttempt, OneShotRunRecord, OneShotRunStatus } from '../../core/ctfRuntime/taskState.js'
+import type {
+  CTFAttempt,
+  OneShotRunRecord,
+  OneShotRunStatus,
+} from '../../core/ctfRuntime/taskState.js'
 
 export interface DispatcherInputs {
   /** Concrete argv for the runner — generated from `argumentTemplate`. */
@@ -133,8 +140,7 @@ export class Dispatcher {
     }
     if (deps.onProjection) this.listeners.push(deps.onProjection)
     this.resultStore =
-      deps.resultStore ??
-      createOneShotResultStore({ taskWorkspaceDir: deps.workspace })
+      deps.resultStore ?? createOneShotResultStore({ taskWorkspaceDir: deps.workspace })
   }
 
   addProjectionListener(l: ProjectionListener): void {
@@ -143,7 +149,11 @@ export class Dispatcher {
 
   private emit(event: OneShotJobProjectionEvent): void {
     for (const l of this.listeners) {
-      try { l(event) } catch { /* listener must not break dispatcher */ }
+      try {
+        l(event)
+      } catch {
+        /* listener must not break dispatcher */
+      }
     }
   }
 
@@ -210,12 +220,15 @@ export class Dispatcher {
     // where model-supplied `options.url` flows through the template into
     // a process runner's argv and reaches the network.
     if (manifest.network.mode !== 'none') {
-      const gate = new ScopeGate({
-        hosts: this.taskContext.contestScope.allowedHosts ?? [],
-        domains: this.taskContext.contestScope.allowedDomains ?? [],
-        ports: this.taskContext.contestScope.allowedPorts ?? [],
-        cidrs: this.taskContext.contestScope.allowedCidrs ?? [],
-      }, { denyByDefault: true })
+      const gate = new ScopeGate(
+        {
+          hosts: this.taskContext.contestScope.allowedHosts ?? [],
+          domains: this.taskContext.contestScope.allowedDomains ?? [],
+          ports: this.taskContext.contestScope.allowedPorts ?? [],
+          cidrs: this.taskContext.contestScope.allowedCidrs ?? [],
+        },
+        { denyByDefault: true },
+      )
       for (const arg of inputs.argv) {
         if (this.looksLikeNetworkTarget(arg)) {
           gate.assert(arg)
@@ -305,10 +318,7 @@ export class Dispatcher {
   }
 
   /** Run the full selector pipeline. */
-  async runSelected(
-    input: SelectionInput,
-    inputs: DispatcherInputs,
-  ): Promise<OneShotResult[]> {
+  async runSelected(input: SelectionInput, inputs: DispatcherInputs): Promise<OneShotResult[]> {
     const selections = selectManifests(input, this.deps.catalog)
     const results: OneShotResult[] = []
     for (const sel of selections) {
@@ -327,9 +337,7 @@ export class Dispatcher {
           candidates: [],
           diagnostics: {
             truncated: false,
-            parserWarnings: [
-              `dispatch failed: ${(err as Error).message}`,
-            ],
+            parserWarnings: [`dispatch failed: ${(err as Error).message}`],
           },
           confidence: 0,
           falsePositiveRisk: sel.manifest.scheduling.falsePositiveRisk,
@@ -341,7 +349,10 @@ export class Dispatcher {
   }
 
   /** Per-run cancellation (§八). */
-  async cancelRun(runId: string, reason: string): Promise<
+  async cancelRun(
+    runId: string,
+    reason: string,
+  ): Promise<
     | { ok: true }
     | { ok: false; reason: 'unknown_run' | 'already_terminal' | 'cancel_failed' | 'wrong_task' }
   > {
@@ -515,9 +526,10 @@ export class Dispatcher {
     // is present, fall back to an empty success envelope built from
     // the BackgroundJob's `summary`.
     const payloadResult = this.decodePayload(job?.payload)
-    const raw: OneShotResult = runnerOutput ?? payloadResult ?? this.buildSuccessResult(
-      record.id, manifestId, manifest, startedAt, job,
-    )
+    const raw: OneShotResult =
+      runnerOutput ??
+      payloadResult ??
+      this.buildSuccessResult(record.id, manifestId, manifest, startedAt, job)
 
     const normalized = normalizeResult(raw, undefined, manifest)
     normalized.taskId = this.taskId
@@ -534,12 +546,17 @@ export class Dispatcher {
 
     const completedAt = Date.now()
     const finalStatus: OneShotRunStatus =
-      normalized.status === 'completed' ? 'completed'
-      : normalized.status === 'partial' ? 'partial'
-      : normalized.status === 'unavailable' ? 'unavailable'
-      : normalized.status === 'timeout' ? 'timeout'
-      : normalized.status === 'cancelled' ? 'cancelled'
-      : 'failed'
+      normalized.status === 'completed'
+        ? 'completed'
+        : normalized.status === 'partial'
+          ? 'partial'
+          : normalized.status === 'unavailable'
+            ? 'unavailable'
+            : normalized.status === 'timeout'
+              ? 'timeout'
+              : normalized.status === 'cancelled'
+                ? 'cancelled'
+                : 'failed'
     if (finalStatus === 'completed') {
       this.deps.orchestrator?.recordOneShotCompleted(
         record.id,
@@ -567,7 +584,10 @@ export class Dispatcher {
   /** Classify a run failure using the BackgroundJob's authoritative
    *  status (if any) and the linked signal's abort state. */
   private classifyFailure(
-    job: { status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'; cancelReason?: string } | null,
+    job: {
+      status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+      cancelReason?: string
+    } | null,
     signalAborted: boolean,
   ): OneShotRunStatus {
     if (signalAborted) return 'cancelled'
@@ -616,13 +636,14 @@ export class Dispatcher {
     manifestId: string,
     manifest: import('./types.js').OneShotManifest,
     startedAt: string,
-    job: { status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'; summary?: string } | null,
+    job: {
+      status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+      summary?: string
+    } | null,
   ): OneShotResult {
     const finishedAt = new Date().toISOString()
     const status: import('./types.js').OneShotStatus =
-      job?.status === 'failed' ? 'failed'
-      : job?.status === 'cancelled' ? 'cancelled'
-      : 'completed'
+      job?.status === 'failed' ? 'failed' : job?.status === 'cancelled' ? 'cancelled' : 'completed'
     return {
       runId,
       manifestId,
@@ -658,15 +679,27 @@ export class Dispatcher {
         return
       case 'partial':
         o.recordOneShotPartial(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'succeeded', error: { message: summary }, completedAt })
+        o.updateAttempt(attempt.id, {
+          status: 'succeeded',
+          error: { message: summary },
+          completedAt,
+        })
         return
       case 'timeout':
         o.recordOneShotTimeout(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'failed', error: { message: summary, code: 'timeout' }, completedAt })
+        o.updateAttempt(attempt.id, {
+          status: 'failed',
+          error: { message: summary, code: 'timeout' },
+          completedAt,
+        })
         return
       case 'cancelled':
         o.recordOneShotCancelled(record.id, summary, completedAt)
-        o.updateAttempt(attempt.id, { status: 'cancelled', error: { message: summary }, completedAt })
+        o.updateAttempt(attempt.id, {
+          status: 'cancelled',
+          error: { message: summary },
+          completedAt,
+        })
         return
       case 'failed':
       case 'unavailable':
@@ -688,10 +721,13 @@ export class Dispatcher {
   ): void {
     const at = new Date(finishedAt).toISOString()
     const eventType =
-      status === 'cancelled' ? 'ONESHOT_CANCELLED'
-      : status === 'timeout' ? 'ONESHOT_TIMEOUT'
-      : status === 'partial' ? 'ONESHOT_COMPLETED' // partial → use completed event with detail
-      : 'ONESHOT_FAILED'
+      status === 'cancelled'
+        ? 'ONESHOT_CANCELLED'
+        : status === 'timeout'
+          ? 'ONESHOT_TIMEOUT'
+          : status === 'partial'
+            ? 'ONESHOT_COMPLETED' // partial → use completed event with detail
+            : 'ONESHOT_FAILED'
     this.emit({
       type: eventType,
       runId,
@@ -757,11 +793,32 @@ export class Dispatcher {
       })
     }
     if (result.status === 'timeout') {
-      this.emit({ type: 'ONESHOT_TIMEOUT', runId: result.runId, manifestId: result.manifestId, taskId: this.taskId, lane: this.laneFor(result), at })
+      this.emit({
+        type: 'ONESHOT_TIMEOUT',
+        runId: result.runId,
+        manifestId: result.manifestId,
+        taskId: this.taskId,
+        lane: this.laneFor(result),
+        at,
+      })
     } else if (result.status === 'cancelled') {
-      this.emit({ type: 'ONESHOT_CANCELLED', runId: result.runId, manifestId: result.manifestId, taskId: this.taskId, lane: this.laneFor(result), at })
+      this.emit({
+        type: 'ONESHOT_CANCELLED',
+        runId: result.runId,
+        manifestId: result.manifestId,
+        taskId: this.taskId,
+        lane: this.laneFor(result),
+        at,
+      })
     } else {
-      this.emit({ type: 'ONESHOT_COMPLETED', runId: result.runId, manifestId: result.manifestId, taskId: this.taskId, lane: this.laneFor(result), at })
+      this.emit({
+        type: 'ONESHOT_COMPLETED',
+        runId: result.runId,
+        manifestId: result.manifestId,
+        taskId: this.taskId,
+        lane: this.laneFor(result),
+        at,
+      })
     }
   }
 

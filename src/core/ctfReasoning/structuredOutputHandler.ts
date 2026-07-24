@@ -82,7 +82,11 @@ export class StructuredOutputHandler {
       if (cascade.depth >= REASONING_CASCADE_MAX_DEPTH) {
         return null
       }
-      if (!options.autoReason || this.deps.suppressAutomaticTrigger || cascade.suppressAutomaticTrigger) {
+      if (
+        !options.autoReason ||
+        this.deps.suppressAutomaticTrigger ||
+        cascade.suppressAutomaticTrigger
+      ) {
         return null
       }
       const input: ProcessReasoningInputsInput = {
@@ -116,10 +120,14 @@ export class StructuredOutputHandler {
 
 function primaryRunId(o: StructuredRunOutput): string {
   switch (o.source.type) {
-    case 'main-agent': return o.source.agentRunId
-    case 'workflow':   return o.source.workflowRunId
-    case 'oneshot':    return o.source.oneShotRunId
-    case 'specialist': return o.source.handoffId
+    case 'main-agent':
+      return o.source.agentRunId
+    case 'workflow':
+      return o.source.workflowRunId
+    case 'oneshot':
+      return o.source.oneShotRunId
+    case 'specialist':
+      return o.source.handoffId
   }
 }
 
@@ -128,12 +136,19 @@ function sourceOf(src: StructuredRunOutput['source']): ReasoningInputSource {
 }
 
 function runContextOf(src: StructuredRunOutput['source']): {
-  agentRunId?: string; workflowRunId?: string; oneShotRunId?: string; handoffId?: string
+  agentRunId?: string
+  workflowRunId?: string
+  oneShotRunId?: string
+  handoffId?: string
 } {
   switch (src.type) {
-    case 'main-agent': return { agentRunId: src.agentRunId }
-    case 'workflow':   return { workflowRunId: src.workflowRunId }
-    case 'oneshot':    return { oneShotRunId: src.oneShotRunId }
-    case 'specialist': return { agentRunId: src.agentRunId, handoffId: src.handoffId }
+    case 'main-agent':
+      return { agentRunId: src.agentRunId }
+    case 'workflow':
+      return { workflowRunId: src.workflowRunId }
+    case 'oneshot':
+      return { oneShotRunId: src.oneShotRunId }
+    case 'specialist':
+      return { agentRunId: src.agentRunId, handoffId: src.handoffId }
   }
 }

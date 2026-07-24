@@ -109,7 +109,10 @@ export function fingerprint(tool: string, input: Record<string, unknown>): strin
       return str(input.description)
     default:
       // Best-effort: flatten values
-      return Object.values(input).map(v => str(v)).join(' ').slice(0, 200)
+      return Object.values(input)
+        .map((v) => str(v))
+        .join(' ')
+        .slice(0, 200)
   }
 }
 
@@ -138,10 +141,7 @@ export class PermissionChecker {
     // include an explicit (tool+pattern or tool-only) match for the
     // same fingerprint. The dedup pass drops duplicate rule entries
     // (the previous pwn profile shipped `'sqlmap'` twice in deniedTools).
-    this.rules = deduplicateRules([
-      ...DEFAULT_PERMISSION_RULES,
-      ...sortConsumerRules(rules),
-    ])
+    this.rules = deduplicateRules([...DEFAULT_PERMISSION_RULES, ...sortConsumerRules(rules)])
     this.approver = approver
   }
 
@@ -176,7 +176,7 @@ export class PermissionChecker {
   }
 
   private matchRule(tool: string, fp: string): PermissionRule | undefined {
-    return this.rules.find(r => {
+    return this.rules.find((r) => {
       if (r.tool && r.tool !== '*' && r.tool !== tool) return false
       if (r.pattern && !fp.includes(r.pattern)) return false
       return true
@@ -194,10 +194,14 @@ export class PermissionChecker {
     // and would have been a security bug if a consumer forgot to set
     // mode. We now route through the same mode-aware switch.
     switch (this.mode) {
-      case 'deny': return 'deny'
-      case 'ask':  return 'ask'
-      case 'auto': return 'allow'
-      default:     return 'deny' // fail-safe — unknown mode → deny
+      case 'deny':
+        return 'deny'
+      case 'ask':
+        return 'ask'
+      case 'auto':
+        return 'allow'
+      default:
+        return 'deny' // fail-safe — unknown mode → deny
     }
   }
 }

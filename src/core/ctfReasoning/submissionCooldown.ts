@@ -23,13 +23,7 @@ export interface FlagSubmissionAttempt {
   at: number
 }
 
-export const COOLDOWN_SCHEDULE_SEC: ReadonlyArray<number> = [
-  0,
-  30,
-  120,
-  300,
-  600,
-]
+export const COOLDOWN_SCHEDULE_SEC: ReadonlyArray<number> = [0, 30, 120, 300, 600]
 
 /** Return the next cooldown delay (seconds) given the recent
  *  outcomes. Returns Infinity if the action should be denied. */

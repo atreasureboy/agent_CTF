@@ -17,11 +17,20 @@ const NOTABLE_KEYWORDS = ['password', 'secret', 'admin', 'flag', 'token', 'key',
 export const stringsParser: ResultParser = {
   id: 'strings',
   supports(input) {
-    return input.toolId === 'strings' || input.manifestId === 'strings' || input.stepId === 'strings'
+    return (
+      input.toolId === 'strings' || input.manifestId === 'strings' || input.stepId === 'strings'
+    )
   },
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
-      return { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: ['strings: no content'], rawArtifactIds: input.artifactIds }
+      return {
+        observations: [],
+        evidence: [],
+        suggestedActions: [],
+        flagCandidateDrafts: [],
+        warnings: ['strings: no content'],
+        rawArtifactIds: input.artifactIds,
+      }
     }
     const lines = input.content.split('\n').filter((l) => l.length >= MIN_LENGTH)
     const keep = lines.slice(0, MAX_STRINGS)
@@ -34,13 +43,15 @@ export const stringsParser: ResultParser = {
         if (line.toLowerCase().includes(k)) keywords.add(k)
       }
     }
-    const observations: MaterializedResult['observations'] = [{
-      kind: 'printable_text',
-      source: input.source,
-      summary: `${keep.length} printable string(s)`,
-      attributes: { total: lines.length, kept: keep.length },
-      confidence: 0.6,
-    }]
+    const observations: MaterializedResult['observations'] = [
+      {
+        kind: 'printable_text',
+        source: input.source,
+        summary: `${keep.length} printable string(s)`,
+        attributes: { total: lines.length, kept: keep.length },
+        confidence: 0.6,
+      },
+    ]
     const evidence: MaterializedResult['evidence'] = []
     if (keywords.size > 0) {
       evidence.push({
@@ -49,8 +60,11 @@ export const stringsParser: ResultParser = {
         polarity: 'neutral',
         source: {
           producer: { type: 'parser', id: 'strings' },
-          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-          confidence: 0.5, createdAt: Date.now(),
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.5,
+          createdAt: Date.now(),
         },
       })
     }
@@ -72,7 +86,10 @@ export const stringsParser: ResultParser = {
       evidence,
       suggestedActions: [],
       flagCandidateDrafts,
-      warnings: lines.length > MAX_STRINGS ? [`strings: truncated ${lines.length - MAX_STRINGS} lines`] : [],
+      warnings:
+        lines.length > MAX_STRINGS
+          ? [`strings: truncated ${lines.length - MAX_STRINGS} lines`]
+          : [],
       rawArtifactIds: input.artifactIds,
     }
   },

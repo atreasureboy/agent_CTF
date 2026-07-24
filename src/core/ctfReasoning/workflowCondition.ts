@@ -218,12 +218,15 @@ export function resolveScope(
   fallbackWorkflowRunId?: string,
 ): ConditionScope {
   if (!scope) return defaultWorkflowScope(fallbackWorkflowRunId ?? ctx.state.currentWorkflowRunId)
-  const currentRunId = scope.workflowRunId === '$current'
-    ? (ctx.state.currentWorkflowRunId ?? fallbackWorkflowRunId)
-    : scope.workflowRunId
-  const startedAt = scope.sinceTimestamp !== undefined && scope.sinceTimestamp === ('$workflowStartedAt' as unknown as number)
-    ? ctx.state.currentWorkflowStartedAt
-    : scope.sinceTimestamp
+  const currentRunId =
+    scope.workflowRunId === '$current'
+      ? (ctx.state.currentWorkflowRunId ?? fallbackWorkflowRunId)
+      : scope.workflowRunId
+  const startedAt =
+    scope.sinceTimestamp !== undefined &&
+    scope.sinceTimestamp === ('$workflowStartedAt' as unknown as number)
+      ? ctx.state.currentWorkflowStartedAt
+      : scope.sinceTimestamp
   return { ...scope, workflowRunId: currentRunId, sinceTimestamp: startedAt }
 }
 
@@ -258,7 +261,12 @@ function matchesScope(
   if (scope.oneShotRunId !== undefined && oneShotRunId !== scope.oneShotRunId) return false
   if (scope.handoffId !== undefined && handoffId !== scope.handoffId) return false
   if (scope.producerId !== undefined && producerId !== scope.producerId) return false
-  if (scope.sinceTimestamp !== undefined && createdAt !== undefined && typeof scope.sinceTimestamp === 'number' && createdAt < scope.sinceTimestamp) {
+  if (
+    scope.sinceTimestamp !== undefined &&
+    createdAt !== undefined &&
+    typeof scope.sinceTimestamp === 'number' &&
+    createdAt < scope.sinceTimestamp
+  ) {
     return false
   }
   return true
@@ -277,11 +285,22 @@ export function evaluateWorkflowCondition(
 
     case 'observation_exists': {
       const scope = resolveScope(condition.scope, ctx)
-      return ctx.state.observations.some((o) =>
-        o.kind === condition.kind &&
-        o.confidence >= (condition.minConfidence ?? 0) &&
-        attrMatches(o.attributes, condition.where) &&
-        matchesScope(ctx, scope, o.workflowRunId, o.stepId, o.oneShotRunId, o.agentRunId, o.handoffId, undefined, o.createdAt),
+      return ctx.state.observations.some(
+        (o) =>
+          o.kind === condition.kind &&
+          o.confidence >= (condition.minConfidence ?? 0) &&
+          attrMatches(o.attributes, condition.where) &&
+          matchesScope(
+            ctx,
+            scope,
+            o.workflowRunId,
+            o.stepId,
+            o.oneShotRunId,
+            o.agentRunId,
+            o.handoffId,
+            undefined,
+            o.createdAt,
+          ),
       )
     }
 
@@ -293,18 +312,22 @@ export function evaluateWorkflowCondition(
         if (condition.polarity !== undefined && e.polarity !== condition.polarity) return false
         if (!attrMatches(e.attributes, condition.where)) return false
         const producerMatch = scope.producerId
-          ? e.sources.some((s) => `${s.producer.type}:${s.producer.id}` === scope.producerId
-              || s.producer.id === scope.producerId)
+          ? e.sources.some(
+              (s) =>
+                `${s.producer.type}:${s.producer.id}` === scope.producerId ||
+                s.producer.id === scope.producerId,
+            )
           : true
         return producerMatch
       })
     }
 
     case 'hypothesis_status':
-      return ctx.state.hypotheses.some((h) =>
-        h.status === condition.status &&
-        (condition.hypothesisId === undefined || h.id === condition.hypothesisId) &&
-        (condition.category === undefined || h.category === condition.category),
+      return ctx.state.hypotheses.some(
+        (h) =>
+          h.status === condition.status &&
+          (condition.hypothesisId === undefined || h.id === condition.hypothesisId) &&
+          (condition.category === undefined || h.category === condition.category),
       )
 
     case 'flag_candidate_exists': {
@@ -339,15 +362,36 @@ export function evaluateWorkflowCondition(
         if (condition.artifactKind !== undefined && m?.kind !== condition.artifactKind) continue
         if (condition.mimeType !== undefined && m?.mimeType !== condition.mimeType) continue
         if (condition.extension !== undefined && m?.extension !== condition.extension) continue
-        if (condition.producedByStepId !== undefined && producedByStepId !== condition.producedByStepId) continue
-        if (condition.producedByWorkflowRunId !== undefined
-            && producedByWorkflowRunId !== resolveToken(condition.producedByWorkflowRunId, ctx)) continue
-        if (condition.producedByOneShotRunId !== undefined
-            && producedByOneShotRunId !== condition.producedByOneShotRunId) continue
-        if (condition.parentArtifactId !== undefined && parentArtifactId !== condition.parentArtifactId) continue
-        if (condition.minCreatedAt !== undefined && (createdAt ?? 0) < resolveMinCreatedAt(condition.minCreatedAt, ctx)) continue
-        if (scope.workflowRunId !== undefined
-            && producedByWorkflowRunId !== resolveToken(scope.workflowRunId, ctx)) continue
+        if (
+          condition.producedByStepId !== undefined &&
+          producedByStepId !== condition.producedByStepId
+        )
+          continue
+        if (
+          condition.producedByWorkflowRunId !== undefined &&
+          producedByWorkflowRunId !== resolveToken(condition.producedByWorkflowRunId, ctx)
+        )
+          continue
+        if (
+          condition.producedByOneShotRunId !== undefined &&
+          producedByOneShotRunId !== condition.producedByOneShotRunId
+        )
+          continue
+        if (
+          condition.parentArtifactId !== undefined &&
+          parentArtifactId !== condition.parentArtifactId
+        )
+          continue
+        if (
+          condition.minCreatedAt !== undefined &&
+          (createdAt ?? 0) < resolveMinCreatedAt(condition.minCreatedAt, ctx)
+        )
+          continue
+        if (
+          scope.workflowRunId !== undefined &&
+          producedByWorkflowRunId !== resolveToken(scope.workflowRunId, ctx)
+        )
+          continue
         return true
       }
       return false
@@ -355,7 +399,8 @@ export function evaluateWorkflowCondition(
 
     case 'attempt_exists':
       return ctx.state.attempts.some((a) => {
-        if (condition.fingerprint !== undefined && a.fingerprint !== condition.fingerprint) return false
+        if (condition.fingerprint !== undefined && a.fingerprint !== condition.fingerprint)
+          return false
         if (condition.targetId !== undefined && a.targetId !== condition.targetId) return false
         if (condition.statuses !== undefined && !condition.statuses.includes(a.status)) return false
         return true

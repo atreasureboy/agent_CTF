@@ -17,10 +17,7 @@
  * framer text.
  */
 
-import type {
-  ActionExecutionResult,
-  ExecutionRefs,
-} from './actionExecutionResult.js'
+import type { ActionExecutionResult, ExecutionRefs } from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,
@@ -47,7 +44,10 @@ export interface ApproachContestOptions {
   framings: ApproachContestFraming[]
   /** A pure function that mutates `ctx.action` per framing. Defaults
    *  to no-op. */
-  applyFraming?: (ctx: StrategyActionExecutorContext, framing: ApproachContestFraming) => StrategyActionExecutorContext
+  applyFraming?: (
+    ctx: StrategyActionExecutorContext,
+    framing: ApproachContestFraming,
+  ) => StrategyActionExecutorContext
   /** When true, only the flag-candidate-winning framing's
    *  `materializedResult` is returned. Non-flag races use the
    *  first-completed result. Default true. */
@@ -56,31 +56,53 @@ export interface ApproachContestOptions {
   winnerTimeoutMs?: number
 }
 
-export function createApproachContestExecutor(options: ApproachContestOptions): StrategyActionExecutor {
+export function createApproachContestExecutor(
+  options: ApproachContestOptions,
+): StrategyActionExecutor {
   return {
     async execute(ctx: StrategyActionExecutorContext): Promise<ActionExecutionResult> {
       if (options.framings.length === 0) {
         return options.executor.execute(ctx)
       }
       if (options.framings.length === 1) {
-        return options.executor.execute(options.applyFraming ? options.applyFraming(ctx, options.framings[0]!) : ctx)
+        return options.executor.execute(
+          options.applyFraming ? options.applyFraming(ctx, options.framings[0]!) : ctx,
+        )
       }
       const ac = new AbortController()
-      const timer = setTimeout(() => ac.abort(new Error('approach_contest_winner_timeout')), options.winnerTimeoutMs ?? 60_000)
+      const timer = setTimeout(
+        () => ac.abort(new Error('approach_contest_winner_timeout')),
+        options.winnerTimeoutMs ?? 60_000,
+      )
       const flagOnly = options.flagOnly ?? true
       try {
         const tasks = options.framings.map((f) =>
-          options.executor.execute(
-            options.applyFraming ? options.applyFraming(ctx, f) : ctx,
-          ).then((res) => ({ framing: f, res })),
+          options.executor
+            .execute(options.applyFraming ? options.applyFraming(ctx, f) : ctx)
+            .then((res) => ({ framing: f, res })),
         )
         const winner = await waitForApproachWinner(tasks, ac, flagOnly)
         ac.abort(new Error('approach_contest_winner_found'))
         const settled = await Promise.allSettled(tasks)
         const partials: MaterializedResult[] = settled
           .filter((s) => s.status === 'fulfilled')
-          .map((s) => (s as PromiseFulfilledResult<{ framing: ApproachContestFraming; res: ActionExecutionResult }>).value)
-          .filter((w): w is { framing: ApproachContestFraming; res: Extract<ActionExecutionResult, { status: 'executed' }> } => w.res.status === 'executed')
+          .map(
+            (s) =>
+              (
+                s as PromiseFulfilledResult<{
+                  framing: ApproachContestFraming
+                  res: ActionExecutionResult
+                }>
+              ).value,
+          )
+          .filter(
+            (
+              w,
+            ): w is {
+              framing: ApproachContestFraming
+              res: Extract<ActionExecutionResult, { status: 'executed' }>
+            } => w.res.status === 'executed',
+          )
           .map((w) => w.res.materializedResult)
         return mergeContestResult(winner.res, winner.framing.id, partials, ctx.attempt.id)
       } finally {
@@ -100,33 +122,44 @@ async function waitForApproachWinner(
     const onAbort = (): void => {
       if (resolved) return
       resolved = true
-      Promise.race(tasks).then((r) => resolve(r)).catch(reject)
+      Promise.race(tasks)
+        .then((r) => resolve(r))
+        .catch(reject)
     }
     ac.signal.addEventListener('abort', onAbort, { once: true })
-    void consumeFirstApproach(tasks, 0, (result) => {
-      if (resolved) return false
-      if (result.res.status !== 'executed') return false
-      if (flagOnly) {
-        if (result.res.materializedResult.flagCandidateDrafts.length > 0) {
-          resolved = true
-          ac.signal.removeEventListener('abort', onAbort)
-          resolve(result)
-          return true
+    void consumeFirstApproach(
+      tasks,
+      0,
+      (result) => {
+        if (resolved) return false
+        if (result.res.status !== 'executed') return false
+        if (flagOnly) {
+          if (result.res.materializedResult.flagCandidateDrafts.length > 0) {
+            resolved = true
+            ac.signal.removeEventListener('abort', onAbort)
+            resolve(result)
+            return true
+          }
+          return false
         }
-        return false
-      }
-      resolved = true
-      ac.signal.removeEventListener('abort', onAbort)
-      resolve(result)
-      return true
-    }, resolve, reject)
+        resolved = true
+        ac.signal.removeEventListener('abort', onAbort)
+        resolve(result)
+        return true
+      },
+      resolve,
+      reject,
+    )
   })
 }
 
 async function consumeFirstApproach(
   items: Promise<{ framing: ApproachContestFraming; res: ActionExecutionResult }>[],
   index: number,
-  accept: (r: { framing: ApproachContestFraming; res: ActionExecutionResult }) => boolean | Promise<boolean>,
+  accept: (r: {
+    framing: ApproachContestFraming
+    res: ActionExecutionResult
+  }) => boolean | Promise<boolean>,
   resolve: (r: { framing: ApproachContestFraming; res: ActionExecutionResult }) => void,
   reject: (err: unknown) => void,
 ): Promise<void> {
@@ -161,7 +194,10 @@ function mergeContestResult(
   const obs = [...winner.materializedResult.observations]
   const ev = [...winner.materializedResult.evidence]
   const cand = [...winner.materializedResult.flagCandidateDrafts]
-  const warnings = [...winner.materializedResult.warnings, `approach-contest: winner=${winnerFramingId}`]
+  const warnings = [
+    ...winner.materializedResult.warnings,
+    `approach-contest: winner=${winnerFramingId}`,
+  ]
   const seenObs = new Set(obs.map((o) => o.summary + o.kind))
   const seenCand = new Set(cand.map((c) => c.normalizedValue || c.value))
   partials.forEach((p) => {

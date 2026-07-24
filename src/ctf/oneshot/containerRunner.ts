@@ -17,11 +17,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
-import type {
-  OneShotManifest,
-  OneShotResult,
-  OneShotStatus,
-} from './types.js'
+import type { OneShotManifest, OneShotResult, OneShotStatus } from './types.js'
 import type { OneShotRunner, RunnerInputs } from './runner.js'
 
 export interface ContainerRunnerOptions {
@@ -49,13 +45,38 @@ export interface ContainerNetworkAdapter {
 // sub-paths. safeWorkspaceDir now refuses to mount any system path; the
 // runtime must scope workspace under allowedFilesRoot.
 const FORBIDDEN_MOUNTS = [
-  '/', '/root', '/home', '/etc', '/etc/ssh', '/etc/shadow',
-  '/etc/passwd', '/etc/cron.d', '/etc/sudoers.d', '/etc/profile.d',
-  '/var', '/var/run/docker.sock',
-  '/proc', '/sys', '/dev', '/boot', '/lib', '/lib64',
-  '/sbin', '/bin', '/usr', '/opt', '/srv', '/mnt',
-  '/run', '/tmp/.X11-unix',
-  '/.git', '/.ssh', '/.aws', '/.docker', '/.kube', '/.gnupg',
+  '/',
+  '/root',
+  '/home',
+  '/etc',
+  '/etc/ssh',
+  '/etc/shadow',
+  '/etc/passwd',
+  '/etc/cron.d',
+  '/etc/sudoers.d',
+  '/etc/profile.d',
+  '/var',
+  '/var/run/docker.sock',
+  '/proc',
+  '/sys',
+  '/dev',
+  '/boot',
+  '/lib',
+  '/lib64',
+  '/sbin',
+  '/bin',
+  '/usr',
+  '/opt',
+  '/srv',
+  '/mnt',
+  '/run',
+  '/tmp/.X11-unix',
+  '/.git',
+  '/.ssh',
+  '/.aws',
+  '/.docker',
+  '/.kube',
+  '/.gnupg',
 ]
 
 function safeWorkspaceDir(given: string): string {
@@ -88,14 +109,17 @@ export async function probeDocker(dockerBin: string = 'docker'): Promise<boolean
 
 export class ContainerRunner implements OneShotRunner {
   /** runId → docker child + container name + cleanupNetwork callback. */
-  private readonly children = new Map<string, {
-    child: ChildProcess
-    containerName: string
-    cleanupNetwork?: () => void
-    timeoutHandle?: ReturnType<typeof setTimeout>
-    onAbort?: () => void
-    signal?: AbortSignal
-  }>()
+  private readonly children = new Map<
+    string,
+    {
+      child: ChildProcess
+      containerName: string
+      cleanupNetwork?: () => void
+      timeoutHandle?: ReturnType<typeof setTimeout>
+      onAbort?: () => void
+      signal?: AbortSignal
+    }
+  >()
 
   constructor(private readonly opts: ContainerRunnerOptions = {}) {}
 
@@ -126,14 +150,26 @@ export class ContainerRunner implements OneShotRunner {
         return this.fail(runId, manifest, startedAt, 'failed', 'image not pinned (no imageDigest)')
       }
       if (manifest.runner.image.endsWith(':latest')) {
-        return this.fail(runId, manifest, startedAt, 'failed', ':latest tag forbidden for non-experimental manifests')
+        return this.fail(
+          runId,
+          manifest,
+          startedAt,
+          'failed',
+          ':latest tag forbidden for non-experimental manifests',
+        )
       }
     }
 
     // §十四 — `contest-target-only` requires a network adapter. Refuse to
     // degrade silently to unrestricted bridge.
     if (manifest.network.mode === 'contest-target-only' && !this.opts.networkAdapter) {
-      return this.fail(runId, manifest, startedAt, 'unavailable', 'contest-target-only requires network adapter')
+      return this.fail(
+        runId,
+        manifest,
+        startedAt,
+        'unavailable',
+        'contest-target-only requires network adapter',
+      )
     }
 
     const dockerBin = this.opts.dockerBin ?? 'docker'
@@ -157,7 +193,10 @@ export class ContainerRunner implements OneShotRunner {
         createdNetworkName = plan.networkName
       } catch (err) {
         return this.fail(
-          runId, manifest, startedAt, 'unavailable',
+          runId,
+          manifest,
+          startedAt,
+          'unavailable',
           `network adapter failed: ${(err as Error).message}`,
         )
       }
@@ -171,20 +210,26 @@ export class ContainerRunner implements OneShotRunner {
       '--rm',
       '-i',
       `--name=${runId}`,
-      '-v', `${workspace}:/work:ro`,
-      '-v', `${inputs.logDir}:/logs:rw`,
-      '-w', '/work',
+      '-v',
+      `${workspace}:/work:ro`,
+      '-v',
+      `${inputs.logDir}:/logs:rw`,
+      '-w',
+      '/work',
       // §十五 — read-only root filesystem, drop caps, no-new-privileges.
       '--read-only',
       '--cap-drop=ALL',
       '--security-opt=no-new-privileges',
-      '--network', resolvedNetwork,
+      '--network',
+      resolvedNetwork,
     ]
     if (manifest.resources.cpuLimit) argv.push('--cpus', String(manifest.resources.cpuLimit))
     if (manifest.resources.memoryMb) argv.push('--memory', `${manifest.resources.memoryMb}m`)
-    if (manifest.resources.pidsLimit !== undefined) argv.push('--pids-limit', String(manifest.resources.pidsLimit))
+    if (manifest.resources.pidsLimit !== undefined)
+      argv.push('--pids-limit', String(manifest.resources.pidsLimit))
 
-    if (manifest.source.imageDigest) argv.push(`${manifest.runner.image}@${manifest.source.imageDigest}`)
+    if (manifest.source.imageDigest)
+      argv.push(`${manifest.runner.image}@${manifest.source.imageDigest}`)
     else argv.push(manifest.runner.image)
     argv.push(...manifest.runner.command, ...inputs.argv)
 
@@ -201,7 +246,15 @@ export class ContainerRunner implements OneShotRunner {
       try {
         child = spawn(dockerBin, argv, { stdio: ['ignore', 'pipe', 'pipe'] })
       } catch (err) {
-        resolve(this.fail(runId, manifest, startedAt, 'failed', `docker spawn failed: ${(err as Error).message}`))
+        resolve(
+          this.fail(
+            runId,
+            manifest,
+            startedAt,
+            'failed',
+            `docker spawn failed: ${(err as Error).message}`,
+          ),
+        )
         return
       }
       this.children.set(runId, {
@@ -221,27 +274,49 @@ export class ContainerRunner implements OneShotRunner {
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const remaining = maxBytes - stdoutBytes
-        if (remaining <= 0) { truncated = true; return }
-        if (chunk.length <= remaining) { stdoutBytes += chunk.length; outStream.write(chunk); return }
+        if (remaining <= 0) {
+          truncated = true
+          return
+        }
+        if (chunk.length <= remaining) {
+          stdoutBytes += chunk.length
+          outStream.write(chunk)
+          return
+        }
         stdoutBytes += remaining
         outStream.write(chunk.subarray(0, remaining))
         truncated = true
       })
       child.stderr?.on('data', (chunk: Buffer) => {
         const remaining = maxBytes - stderrBytes
-        if (remaining <= 0) { stderrTruncated = true; return }
-        if (chunk.length <= remaining) { stderrBytes += chunk.length; errStream.write(chunk); return }
+        if (remaining <= 0) {
+          stderrTruncated = true
+          return
+        }
+        if (chunk.length <= remaining) {
+          stderrBytes += chunk.length
+          errStream.write(chunk)
+          return
+        }
         stderrBytes += remaining
         errStream.write(chunk.subarray(0, remaining))
         stderrTruncated = true
       })
 
       const timeoutHandle = setTimeout(() => {
-        try { spawn(dockerBin, ['kill', runId]) } catch { /* ignore */ }
+        try {
+          spawn(dockerBin, ['kill', runId])
+        } catch {
+          /* ignore */
+        }
       }, timeoutMs)
 
       const onAbort = (): void => {
-        try { spawn(dockerBin, ['kill', runId]) } catch { /* ignore */ }
+        try {
+          spawn(dockerBin, ['kill', runId])
+        } catch {
+          /* ignore */
+        }
       }
       if (signal) {
         // §P1 audit fix — register the listener first, then re-check
@@ -264,9 +339,15 @@ export class ContainerRunner implements OneShotRunner {
       const cleanupNetwork = (): void => {
         if (createdNetworkName && this.opts.networkAdapter) {
           try {
-            spawn(dockerBin, ['network', 'rm', createdNetworkName], { stdio: 'ignore' })
-              .on('error', () => { /* best-effort */ })
-          } catch { /* best-effort */ }
+            spawn(dockerBin, ['network', 'rm', createdNetworkName], { stdio: 'ignore' }).on(
+              'error',
+              () => {
+                /* best-effort */
+              },
+            )
+          } catch {
+            /* best-effort */
+          }
           createdNetworkName = undefined
         }
         const e = this.children.get(runId)
@@ -361,8 +442,14 @@ export class ContainerRunner implements OneShotRunner {
       // Issue `docker kill` for the container, then kill the docker client
       // process to ensure no orphan child remains.
       spawn(dockerBin, ['kill', entry.containerName])
-    } catch { /* ignore */ }
-    try { entry.child.kill('SIGKILL') } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
+    try {
+      entry.child.kill('SIGKILL')
+    } catch {
+      /* ignore */
+    }
     this.children.delete(runId)
   }
 

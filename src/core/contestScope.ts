@@ -30,10 +30,7 @@ export function parseContestScope(raw: unknown): ContestScope {
 }
 
 /** Safe-parse with a fallback (used for ad-hoc CLI overrides). */
-export function safeParseContestScope(
-  raw: unknown,
-  fallback: ContestScope,
-): ContestScope {
+export function safeParseContestScope(raw: unknown, fallback: ContestScope): ContestScope {
   const r = contestScopeSchema.safeParse(raw)
   return r.success ? r.data : fallback
 }
@@ -51,10 +48,7 @@ function ipv4InCidr(ip: string, cidr: string): boolean {
   if (ipParts.length !== 4 || baseParts.length !== 4) return false
 
   const toInt = (parts: string[]): number =>
-    parts.reduce(
-      (acc, p) => (acc << 8) + (Number.isFinite(Number(p)) ? Number(p) : 256),
-      0,
-    ) >>> 0
+    parts.reduce((acc, p) => (acc << 8) + (Number.isFinite(Number(p)) ? Number(p) : 256), 0) >>> 0
 
   if (Number.isNaN(toInt(ipParts)) || Number.isNaN(toInt(baseParts))) return false
   const ipInt = toInt(ipParts)

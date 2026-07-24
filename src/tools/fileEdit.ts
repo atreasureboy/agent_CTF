@@ -36,7 +36,8 @@ export class FileEditTool implements Tool {
           },
           old_string: {
             type: 'string',
-            description: 'Exact string to find (must be unique in the file unless replace_all=true)',
+            description:
+              'Exact string to find (must be unique in the file unless replace_all=true)',
           },
           new_string: {
             type: 'string',
@@ -65,15 +66,20 @@ export class FileEditTool implements Tool {
       return { content: 'Error: new_string must be a string', isError: true }
     }
     if (old_string === new_string) {
-      return { content: 'Error: old_string and new_string are identical — no change needed', isError: true }
+      return {
+        content: 'Error: old_string and new_string are identical — no change needed',
+        isError: true,
+      }
     }
 
     // Audit P1 — file-scope gate (mirrors fileWrite / fileRead). Refuse
     // writes that escape the contest's allowedFilesRoot before we even
     // open the source file.
-    const ctfCtx = (context as unknown as {
-      __ctf?: { contestScope?: ContestScopeChecker }
-    }).__ctf
+    const ctfCtx = (
+      context as unknown as {
+        __ctf?: { contestScope?: ContestScopeChecker }
+      }
+    ).__ctf
     const scope = ctfCtx?.contestScope
     if (scope && typeof scope.assertFile === 'function') {
       try {
@@ -122,7 +128,10 @@ export class FileEditTool implements Tool {
         backupMade = true
       } catch (copyErr) {
         // copyFile failure (e.g. read-only fs) — fail loud before mutating.
-        return { content: `Edit refused: cannot snapshot ${file_path}: ${(copyErr as Error).message}`, isError: true }
+        return {
+          content: `Edit refused: cannot snapshot ${file_path}: ${(copyErr as Error).message}`,
+          isError: true,
+        }
       }
       try {
         await writeFile(tmp, newContent, 'utf8')
@@ -132,9 +141,17 @@ export class FileEditTool implements Tool {
           // Restore from backup so the user does not end up with a
           // half-modified file on disk.
           if (backupMade) {
-            try { await copyFile(backup, absPath) } catch { /* best-effort */ }
+            try {
+              await copyFile(backup, absPath)
+            } catch {
+              /* best-effort */
+            }
           }
-          try { await unlink(tmp) } catch { /* ignore */ }
+          try {
+            await unlink(tmp)
+          } catch {
+            /* ignore */
+          }
           throw renameErr
         }
       } catch (err) {

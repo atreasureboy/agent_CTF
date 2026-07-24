@@ -32,8 +32,16 @@ export function evaluateCostPolicy(
   if (action.costTier === 'expensive' && !input.heavyApproved) {
     return { allowed: false, reason: 'heavy_not_approved' }
   }
-  const tier = action.costTier === 'expensive' ? 'heavy' : action.costTier === 'normal' ? 'medium' : 'fast'
-  const cap = input.limits[tier === 'heavy' ? 'heavyConcurrency' : tier === 'medium' ? 'mediumConcurrency' : 'fastConcurrency']
+  const tier =
+    action.costTier === 'expensive' ? 'heavy' : action.costTier === 'normal' ? 'medium' : 'fast'
+  const cap =
+    input.limits[
+      tier === 'heavy'
+        ? 'heavyConcurrency'
+        : tier === 'medium'
+          ? 'mediumConcurrency'
+          : 'fastConcurrency'
+    ]
   if (input.currentSpend[tier] >= cap) {
     return { allowed: false, reason: 'budget_exceeded' }
   }

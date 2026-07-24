@@ -98,11 +98,11 @@ function pickContainmentRoot(
   allowedFilesRoot: string | undefined,
 ): string {
   if (!allowedFilesRoot) return taskWorkspaceDir
-  const taskInAllowed = taskWorkspaceDir === allowedFilesRoot ||
-    taskWorkspaceDir.startsWith(`${allowedFilesRoot}/`)
+  const taskInAllowed =
+    taskWorkspaceDir === allowedFilesRoot || taskWorkspaceDir.startsWith(`${allowedFilesRoot}/`)
   if (taskInAllowed) return taskWorkspaceDir
-  const allowedInTask = allowedFilesRoot === taskWorkspaceDir ||
-    allowedFilesRoot.startsWith(`${taskWorkspaceDir}/`)
+  const allowedInTask =
+    allowedFilesRoot === taskWorkspaceDir || allowedFilesRoot.startsWith(`${taskWorkspaceDir}/`)
   if (allowedInTask) return allowedFilesRoot
   // Neither contains the other — fall back to allowedFilesRoot.
   return allowedFilesRoot
@@ -137,10 +137,7 @@ export function resolveArgumentTemplate(
   // `allowedFilesRoot` is the contest boundary; `taskWorkspaceDir` is the
   // per-task workspace. The longest realpath wins as the most specific
   // boundary (since the narrower root is contained in the wider one).
-  const containmentRoot = pickContainmentRoot(
-    input.taskWorkspaceDir,
-    input.allowedFilesRoot,
-  )
+  const containmentRoot = pickContainmentRoot(input.taskWorkspaceDir, input.allowedFilesRoot)
 
   const resolvedPaths = input.artifactIds.map((id, i) => {
     if (!input.resolveArtifactPath) {
@@ -178,7 +175,9 @@ export function resolveArgumentTemplate(
         const idx = Number.parseInt(expr.slice('artifact:'.length), 10)
         const p = resolvedPaths[idx]
         if (p === undefined) {
-          throw new Error(`placeholder ${expr} out of range (have ${resolvedPaths.length} artifacts)`)
+          throw new Error(
+            `placeholder ${expr} out of range (have ${resolvedPaths.length} artifacts)`,
+          )
         }
         rebuilt += p
       } else if (expr.startsWith('options.')) {

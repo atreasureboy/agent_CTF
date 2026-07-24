@@ -27,10 +27,7 @@ import { FindingStore } from '../findings.js'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { deriveSubtaskContext } from './taskExecutionContext.js'
-import {
-  createLinkedAbortController,
-  type LinkedAbortController,
-} from './linkedAbortController.js'
+import { createLinkedAbortController, type LinkedAbortController } from './linkedAbortController.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
 import type { HandoffRecord } from './taskState.js'
 
@@ -138,9 +135,9 @@ export class SpecialistHarnessFactory {
     }
 
     // Phase 1.7 §十二 — Specialist runs against an independent
-// FindingStore / ArtifactStore rooted at the parent's sessionDir under
-// `agents/<subtaskId>/`. The parent keeps the original stores for
-// projection at run end; lineage is reconstructed by the Projector.
+    // FindingStore / ArtifactStore rooted at the parent's sessionDir under
+    // `agents/<subtaskId>/`. The parent keeps the original stores for
+    // projection at run end; lineage is reconstructed by the Projector.
     // Phase 1.7 audit round 1 — the specialist's independent stores
     // were rooted at linkedContext.workspaceDir (defaults to cwd),
     // which meant specialist writes could land outside the parent's

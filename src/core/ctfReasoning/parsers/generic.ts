@@ -42,11 +42,14 @@ export const genericParser: ResultParser = {
     })
 
     if (input.content) {
-      const preview = input.content.length > MAX_PREVIEW_BYTES
-        ? input.content.slice(0, MAX_PREVIEW_BYTES)
-        : input.content
+      const preview =
+        input.content.length > MAX_PREVIEW_BYTES
+          ? input.content.slice(0, MAX_PREVIEW_BYTES)
+          : input.content
       if (input.content.length > MAX_PREVIEW_BYTES) {
-        warnings.push(`generic: preview truncated from ${input.content.length} to ${MAX_PREVIEW_BYTES} bytes`)
+        warnings.push(
+          `generic: preview truncated from ${input.content.length} to ${MAX_PREVIEW_BYTES} bytes`,
+        )
       }
       // §round-3 audit fix — redact secrets before exposing the preview.
       const safePreview = redactSecrets(preview)
@@ -68,8 +71,11 @@ export const genericParser: ResultParser = {
         polarity: 'neutral',
         source: {
           producer: { type: 'parser', id: 'generic' },
-          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-          confidence: 0.5, createdAt: Date.now(),
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.5,
+          createdAt: Date.now(),
         },
       })
     }

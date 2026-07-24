@@ -23,11 +23,20 @@ const SIG_TO_KIND: Array<{ re: RegExp; kind: string; label: string }> = [
 export const binwalkParser: ResultParser = {
   id: 'binwalk',
   supports(input) {
-    return input.toolId === 'binwalk' || input.manifestId === 'binwalk' || input.stepId === 'binwalk'
+    return (
+      input.toolId === 'binwalk' || input.manifestId === 'binwalk' || input.stepId === 'binwalk'
+    )
   },
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
-      return { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: ['binwalk: no content'], rawArtifactIds: input.artifactIds }
+      return {
+        observations: [],
+        evidence: [],
+        suggestedActions: [],
+        flagCandidateDrafts: [],
+        warnings: ['binwalk: no content'],
+        rawArtifactIds: input.artifactIds,
+      }
     }
     const rows = input.content.split('\n').filter(Boolean)
     const re = /^(\d+)\s+(0x[0-9a-fA-F]+)\s+(.+)$/
@@ -49,15 +58,21 @@ export const binwalkParser: ResultParser = {
         attributes: { offset, signature: sig, kind: kind?.kind ?? 'unknown' },
         confidence: 0.8,
       })
-      if (kind && (kind.kind === 'zip' || kind.kind === 'gzip' || kind.kind === '7z' || kind.kind === 'rar')) {
+      if (
+        kind &&
+        (kind.kind === 'zip' || kind.kind === 'gzip' || kind.kind === '7z' || kind.kind === 'rar')
+      ) {
         evidence.push({
           kind: 'embedded_archive',
           claim: `${kind.label} embedded at ${offset}`,
           polarity: 'supports',
           source: {
             producer: { type: 'parser', id: 'binwalk' },
-            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-            confidence: 0.85, createdAt: Date.now(),
+            observationIds: [],
+            artifactIds: input.artifactIds,
+            attemptIds: [],
+            confidence: 0.85,
+            createdAt: Date.now(),
           },
         })
         actions.push({
@@ -77,11 +92,21 @@ export const binwalkParser: ResultParser = {
         polarity: 'neutral',
         source: {
           producer: { type: 'parser', id: 'binwalk' },
-          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-          confidence: 0.6, createdAt: Date.now(),
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.6,
+          createdAt: Date.now(),
         },
       })
     }
-    return { observations, evidence, suggestedActions: actions, flagCandidateDrafts: [], warnings: [], rawArtifactIds: input.artifactIds }
+    return {
+      observations,
+      evidence,
+      suggestedActions: actions,
+      flagCandidateDrafts: [],
+      warnings: [],
+      rawArtifactIds: input.artifactIds,
+    }
   },
 }

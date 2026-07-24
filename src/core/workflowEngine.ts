@@ -30,10 +30,7 @@ export interface WorkflowRunner {
     ctx: RunContext,
   ): Promise<{ content: string; isError: boolean; artifactIds: string[] }>
   /** Emit a finding through the agent's output channel. */
-  emitFinding(
-    step: Extract<WorkflowStep, { kind: 'emit_finding' }>,
-    ctx: RunContext,
-  ): Promise<void>
+  emitFinding(step: Extract<WorkflowStep, { kind: 'emit_finding' }>, ctx: RunContext): Promise<void>
 }
 
 export interface RunContext {
@@ -102,7 +99,7 @@ export class WorkflowEngine {
               })
               if (policy === 'abort') return 'aborted'
               return 'ok'
-            })
+            }),
         ),
       )
       // count findings
@@ -118,7 +115,15 @@ export class WorkflowEngine {
         }
         const start = clock()
         try {
-          const nested = await this.dispatch(step, ctx, policy, outerSignal, outcomes, artifactIds, clock)
+          const nested = await this.dispatch(
+            step,
+            ctx,
+            policy,
+            outerSignal,
+            outcomes,
+            artifactIds,
+            clock,
+          )
           if (nested === 'cancelled') {
             cancelledEarly = true
             break
@@ -223,10 +228,16 @@ export class WorkflowEngine {
 
     if (step.kind === 'parallel') {
       const results = await Promise.allSettled(
-        step.steps.map((s: WorkflowStep) => this.dispatch(s, ctx, policy, outerSignal, outcomes, artifactIds, clock)),
+        step.steps.map((s: WorkflowStep) =>
+          this.dispatch(s, ctx, policy, outerSignal, outcomes, artifactIds, clock),
+        ),
       )
       if (step.join === 'all') {
-        if (results.some((r) => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === 'aborted'))) {
+        if (
+          results.some(
+            (r) => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === 'aborted'),
+          )
+        ) {
           return 'aborted'
         }
       }

@@ -87,8 +87,7 @@ export function deriveSubtaskContext(
     taskId: opts.subtaskId,
     workspaceDir: opts.workspaceDir ?? parent.workspaceDir,
     sessionDir: opts.sessionDir ?? parent.sessionDir,
-    artifactDir:
-      opts.artifactDir ?? joinUnder(parent.artifactDir, opts.subtaskId),
+    artifactDir: opts.artifactDir ?? joinUnder(parent.artifactDir, opts.subtaskId),
     inputDir: parent.inputDir,
     eventsFile: joinUnder(parent.sessionDir, 'events.ndjson'),
     profileId: opts.profileId ?? parent.profileId,
@@ -120,19 +119,17 @@ function joinUnder(parent: string, child: string): string {
  * anything broader than `parent` (more allowedHosts, allowPublicNetwork=true
  * when parent=false, etc.) we throw — Specialists must not widen authority.
  */
-export function narrowContestScope(
-  parent: ContestScope,
-  child: ContestScope,
-): ContestScope {
+export function narrowContestScope(parent: ContestScope, child: ContestScope): ContestScope {
   if (parent.allowPublicNetwork && !child.allowPublicNetwork) {
     // Public → restricted is a narrowing, OK.
   } else if (!parent.allowPublicNetwork && child.allowPublicNetwork) {
-    throw new ScopeNarrowingError(
-      'Derived contestScope widens allowPublicNetwork=true; refused.',
-    )
+    throw new ScopeNarrowingError('Derived contestScope widens allowPublicNetwork=true; refused.')
   }
 
-  const narrowList = <T>(parentList: T[] | undefined, childList: T[] | undefined): T[] | undefined => {
+  const narrowList = <T>(
+    parentList: T[] | undefined,
+    childList: T[] | undefined,
+  ): T[] | undefined => {
     if (childList === undefined) return parentList
     const parentSet = new Set(parentList ?? [])
     for (const v of childList) {

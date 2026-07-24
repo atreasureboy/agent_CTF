@@ -31,7 +31,11 @@ import type {
   EvidenceDraft,
   EvidenceSourceDraft,
 } from './evidence.js'
-import { combineIndependentConfidences, deriveClaimFamilyFromKind, normalizeClaim } from './evidence.js'
+import {
+  combineIndependentConfidences,
+  deriveClaimFamilyFromKind,
+  normalizeClaim,
+} from './evidence.js'
 import type { SuggestedAction, CostTier } from './suggestedAction.js'
 import type { FlagCandidateDraft } from './flagCandidate.js'
 import type { MaterializedResult } from './parserRegistry.js'
@@ -53,7 +57,7 @@ function fingerprintEvidence(e: EvidenceDraft | Evidence): string {
   const claim = ('claim' in e ? e.claim : '') ?? ''
   const normalized = normalizeClaim(claim)
   const taskId = (e as { taskId?: string }).taskId ?? ''
-  const polarity = ('polarity' in e ? (e.polarity ?? 'supports') : 'supports')
+  const polarity = 'polarity' in e ? (e.polarity ?? 'supports') : 'supports'
   return `${taskId}|${e.kind}|${subjectKey}|${normalized}|${polarity}`
 }
 
@@ -87,34 +91,52 @@ function fingerprintAction(a: SuggestedAction): string {
 
 function actionTargetId(a: SuggestedAction): string {
   switch (a.type) {
-    case 'run_workflow': return a.workflowId
-    case 'run_oneshot': return a.manifestId
-    case 'call_tool': return a.toolId
-    case 'request_handoff': return a.capability
-    case 'verify_flag': return a.candidateId
-    case 'stop': return 'stop'
+    case 'run_workflow':
+      return a.workflowId
+    case 'run_oneshot':
+      return a.manifestId
+    case 'call_tool':
+      return a.toolId
+    case 'request_handoff':
+      return a.capability
+    case 'verify_flag':
+      return a.candidateId
+    case 'stop':
+      return 'stop'
   }
 }
 
 function actionInput(a: SuggestedAction): unknown {
   switch (a.type) {
-    case 'run_workflow': return { inputs: a.inputs }
-    case 'run_oneshot': return { options: a.options ?? {}, inputArtifactIds: a.inputArtifactIds.slice().sort() }
-    case 'call_tool': return { input: a.input }
-    case 'request_handoff': return { capability: a.capability, objective: a.objective }
-    case 'verify_flag': return { candidateId: a.candidateId }
-    case 'stop': return {}
+    case 'run_workflow':
+      return { inputs: a.inputs }
+    case 'run_oneshot':
+      return { options: a.options ?? {}, inputArtifactIds: a.inputArtifactIds.slice().sort() }
+    case 'call_tool':
+      return { input: a.input }
+    case 'request_handoff':
+      return { capability: a.capability, objective: a.objective }
+    case 'verify_flag':
+      return { candidateId: a.candidateId }
+    case 'stop':
+      return {}
   }
 }
 
 function actionArtifactIds(a: SuggestedAction): string[] {
   switch (a.type) {
-    case 'run_workflow': return []
-    case 'run_oneshot': return a.inputArtifactIds
-    case 'call_tool': return []
-    case 'request_handoff': return a.artifactIds
-    case 'verify_flag': return []
-    case 'stop': return []
+    case 'run_workflow':
+      return []
+    case 'run_oneshot':
+      return a.inputArtifactIds
+    case 'call_tool':
+      return []
+    case 'request_handoff':
+      return a.artifactIds
+    case 'verify_flag':
+      return []
+    case 'stop':
+      return []
   }
 }
 
@@ -189,14 +211,29 @@ export function createResultMerger(): ResultMerger {
               ...existing,
               claimFamily: existing.claimFamily ?? claimFamilyFor(e),
               source: {
-                producer: existing.source.producer.id + ',' + e.source.producer.id === existing.source.producer.id
-                  ? existing.source.producer
-                  : { type: existing.source.producer.type, id: 'merged:' + existing.source.producer.id + '+' + e.source.producer.id },
-                observationIds: dedupe([...(existing.source.observationIds ?? []), ...(e.source.observationIds ?? [])]),
-                artifactIds: dedupe([...(existing.source.artifactIds ?? []), ...(e.source.artifactIds ?? [])]),
-                attemptIds: dedupe([...(existing.source.attemptIds ?? []), ...(e.source.attemptIds ?? [])]),
+                producer:
+                  existing.source.producer.id + ',' + e.source.producer.id ===
+                  existing.source.producer.id
+                    ? existing.source.producer
+                    : {
+                        type: existing.source.producer.type,
+                        id: 'merged:' + existing.source.producer.id + '+' + e.source.producer.id,
+                      },
+                observationIds: dedupe([
+                  ...(existing.source.observationIds ?? []),
+                  ...(e.source.observationIds ?? []),
+                ]),
+                artifactIds: dedupe([
+                  ...(existing.source.artifactIds ?? []),
+                  ...(e.source.artifactIds ?? []),
+                ]),
+                attemptIds: dedupe([
+                  ...(existing.source.attemptIds ?? []),
+                  ...(e.source.attemptIds ?? []),
+                ]),
                 confidence: combined,
-                createdAt: Math.max(existing.source.createdAt || 0, e.source.createdAt || 0) || Date.now(),
+                createdAt:
+                  Math.max(existing.source.createdAt || 0, e.source.createdAt || 0) || Date.now(),
               },
             })
           }

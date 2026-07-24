@@ -18,7 +18,10 @@ export const LIST_ONE_SHOTS_DEFINITION: ToolDefinition = {
       type: 'object',
       properties: {
         category: { type: 'string', description: 'optional filter' },
-        profileId: { type: 'string', description: 'optional filter — only show manifests allowed for this profile' },
+        profileId: {
+          type: 'string',
+          description: 'optional filter — only show manifests allowed for this profile',
+        },
         enabledOnly: { type: 'boolean', description: 'hide disabled manifests' },
       },
     },

@@ -41,10 +41,10 @@ export interface TaskWorkspacePaths {
 }
 
 export interface TaskWorkspaceOptions {
-  sessionsRoot: string  // usually <project>/sessions
+  sessionsRoot: string // usually <project>/sessions
   contestId: string
   taskId: string
-  workspaceSubdir?: string  // default 'workspace'
+  workspaceSubdir?: string // default 'workspace'
   /** Read-only root for inputs (default: input/). */
   inputSubdir?: string
 }
@@ -69,7 +69,14 @@ export class TaskWorkspace {
       jobsDir: join(root, 'jobs'),
       eventsFile: join(root, 'events.ndjson'),
     }
-    for (const dir of [root, paths.inputDir, paths.workspaceDir, paths.artifactsDir, paths.agentsDir, paths.jobsDir]) {
+    for (const dir of [
+      root,
+      paths.inputDir,
+      paths.workspaceDir,
+      paths.artifactsDir,
+      paths.agentsDir,
+      paths.jobsDir,
+    ]) {
       mkdirSync(dir, { recursive: true })
     }
     this.paths = paths
@@ -140,11 +147,13 @@ export function makeTaskId(prefix: string = 'task'): string {
 
 /** Generate a contestId from a project path or user input. */
 export function makeContestId(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40) || 'contest'
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 40) || 'contest'
+  )
 }
 
 export const _internals = { dirname }

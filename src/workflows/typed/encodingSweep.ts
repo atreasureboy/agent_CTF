@@ -55,7 +55,13 @@ export const ENCODING_SWEEP_TYPED: TypedWorkflowDefinition = {
   inputs: ['TEXT_INPUT'],
   stopConditions: [flagValidated, noNewOutputs, maxDepthReached],
   steps: [
-    { id: 'charset-analysis', kind: 'tool', toolId: 'encoding-detect', dependsOn: [], emit_finding: false },
+    {
+      id: 'charset-analysis',
+      kind: 'tool',
+      toolId: 'encoding-detect',
+      dependsOn: [],
+      emit_finding: false,
+    },
     {
       id: 'decode-tree',
       kind: 'tool',
@@ -70,7 +76,13 @@ export const ENCODING_SWEEP_TYPED: TypedWorkflowDefinition = {
         maxOutputBytesPerNode: 1048576,
       },
     },
-    { id: 'candidate-extraction', kind: 'tool', toolId: 'extract-candidates', dependsOn: ['decode-tree'], emit_finding: false },
+    {
+      id: 'candidate-extraction',
+      kind: 'tool',
+      toolId: 'extract-candidates',
+      dependsOn: ['decode-tree'],
+      emit_finding: false,
+    },
     {
       id: 'emit-summary',
       kind: 'emit_finding',

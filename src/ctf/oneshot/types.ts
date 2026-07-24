@@ -134,11 +134,7 @@ export interface OneShotJobProjectionEvent {
 
 /** Doctor output states — keep wording identical to the goal §十四 example. */
 export type DoctorStatus =
-  | 'READY'
-  | 'DEGRADED'
-  | 'DISABLED_HEAVY'
-  | 'DISABLED_SCOPE_REQUIRED'
-  | 'UNAVAILABLE'
+  'READY' | 'DEGRADED' | 'DISABLED_HEAVY' | 'DISABLED_SCOPE_REQUIRED' | 'UNAVAILABLE'
 
 export interface DoctorRow {
   category: string
@@ -174,6 +170,4 @@ export const DEFAULT_BUDGET_LIMITS: BudgetLimits = {
 }
 
 /** All values exported together for ergonomic consumption. */
-export type {
-  OneShotRunnerType as OneShotRunnerTypeRe,
-}
+export type { OneShotRunnerType as OneShotRunnerTypeRe }

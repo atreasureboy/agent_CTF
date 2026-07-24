@@ -22,25 +22,27 @@ export interface WebFetchInput {
  * Removes scripts/styles/tags, collapses whitespace.
  */
 function htmlToText(html: string): string {
-  return html
-    // Remove script and style blocks entirely
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    // Convert common block elements to newlines
-    .replace(/<\/?(p|div|section|article|header|footer|h[1-6]|li|tr|br)[^>]*>/gi, '\n')
-    // Remove all remaining tags
-    .replace(/<[^>]+>/g, '')
-    // Decode common HTML entities
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    // Collapse whitespace
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return (
+    html
+      // Remove script and style blocks entirely
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      // Convert common block elements to newlines
+      .replace(/<\/?(p|div|section|article|header|footer|h[1-6]|li|tr|br)[^>]*>/gi, '\n')
+      // Remove all remaining tags
+      .replace(/<[^>]+>/g, '')
+      // Decode common HTML entities
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      // Collapse whitespace
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 }
 
 export class WebFetchTool implements Tool {
@@ -108,9 +110,15 @@ Large pages are truncated — use start_index to paginate.`,
     if (!initialHost) {
       return { content: 'Error: URL is malformed', isError: true }
     }
-    const ctfCtx = (context as unknown as {
-      __ctf?: { contestScope?: { assertNetwork?: (h: string, p?: number) => { allowed: boolean; reason?: string } } }
-    }).__ctf
+    const ctfCtx = (
+      context as unknown as {
+        __ctf?: {
+          contestScope?: {
+            assertNetwork?: (h: string, p?: number) => { allowed: boolean; reason?: string }
+          }
+        }
+      }
+    ).__ctf
     const assertNet = ctfCtx?.contestScope?.assertNetwork?.bind(ctfCtx.contestScope)
     if (assertNet) {
       const v = assertNet(initialHost)
@@ -122,7 +130,8 @@ Large pages are truncated — use start_index to paginate.`,
       }
     }
 
-    const maxLen = typeof max_length === 'number' ? Math.min(max_length, MAX_CONTENT_LENGTH) : MAX_CONTENT_LENGTH
+    const maxLen =
+      typeof max_length === 'number' ? Math.min(max_length, MAX_CONTENT_LENGTH) : MAX_CONTENT_LENGTH
     const startIdx = typeof start_index === 'number' ? start_index : 0
 
     try {
@@ -138,7 +147,10 @@ Large pages are truncated — use start_index to paginate.`,
         }
         context.signal.addEventListener(
           'abort',
-          () => { clearTimeout(timer); fetchController.abort('user_cancelled') },
+          () => {
+            clearTimeout(timer)
+            fetchController.abort('user_cancelled')
+          },
           { once: true },
         )
       }
@@ -147,7 +159,7 @@ Large pages are truncated — use start_index to paginate.`,
         signal: fetchController.signal,
         headers: {
           'User-Agent': 'ovogogogo/0.1.0 (autonomous code execution engine)',
-          'Accept': 'text/html,application/xhtml+xml,text/plain,*/*',
+          Accept: 'text/html,application/xhtml+xml,text/plain,*/*',
         },
         // `manual` so we can re-check the host on each hop against the
         // CTF contest scope (defense against SSRF through 302 → internal
@@ -207,9 +219,10 @@ Large pages are truncated — use start_index to paginate.`,
       const error = err as Error
       if (error.name === 'AbortError') {
         const reason = (error as DOMException).cause ?? 'timeout'
-        const msg = reason === 'user_cancelled'
-          ? 'Request cancelled.'
-          : `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`
+        const msg =
+          reason === 'user_cancelled'
+            ? 'Request cancelled.'
+            : `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`
         return { content: msg, isError: true }
       }
       return { content: `Fetch error: ${error.message}`, isError: true }

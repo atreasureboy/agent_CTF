@@ -56,9 +56,7 @@ export function createHypothesisUpdater(): HypothesisUpdater {
 
       const proposed: CTFHypothesis[] = []
       const updates: HypothesisUpdate[] = []
-      const seenStatements = new Set(
-        state.hypotheses.map((h) => `${h.category}|${h.statement}`),
-      )
+      const seenStatements = new Set(state.hypotheses.map((h) => `${h.category}|${h.statement}`))
 
       for (const e of newEvidence) {
         const rule = ruleFor(e, obs)
@@ -77,15 +75,9 @@ export function createHypothesisUpdater(): HypothesisUpdater {
                 : clamp01(existing.confidence - e.confidence * 0.15),
             }
             if (support) {
-              update.supportingEvidenceIds = dedupe([
-                ...existing.supportingEvidenceIds,
-                e.id,
-              ])
+              update.supportingEvidenceIds = dedupe([...existing.supportingEvidenceIds, e.id])
             } else {
-              update.contradictingEvidenceIds = dedupe([
-                ...existing.contradictingEvidenceIds,
-                e.id,
-              ])
+              update.contradictingEvidenceIds = dedupe([...existing.contradictingEvidenceIds, e.id])
             }
             updates.push(update)
           }
@@ -138,7 +130,10 @@ interface Rule {
   proposedStatus: CTFHypothesis['status']
 }
 
-function ruleFor(e: Evidence, obs: ReadonlyArray<{ summary: string; attributes: Record<string, unknown> }>): Rule | undefined {
+function ruleFor(
+  e: Evidence,
+  obs: ReadonlyArray<{ summary: string; attributes: Record<string, unknown> }>,
+): Rule | undefined {
   const claim = (e.claim ?? '').toLowerCase()
   switch (e.kind) {
     case 'file_signature':

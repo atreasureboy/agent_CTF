@@ -65,21 +65,47 @@ interface PolicyRule {
   severity: PolicySeverity
   injectInResult: boolean
   /** Match rule against the call site. */
-  match(args: { toolId: string; input: Record<string, unknown>; profile: CapabilityProfile }): boolean
+  match(args: {
+    toolId: string
+    input: Record<string, unknown>
+    profile: CapabilityProfile
+  }): boolean
   /** Render advice. */
   advice(): string
   /** Optional: the canonical workflow id this rule wants the agent to run. */
   workflowId?(): string
 }
 
-const RULE_PORT_SCAN_KEYWORDS = ['full port scan', 'service enumeration', 'port scan', 'all ports', 'complete scan', 'service detection']
+const RULE_PORT_SCAN_KEYWORDS = [
+  'full port scan',
+  'service enumeration',
+  'port scan',
+  'all ports',
+  'complete scan',
+  'service detection',
+]
 const RULE_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp']
-const RULE_BINARY_EXTS = ['.elf', '.bin', '.so', '.out', '.exe', '.dll', '.mach-o', '.class', '.jar', '.apk']
+const RULE_BINARY_EXTS = [
+  '.elf',
+  '.bin',
+  '.so',
+  '.out',
+  '.exe',
+  '.dll',
+  '.mach-o',
+  '.class',
+  '.jar',
+  '.apk',
+]
 const RULE_PCAP_EXTS = ['.pcap', '.pcapng', '.cap']
 
 function fpStr(value: unknown): string {
   if (typeof value === 'string') return value
-  try { return JSON.stringify(value ?? '') } catch { return String(value) }
+  try {
+    return JSON.stringify(value ?? '')
+  } catch {
+    return String(value)
+  }
 }
 
 function combinedInputFingerprint(input: Record<string, unknown>): string {
@@ -164,8 +190,10 @@ const RULES: PolicyRule[] = [
       if (toolId !== 'Bash') return false
       const fp = combinedInputFingerprint(input)
       // Trigger when the agent tries to decode / brute-force an unknown blob.
-      return /\b(base64|hex|sha|md5|md4|sha1|entropy|strings|file)\s+/.test(fp) &&
+      return (
+        /\b(base64|hex|sha|md5|md4|sha1|entropy|strings|file)\s+/.test(fp) &&
         /unknown|mystery|raw|blob|binary|file_?input/.test(fp)
+      )
     },
     advice() {
       return (
@@ -266,7 +294,9 @@ export class ToolFirstPolicy {
           if (wid) verdict.suggestedWorkflowId = wid
           return verdict
         }
-      } catch { /* bad rule shouldn't break execution */ }
+      } catch {
+        /* bad rule shouldn't break execution */
+      }
     }
     return { advice: '', severity: 'info', rule: '__none__', injectInResult: false }
   }
@@ -314,7 +344,8 @@ export function evaluatePolicyGate(args: PolicyGateInput): PolicyGateResult {
 
   const suggested = verdict.suggestedWorkflowId
   const failedFor = args.failedWorkflowIds.includes(suggested)
-  const hasOverride = typeof args.overrideReason === 'string' && args.overrideReason.trim().length > 0
+  const hasOverride =
+    typeof args.overrideReason === 'string' && args.overrideReason.trim().length > 0
 
   if (args.mode === 'advisory') return { allowed: true }
 

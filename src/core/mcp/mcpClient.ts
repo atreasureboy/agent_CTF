@@ -33,7 +33,12 @@ export interface McpServerConfig {
 }
 
 export interface McpCallResult {
-  content: Array<{ type: 'text' | 'image' | 'resource'; text?: string; data?: string; mimeType?: string }>
+  content: Array<{
+    type: 'text' | 'image' | 'resource'
+    text?: string
+    data?: string
+    mimeType?: string
+  }>
   isError?: boolean
 }
 
@@ -47,7 +52,11 @@ export interface McpClient {
   start(): Promise<void>
   stop(): Promise<void>
   listTools(): Promise<McpToolDescriptor[]>
-  callTool(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<McpCallResult>
+  callTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<McpCallResult>
 }
 
 export function createMcpClient(config: McpServerConfig): McpClient {
@@ -76,7 +85,9 @@ export function createMcpClient(config: McpServerConfig): McpClient {
       }
       const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
         // Reject any pending requests.
-        const reason = new Error(`mcp server ${config.name} exited (code=${code}, signal=${signal})`)
+        const reason = new Error(
+          `mcp server ${config.name} exited (code=${code}, signal=${signal})`,
+        )
         for (const p of pending.values()) p.reject(reason)
         pending.clear()
         started.value = false
@@ -153,7 +164,9 @@ export function createMcpClient(config: McpServerConfig): McpClient {
         resolve: () => {
           // Send `initialized` notification then resolve.
           if (child) {
-            child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
+            child.stdin.write(
+              JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n',
+            )
           }
           started.value = true
           resolve()
@@ -208,7 +221,11 @@ export function createMcpClient(config: McpServerConfig): McpClient {
   }
 
   const handleMessage = (body: string): void => {
-    let msg: { id?: number; result?: unknown; error?: { code?: number; message: string; data?: unknown } }
+    let msg: {
+      id?: number
+      result?: unknown
+      error?: { code?: number; message: string; data?: unknown }
+    }
     try {
       msg = JSON.parse(body) as typeof msg
     } catch {
@@ -222,7 +239,9 @@ export function createMcpClient(config: McpServerConfig): McpClient {
     if (!handler) return
     pending.delete(msg.id)
     if (msg.error) {
-      handler.reject(new Error(`mcp ${config.name} error ${msg.error.code ?? '?'}: ${msg.error.message}`))
+      handler.reject(
+        new Error(`mcp ${config.name} error ${msg.error.code ?? '?'}: ${msg.error.message}`),
+      )
     } else {
       handler.resolve(msg.result)
     }
@@ -247,7 +266,11 @@ export function createMcpClient(config: McpServerConfig): McpClient {
         // Best-effort cancel notification.
         try {
           child!.stdin.write(
-            JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: 'client aborted' } }) + '\n',
+            JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'notifications/cancelled',
+              params: { requestId: id, reason: 'client aborted' },
+            }) + '\n',
           )
         } catch {
           /* socket closed */

@@ -47,7 +47,10 @@ export function createOpenAiCompatibleProvider(cfg: OpenAiCompatibleConfig): Llm
   const timeoutMs = cfg.timeoutMs ?? 60_000
   return {
     id: cfg.id,
-    async generateToolUse(prompt: string, toolDefs: ToolDefinition[]): Promise<ToolUseRequest | null> {
+    async generateToolUse(
+      prompt: string,
+      toolDefs: ToolDefinition[],
+    ): Promise<ToolUseRequest | null> {
       const actionTool = buildActionTool(toolDefs)
       const body = {
         model,
@@ -65,7 +68,10 @@ export function createOpenAiCompatibleProvider(cfg: OpenAiCompatibleConfig): Llm
       }
       if (apiKey) headers['authorization'] = `Bearer ${apiKey}`
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(new Error('openai_compat_timeout')), timeoutMs)
+      const timer = setTimeout(
+        () => controller.abort(new Error('openai_compat_timeout')),
+        timeoutMs,
+      )
       let res: Response
       try {
         res = await fetchFn(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -79,7 +85,9 @@ export function createOpenAiCompatibleProvider(cfg: OpenAiCompatibleConfig): Llm
       }
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(`openai_compat: HTTP ${res.status} ${res.statusText} — ${text.slice(0, 200)}`)
+        throw new Error(
+          `openai_compat: HTTP ${res.status} ${res.statusText} — ${text.slice(0, 200)}`,
+        )
       }
       const json = (await res.json()) as OpenAiResponse
       const choice = json.choices?.[0]

@@ -26,7 +26,10 @@ import { existsSync, readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import OpenAI from 'openai'
 import type { Renderer } from '../src/ui/renderer.js'
-import type { createCTFTaskRuntime, CTFTaskRuntime } from '../src/core/ctfRuntime/createCTFTaskRuntime.js'
+import type {
+  createCTFTaskRuntime,
+  CTFTaskRuntime,
+} from '../src/core/ctfRuntime/createCTFTaskRuntime.js'
 
 // ── .env auto-loader (mirrors the main CLI's)
 {
@@ -45,7 +48,9 @@ import type { createCTFTaskRuntime, CTFTaskRuntime } from '../src/core/ctfRuntim
         const val = t.slice(eq + 1).trim()
         if (!process.env[key]) process.env[key] = val
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     break
   }
 }
@@ -201,7 +206,20 @@ function parseArgs(argv: string[]): CtfArgs {
     positional.push(arg)
   }
   const task = positional.length > 0 ? positional.join(' ') : undefined
-  return { profile, contest, taskId, allowPublicNetwork, allowHosts, runWorkflow, input, text, task, help, version, cwd }
+  return {
+    profile,
+    contest,
+    taskId,
+    allowPublicNetwork,
+    allowHosts,
+    runWorkflow,
+    input,
+    text,
+    task,
+    help,
+    version,
+    cwd,
+  }
 }
 
 /** Dependency seams — every IO is injectable so tests can swap them out. */
@@ -283,9 +301,7 @@ ONEShot COMMANDS (six_goal §十四)
   // Lazy imports — keep CLI startup snappy.
   const { ensureProfilesRegistered } = await import('../src/capabilityProfiles/index.js')
   const { resolveContestConfig } = await import('../src/core/contestConfig.js')
-  const { createCTFTaskRuntime } = await import(
-    '../src/core/ctfRuntime/createCTFTaskRuntime.js'
-  )
+  const { createCTFTaskRuntime } = await import('../src/core/ctfRuntime/createCTFTaskRuntime.js')
   ensureProfilesRegistered()
 
   const { scope: mergedScope, sourcePath: contestCfgPath } = resolveContestConfig({
@@ -340,7 +356,10 @@ ONEShot COMMANDS (six_goal §十四)
       const reg = runtime.mainHarness.workflowRegistry
       const wf = reg.get(args.runWorkflow)
       if (!wf) {
-        const known = reg.list().map((w) => w.id).join(', ')
+        const known = reg
+          .list()
+          .map((w) => w.id)
+          .join(', ')
         stderr.write(`${RED}Unknown workflow: ${args.runWorkflow}${RESET}\n  Known: ${known}\n`)
         return 1
       }
@@ -350,11 +369,15 @@ ONEShot COMMANDS (six_goal §十四)
       stdout.write(`running workflow: ${BOLD}${args.runWorkflow}${RESET}\n`)
       const result = await runtime.orchestrator.runWorkflow(args.runWorkflow, inputs)
       stdout.write(`\n${GREEN}workflow status:${RESET} ${result.status}\n`)
-      stdout.write(`  steps: ${result.stepOutcomes.length}, artifacts: ${result.emittedArtifactCount}, findings: ${result.emittedFindingCount}\n`)
+      stdout.write(
+        `  steps: ${result.stepOutcomes.length}, artifacts: ${result.emittedArtifactCount}, findings: ${result.emittedFindingCount}\n`,
+      )
       if (result.stepOutcomes.length > 0) {
         stdout.write(`  per-step outcomes:\n`)
         for (const s of result.stepOutcomes) {
-          stdout.write(`    - [${s.status}] ${s.stepId}${s.error ? `: ${s.error.slice(0, 80)}` : ''}\n`)
+          stdout.write(
+            `    - [${s.status}] ${s.stepId}${s.error ? `: ${s.error.slice(0, 80)}` : ''}\n`,
+          )
         }
       }
       // Audit rounds 6-10 — only `success` is a clean exit. `cancelled`,
@@ -444,15 +467,17 @@ function installSignalHandlers(
   // wires the SUPPLIED callback (not its own closure), so custom
   // registerSignals callbacks work as expected and the dedup state
   // is shared.
-  const register = deps.registerSignals ?? ((cb: (sig: string) => void) => {
-    const handler = (sig: NodeJS.Signals): void => cb(sig)
-    process.on('SIGINT', handler)
-    process.on('SIGTERM', handler)
-    return () => {
-      process.off('SIGINT', handler)
-      process.off('SIGTERM', handler)
-    }
-  })
+  const register =
+    deps.registerSignals ??
+    ((cb: (sig: string) => void) => {
+      const handler = (sig: NodeJS.Signals): void => cb(sig)
+      process.on('SIGINT', handler)
+      process.on('SIGTERM', handler)
+      return () => {
+        process.off('SIGINT', handler)
+        process.off('SIGTERM', handler)
+      }
+    })
   const unregister = register((sig) => {
     void shutdown(sig as NodeJS.Signals)
   })

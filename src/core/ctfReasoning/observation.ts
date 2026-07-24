@@ -36,12 +36,7 @@ export type ObservationKind =
   | 'generic'
 
 export type ObservationSourceType =
-  | 'tool'
-  | 'workflow'
-  | 'oneshot'
-  | 'agent'
-  | 'specialist'
-  | 'manual'
+  'tool' | 'workflow' | 'oneshot' | 'agent' | 'specialist' | 'manual'
 
 export interface ObservationSource {
   type: ObservationSourceType
@@ -94,9 +89,10 @@ export function createObservation(taskId: string, draft: ObservationDraft): Obse
     throw new Error('createObservation: summary is required')
   }
   const id = `obs_${randomBytes(6).toString('hex')}`
-  const rawExcerpt = draft.rawExcerpt && draft.rawExcerpt.length > MAX_RAW_EXCERPT
-    ? draft.rawExcerpt.slice(0, MAX_RAW_EXCERPT)
-    : draft.rawExcerpt
+  const rawExcerpt =
+    draft.rawExcerpt && draft.rawExcerpt.length > MAX_RAW_EXCERPT
+      ? draft.rawExcerpt.slice(0, MAX_RAW_EXCERPT)
+      : draft.rawExcerpt
   return {
     id,
     taskId,
@@ -114,8 +110,13 @@ export function createObservation(taskId: string, draft: ObservationDraft): Obse
 /** Stable fingerprint for Observation de-duplication. Same Kind + same
  *  source identity + same summary + same attributes → identical
  *  fingerprint. */
-export function observationFingerprint(o: Pick<Observation, 'kind' | 'source' | 'summary' | 'attributes'>): string {
+export function observationFingerprint(
+  o: Pick<Observation, 'kind' | 'source' | 'summary' | 'attributes'>,
+): string {
   const sourceId = `${o.source.type}:${o.source.toolId ?? ''}:${o.source.workflowId ?? ''}:${o.source.stepId ?? ''}:${o.source.oneShotRunId ?? ''}:${o.source.artifactId ?? ''}`
-  const attrKey = Object.keys(o.attributes).sort().map((k) => `${k}=${JSON.stringify(o.attributes[k])}`).join('|')
+  const attrKey = Object.keys(o.attributes)
+    .sort()
+    .map((k) => `${k}=${JSON.stringify(o.attributes[k])}`)
+    .join('|')
   return `${o.kind}|${sourceId}|${o.summary}|${attrKey}`
 }

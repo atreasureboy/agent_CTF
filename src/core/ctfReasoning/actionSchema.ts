@@ -147,11 +147,14 @@ export function validateAction(raw: unknown): ValidationResult<StructuredAction>
 
 function validateRunWorkflow(raw: Record<string, unknown>): ValidationResult<RunWorkflowAction> {
   const errors: ValidationError[] = []
-  if (!isNonEmptyString(raw['workflowId'])) errors.push({ path: '$.workflowId', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['workflowId']))
+    errors.push({ path: '$.workflowId', message: 'expected non-empty string' })
   if (!isObject(raw['inputs'])) errors.push({ path: '$.inputs', message: 'expected object' })
-  if (!isNonEmptyString(raw['reason'])) errors.push({ path: '$.reason', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['reason']))
+    errors.push({ path: '$.reason', message: 'expected non-empty string' })
   if (!isPriority(raw['priority'])) errors.push({ path: '$.priority', message: 'expected 0..100' })
-  if (!isCostTier(raw['costTier'])) errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
+  if (!isCostTier(raw['costTier']))
+    errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -162,19 +165,26 @@ function validateRunWorkflow(raw: Record<string, unknown>): ValidationResult<Run
       reason: raw['reason'] as string,
       priority: raw['priority'] as number,
       costTier: raw['costTier'] as 'cheap' | 'normal' | 'expensive',
-      ...(Array.isArray(raw['hypothesisIds']) ? { hypothesisIds: raw['hypothesisIds'] as string[] } : {}),
+      ...(Array.isArray(raw['hypothesisIds'])
+        ? { hypothesisIds: raw['hypothesisIds'] as string[] }
+        : {}),
     },
   }
 }
 
 function validateRunOneshot(raw: Record<string, unknown>): ValidationResult<RunOneShotAction> {
   const errors: ValidationError[] = []
-  if (!isNonEmptyString(raw['manifestId'])) errors.push({ path: '$.manifestId', message: 'expected non-empty string' })
-  if (!isStringArray(raw['inputArtifactIds'])) errors.push({ path: '$.inputArtifactIds', message: 'expected string[]' })
-  if (raw['options'] !== undefined && !isObject(raw['options'])) errors.push({ path: '$.options', message: 'expected object' })
-  if (!isNonEmptyString(raw['reason'])) errors.push({ path: '$.reason', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['manifestId']))
+    errors.push({ path: '$.manifestId', message: 'expected non-empty string' })
+  if (!isStringArray(raw['inputArtifactIds']))
+    errors.push({ path: '$.inputArtifactIds', message: 'expected string[]' })
+  if (raw['options'] !== undefined && !isObject(raw['options']))
+    errors.push({ path: '$.options', message: 'expected object' })
+  if (!isNonEmptyString(raw['reason']))
+    errors.push({ path: '$.reason', message: 'expected non-empty string' })
   if (!isPriority(raw['priority'])) errors.push({ path: '$.priority', message: 'expected 0..100' })
-  if (!isCostTier(raw['costTier'])) errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
+  if (!isCostTier(raw['costTier']))
+    errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -182,22 +192,29 @@ function validateRunOneshot(raw: Record<string, unknown>): ValidationResult<RunO
       type: 'run_oneshot',
       manifestId: raw['manifestId'] as string,
       inputArtifactIds: raw['inputArtifactIds'] as string[],
-      ...(raw['options'] !== undefined ? { options: raw['options'] as Record<string, unknown> } : {}),
+      ...(raw['options'] !== undefined
+        ? { options: raw['options'] as Record<string, unknown> }
+        : {}),
       reason: raw['reason'] as string,
       priority: raw['priority'] as number,
       costTier: raw['costTier'] as 'cheap' | 'normal' | 'expensive',
-      ...(Array.isArray(raw['hypothesisIds']) ? { hypothesisIds: raw['hypothesisIds'] as string[] } : {}),
+      ...(Array.isArray(raw['hypothesisIds'])
+        ? { hypothesisIds: raw['hypothesisIds'] as string[] }
+        : {}),
     },
   }
 }
 
 function validateCallTool(raw: Record<string, unknown>): ValidationResult<CallToolAction> {
   const errors: ValidationError[] = []
-  if (!isNonEmptyString(raw['toolId'])) errors.push({ path: '$.toolId', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['toolId']))
+    errors.push({ path: '$.toolId', message: 'expected non-empty string' })
   if (!isObject(raw['input'])) errors.push({ path: '$.input', message: 'expected object' })
-  if (!isNonEmptyString(raw['reason'])) errors.push({ path: '$.reason', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['reason']))
+    errors.push({ path: '$.reason', message: 'expected non-empty string' })
   if (!isPriority(raw['priority'])) errors.push({ path: '$.priority', message: 'expected 0..100' })
-  if (!isCostTier(raw['costTier'])) errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
+  if (!isCostTier(raw['costTier']))
+    errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -208,19 +225,28 @@ function validateCallTool(raw: Record<string, unknown>): ValidationResult<CallTo
       reason: raw['reason'] as string,
       priority: raw['priority'] as number,
       costTier: raw['costTier'] as 'cheap' | 'normal' | 'expensive',
-      ...(Array.isArray(raw['hypothesisIds']) ? { hypothesisIds: raw['hypothesisIds'] as string[] } : {}),
+      ...(Array.isArray(raw['hypothesisIds'])
+        ? { hypothesisIds: raw['hypothesisIds'] as string[] }
+        : {}),
     },
   }
 }
 
-function validateRequestHandoff(raw: Record<string, unknown>): ValidationResult<RequestHandoffAction> {
+function validateRequestHandoff(
+  raw: Record<string, unknown>,
+): ValidationResult<RequestHandoffAction> {
   const errors: ValidationError[] = []
-  if (!isNonEmptyString(raw['capability'])) errors.push({ path: '$.capability', message: 'expected non-empty string' })
-  if (!isNonEmptyString(raw['objective'])) errors.push({ path: '$.objective', message: 'expected non-empty string' })
-  if (!isStringArray(raw['artifactIds'])) errors.push({ path: '$.artifactIds', message: 'expected string[]' })
-  if (!isNonEmptyString(raw['reason'])) errors.push({ path: '$.reason', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['capability']))
+    errors.push({ path: '$.capability', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['objective']))
+    errors.push({ path: '$.objective', message: 'expected non-empty string' })
+  if (!isStringArray(raw['artifactIds']))
+    errors.push({ path: '$.artifactIds', message: 'expected string[]' })
+  if (!isNonEmptyString(raw['reason']))
+    errors.push({ path: '$.reason', message: 'expected non-empty string' })
   if (!isPriority(raw['priority'])) errors.push({ path: '$.priority', message: 'expected 0..100' })
-  if (!isCostTier(raw['costTier'])) errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
+  if (!isCostTier(raw['costTier']))
+    errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -234,17 +260,22 @@ function validateRequestHandoff(raw: Record<string, unknown>): ValidationResult<
       reason: raw['reason'] as string,
       priority: raw['priority'] as number,
       costTier: raw['costTier'] as 'cheap' | 'normal' | 'expensive',
-      ...(Array.isArray(raw['hypothesisIds']) ? { hypothesisIds: raw['hypothesisIds'] as string[] } : {}),
+      ...(Array.isArray(raw['hypothesisIds'])
+        ? { hypothesisIds: raw['hypothesisIds'] as string[] }
+        : {}),
     },
   }
 }
 
 function validateVerifyFlag(raw: Record<string, unknown>): ValidationResult<VerifyFlagAction> {
   const errors: ValidationError[] = []
-  if (!isNonEmptyString(raw['candidateId'])) errors.push({ path: '$.candidateId', message: 'expected non-empty string' })
-  if (!isNonEmptyString(raw['reason'])) errors.push({ path: '$.reason', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['candidateId']))
+    errors.push({ path: '$.candidateId', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['reason']))
+    errors.push({ path: '$.reason', message: 'expected non-empty string' })
   if (!isPriority(raw['priority'])) errors.push({ path: '$.priority', message: 'expected 0..100' })
-  if (!isCostTier(raw['costTier'])) errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
+  if (!isCostTier(raw['costTier']))
+    errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -254,16 +285,20 @@ function validateVerifyFlag(raw: Record<string, unknown>): ValidationResult<Veri
       reason: raw['reason'] as string,
       priority: raw['priority'] as number,
       costTier: raw['costTier'] as 'cheap' | 'normal' | 'expensive',
-      ...(Array.isArray(raw['hypothesisIds']) ? { hypothesisIds: raw['hypothesisIds'] as string[] } : {}),
+      ...(Array.isArray(raw['hypothesisIds'])
+        ? { hypothesisIds: raw['hypothesisIds'] as string[] }
+        : {}),
     },
   }
 }
 
 function validateStop(raw: Record<string, unknown>): ValidationResult<StopAction> {
   const errors: ValidationError[] = []
-  if (!isNonEmptyString(raw['reason'])) errors.push({ path: '$.reason', message: 'expected non-empty string' })
+  if (!isNonEmptyString(raw['reason']))
+    errors.push({ path: '$.reason', message: 'expected non-empty string' })
   if (!isPriority(raw['priority'])) errors.push({ path: '$.priority', message: 'expected 0..100' })
-  if (!isCostTier(raw['costTier'])) errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
+  if (!isCostTier(raw['costTier']))
+    errors.push({ path: '$.costTier', message: 'expected cheap|normal|expensive' })
   if (errors.length > 0) return { ok: false, errors }
   return {
     ok: true,
@@ -272,7 +307,9 @@ function validateStop(raw: Record<string, unknown>): ValidationResult<StopAction
       reason: raw['reason'] as string,
       priority: raw['priority'] as number,
       costTier: raw['costTier'] as 'cheap' | 'normal' | 'expensive',
-      ...(Array.isArray(raw['hypothesisIds']) ? { hypothesisIds: raw['hypothesisIds'] as string[] } : {}),
+      ...(Array.isArray(raw['hypothesisIds'])
+        ? { hypothesisIds: raw['hypothesisIds'] as string[] }
+        : {}),
     },
   }
 }

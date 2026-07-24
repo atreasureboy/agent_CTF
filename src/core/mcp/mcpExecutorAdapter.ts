@@ -37,7 +37,9 @@ export function createMcpExecutor(client: McpClient): StrategyActionExecutor {
       if (!action.toolId.startsWith(prefix)) {
         return {
           status: 'failed',
-          error: { message: `tool ${action.toolId} not handled by MCP server ${client.serverName}` },
+          error: {
+            message: `tool ${action.toolId} not handled by MCP server ${client.serverName}`,
+          },
         }
       }
       const toolName = action.toolId.slice(prefix.length)

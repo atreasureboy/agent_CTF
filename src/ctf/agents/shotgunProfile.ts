@@ -19,12 +19,7 @@ export const SHOTGUN_PROFILE_RAW = {
   description:
     'Coordinates background one-shot tool runs (Ciphey, RsaCtfTool, capa, etc.) ' +
     'and selects which manifests to run for a given task. Never solves, never submits.',
-  allowedTools: [
-    'run_one_shot',
-    'list_one_shots',
-    'inspect_one_shot_result',
-    'cancel_one_shot',
-  ],
+  allowedTools: ['run_one_shot', 'list_one_shots', 'inspect_one_shot_result', 'cancel_one_shot'],
   deniedTools: [
     'Bash',
     'Write',

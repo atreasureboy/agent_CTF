@@ -1,3 +1,4 @@
+export * from './canonicalSnapshot.js'
 export * from './challengePromptCompiler.js'
 export * from './compiledContext.js'
 export * from './compilerValidator.js'

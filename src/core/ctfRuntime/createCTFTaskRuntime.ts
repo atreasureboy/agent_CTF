@@ -33,10 +33,7 @@ import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
 import { assertLlmDependencies } from './agentRuntimeDependencies.js'
 import type { CTFTaskState } from './taskState.js'
-import {
-  Dispatcher,
-  BackgroundJobRunnerRegistryImpl,
-} from '../../ctf/oneshot/dispatcher.js'
+import { Dispatcher, BackgroundJobRunnerRegistryImpl } from '../../ctf/oneshot/dispatcher.js'
 
 export type CTFTaskRuntimeMode = 'workflow-only' | 'llm'
 
@@ -123,7 +120,7 @@ export async function createCTFTaskRuntime(
   }
 
   // 3. TaskWorkspace & TaskExecutionContext
-  const contestId = input.contestId ?? (cwd.split('/').pop() ?? 'project')
+  const contestId = input.contestId ?? cwd.split('/').pop() ?? 'project'
   const taskId = input.taskId ?? `task_${Math.random().toString(36).slice(2, 10)}`
   const sessionsRoot = input.sessionsRoot ?? `${cwd}/sessions`
 
@@ -153,9 +150,7 @@ export async function createCTFTaskRuntime(
 
   // 4. TrajectoryRecorder
   const { TrajectoryRecorder } = await import('../trajectory/trajectoryRecorder.js')
-  const trajectoryRecorder = new TrajectoryRecorder(
-    `${taskWorkspace.paths.root}/trajectory.jsonl`,
-  )
+  const trajectoryRecorder = new TrajectoryRecorder(`${taskWorkspace.paths.root}/trajectory.jsonl`)
 
   // 5. Model Reliability Infrastructure
   const { ModelCapabilityRegistry } = await import('../modelReliability/modelRegistry.js')
@@ -169,10 +164,17 @@ export async function createCTFTaskRuntime(
   const healthStore = new ModelHealthStore()
   const circuitBreaker = new ModelCircuitBreaker(healthStore)
   const router = new ModelRouter(registry, healthStore, circuitBreaker)
-  const gateway = new StructuredModelGateway(router, healthStore, circuitBreaker, trajectoryRecorder)
+  const gateway = new StructuredModelGateway(
+    router,
+    healthStore,
+    circuitBreaker,
+    registry,
+    trajectoryRecorder,
+  )
 
   if (input.client) {
-    const { OpenAICompatibleProvider } = await import('../modelReliability/providers/openAICompatibleProvider.js')
+    const { OpenAICompatibleProvider } =
+      await import('../modelReliability/providers/openAICompatibleProvider.js')
     const provider = new OpenAICompatibleProvider(input.client)
     gateway.registerProvider(provider)
   }
@@ -218,9 +220,10 @@ export async function createCTFTaskRuntime(
   const projector = orchestrator.projector
   const canonicalTaskDir = harness.taskWorkspace.paths.root
   harness.jobManager?.registerTaskWorkspace(taskId, canonicalTaskDir)
-  const jobUnsub = harness.jobManager?.subscribe((ev) => {
-    projector.projectJobEvent(ev, orchestrator)
-  }) ?? null
+  const jobUnsub =
+    harness.jobManager?.subscribe((ev) => {
+      projector.projectJobEvent(ev, orchestrator)
+    }) ?? null
 
   const runnerRegistry = new BackgroundJobRunnerRegistryImpl()
   const { runnerFor } = await import('../../ctf/oneshot/runner.js')
@@ -232,7 +235,9 @@ export async function createCTFTaskRuntime(
   const manifestsRoot = `${cwd}/oneshot/manifests`
   try {
     loadManifestsFromDir(manifestsRoot, oneShotCatalog)
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
   const oneShotRegistry = new OneShotRegistry(oneShotCatalog)
 
   harness.jobManager.setRunnerRegistry(runnerRegistry)
@@ -273,7 +278,7 @@ export async function createCTFTaskRuntime(
       if (jobUnsub) jobUnsub()
       healthStore.dispose()
       await trajectoryRecorder.dispose()
-      portfolio.evidenceBus.dispose()
+      if ((portfolio as any).evidenceBus) (portfolio as any).evidenceBus.dispose()
     }
   }
 

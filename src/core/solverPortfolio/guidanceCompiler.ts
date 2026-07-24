@@ -1,10 +1,7 @@
 import { SolverEvidenceMessage } from './crossSolverEvidenceBus.js'
 
 export class GuidanceCompiler {
-  public static compileGuidance(
-    messages: SolverEvidenceMessage[],
-    targetModelId: string,
-  ): string {
+  public static compileGuidance(messages: SolverEvidenceMessage[], targetModelId: string): string {
     if (messages.length === 0) return ''
 
     const isM3 = targetModelId.includes('m3') || targetModelId.includes('mini')

@@ -19,7 +19,10 @@ import type { TaskExecutionContext } from './taskExecutionContext.js'
 import type { Observation } from '../ctfReasoning/observation.js'
 import type { Evidence } from '../ctfReasoning/evidence.js'
 import type { StrategyDecision } from '../ctfReasoning/strategyDecision.js'
-import type { ReasoningBudgetState, ReasoningBudgetLimits } from '../ctfReasoning/reasoningBudget.js'
+import type {
+  ReasoningBudgetState,
+  ReasoningBudgetLimits,
+} from '../ctfReasoning/reasoningBudget.js'
 import type { PendingSuggestedAction } from '../ctfReasoning/pendingActionStore.js'
 
 export type CTFTaskPhase =
@@ -102,8 +105,15 @@ export interface CTFAttempt {
   input: Record<string, unknown>
   fingerprint: string
   hypothesisIds: string[]
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
-    | 'skipped_duplicate' | 'skipped_policy' | 'skipped_budget'
+  status:
+    | 'pending'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled'
+    | 'skipped_duplicate'
+    | 'skipped_policy'
+    | 'skipped_budget'
   observationIds: string[]
   evidenceIds: string[]
   artifactIds: string[]
@@ -116,13 +126,7 @@ export interface CTFAttempt {
 }
 
 export type HandoffRecordStatus =
-  | 'requested'
-  | 'approved'
-  | 'rejected'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
+  'requested' | 'approved' | 'rejected' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface HandoffRecord {
   id: string
@@ -434,7 +438,9 @@ export function isActiveJob(j: JobRecord): boolean {
  * created → intake → triage → exploration ↔ specialist_execution → verification → solved
  * any non-terminal → blocked / failed / cancelled
  */
-export const ALLOWED_PHASE_TRANSITIONS: Readonly<Record<CTFTaskPhase, ReadonlyArray<CTFTaskPhase>>> = {
+export const ALLOWED_PHASE_TRANSITIONS: Readonly<
+  Record<CTFTaskPhase, ReadonlyArray<CTFTaskPhase>>
+> = {
   created: ['intake', 'blocked', 'failed', 'cancelled'],
   intake: ['triage', 'blocked', 'failed', 'cancelled'],
   triage: ['exploration', 'blocked', 'failed', 'cancelled'],

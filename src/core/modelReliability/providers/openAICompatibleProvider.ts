@@ -20,7 +20,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
     modelProfile: ModelCapabilityProfile,
     input: ProviderAgentTurnInput,
   ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>> {
-    const targetModel = modelProfile.model || input.preferredModelId || 'gpt-4o'
+    const targetModel =
+      modelProfile.providerModelName || modelProfile.model || input.preferredModelId || 'gpt-4o'
     return await this.client.chat.completions.create(
       {
         model: targetModel,
@@ -40,7 +41,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
     modelProfile: ModelCapabilityProfile,
     input: ProviderStructuredInput,
   ): Promise<ProviderStructuredResult> {
-    const targetModel = modelProfile.model || input.preferredModelId || 'gpt-4o'
+    const targetModel =
+      modelProfile.providerModelName || modelProfile.model || input.preferredModelId || 'gpt-4o'
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = input.messages
       ? [...input.messages]
       : []
@@ -58,7 +60,13 @@ export class OpenAICompatibleProvider implements ModelProvider {
         messages,
         temperature: input.temperature ?? 0,
         response_format: input.jsonSchema
-          ? { type: 'json_schema', json_schema: { name: input.schemaName ?? 'output_schema', schema: input.jsonSchema as Record<string, unknown> } }
+          ? {
+              type: 'json_schema',
+              json_schema: {
+                name: input.schemaName ?? 'output_schema',
+                schema: input.jsonSchema as Record<string, unknown>,
+              },
+            }
           : { type: 'json_object' },
       },
       { signal: input.signal },

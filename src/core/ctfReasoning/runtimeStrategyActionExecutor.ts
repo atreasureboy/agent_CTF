@@ -21,10 +21,7 @@
  */
 
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
-import type {
-  ActionExecutionResult,
-  ExecutionRefs,
-} from './actionExecutionResult.js'
+import type { ActionExecutionResult, ExecutionRefs } from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,
@@ -264,7 +261,14 @@ async function executeVerifyFlag(
       ],
       evidence: [],
       suggestedActions: decision.validated
-        ? [{ type: 'stop', reason: 'validated flag candidate found', priority: 1, costTier: 'cheap' }]
+        ? [
+            {
+              type: 'stop',
+              reason: 'validated flag candidate found',
+              priority: 1,
+              costTier: 'cheap',
+            },
+          ]
         : [],
       flagCandidateDrafts: [],
       warnings: decision.errors,
@@ -319,7 +323,12 @@ export interface FakeExecutorCall {
 }
 
 export function createFakeStrategyActionExecutor(
-  handlers?: Partial<Record<SuggestedAction['type'], (ctx: StrategyActionExecutorContext) => Promise<ActionExecutionResult> | ActionExecutionResult>>,
+  handlers?: Partial<
+    Record<
+      SuggestedAction['type'],
+      (ctx: StrategyActionExecutorContext) => Promise<ActionExecutionResult> | ActionExecutionResult
+    >
+  >,
 ): StrategyActionExecutor & { calls: FakeExecutorCall[] } {
   const calls: FakeExecutorCall[] = []
   return {

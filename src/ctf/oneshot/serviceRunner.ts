@@ -19,11 +19,7 @@
 import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
-import type {
-  OneShotManifest,
-  OneShotResult,
-  OneShotStatus,
-} from './types.js'
+import type { OneShotManifest, OneShotResult, OneShotStatus } from './types.js'
 import type { OneShotRunner, RunnerInputs } from './runner.js'
 
 export interface ServiceRunnerOptions {
@@ -81,13 +77,14 @@ const defaultFetcher: ServiceFetcher = async (url, method, body, signal, maxResp
       chunks.push(value)
     }
   }
-  const text = chunks.length > 0
-    ? Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8')
-    : ''
+  const text =
+    chunks.length > 0 ? Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8') : ''
   let parsed: unknown = text
   try {
     parsed = text ? JSON.parse(text) : null
-  } catch { /* keep raw */ }
+  } catch {
+    /* keep raw */
+  }
   return { status: res.status, body: parsed }
 }
 
@@ -104,7 +101,14 @@ export class ServiceRunner implements OneShotRunner {
     const logPath = join(inputs.logDir, `${runId}.jsonl`)
     const endpoint = manifest.runner.endpoint
     if (!endpoint) {
-      return this.fail(runId, manifest, startedAt, 'failed', 'service runner requires endpoint', logPath)
+      return this.fail(
+        runId,
+        manifest,
+        startedAt,
+        'failed',
+        'service runner requires endpoint',
+        logPath,
+      )
     }
     const fetcher = this.opts.fetcher ?? defaultFetcher
     const submitUrl = `${endpoint.replace(/\/$/, '')}/submit`
@@ -117,7 +121,9 @@ export class ServiceRunner implements OneShotRunner {
     // poll loop. Linked to the parent task signal so cancellation
     // propagates both ways.
     const runCtrl = new AbortController()
-    const onParentAbort = (): void => { runCtrl.abort(inputs.signal?.reason ?? 'parent_aborted') }
+    const onParentAbort = (): void => {
+      runCtrl.abort(inputs.signal?.reason ?? 'parent_aborted')
+    }
     if (inputs.signal) {
       // §P1 audit fix — register the listener first, then re-check
       // `signal.aborted` to close the race window where an abort that
@@ -128,12 +134,32 @@ export class ServiceRunner implements OneShotRunner {
     this.runSignals.set(runId, runCtrl)
 
     try {
-      const submitRes = await fetcher(submitUrl, 'POST', { argv: inputs.argv }, runCtrl.signal, maxResponseBytes)
+      const submitRes = await fetcher(
+        submitUrl,
+        'POST',
+        { argv: inputs.argv },
+        runCtrl.signal,
+        maxResponseBytes,
+      )
       if (submitRes.status >= 500) {
-        return this.fail(runId, manifest, startedAt, 'unavailable', `submit ${submitRes.status}`, logPath)
+        return this.fail(
+          runId,
+          manifest,
+          startedAt,
+          'unavailable',
+          `submit ${submitRes.status}`,
+          logPath,
+        )
       }
       if (submitRes.status >= 400) {
-        return this.fail(runId, manifest, startedAt, 'failed', `submit ${submitRes.status}`, logPath)
+        return this.fail(
+          runId,
+          manifest,
+          startedAt,
+          'failed',
+          `submit ${submitRes.status}`,
+          logPath,
+        )
       }
       const jobId = (submitRes.body as { id?: string })?.id
       if (!jobId) {
@@ -162,7 +188,13 @@ export class ServiceRunner implements OneShotRunner {
         if (runCtrl.signal.aborted) {
           return this.fail(runId, manifest, startedAt, 'cancelled', 'parent task aborted', logPath)
         }
-        const pollRes = await fetcher(`${endpoint}/status/${jobId}`, 'GET', undefined, runCtrl.signal, maxResponseBytes)
+        const pollRes = await fetcher(
+          `${endpoint}/status/${jobId}`,
+          'GET',
+          undefined,
+          runCtrl.signal,
+          maxResponseBytes,
+        )
         if (pollRes.status >= 500) {
           // Transient — exponential backoff up to maxBackoffMs.
           backoff = Math.min(backoff * 2, maxBackoffMs)
@@ -193,10 +225,24 @@ export class ServiceRunner implements OneShotRunner {
           }
         }
         if (body.status === 'failed') {
-          return this.fail(runId, manifest, startedAt, 'failed', body.error ?? 'service failed', logPath)
+          return this.fail(
+            runId,
+            manifest,
+            startedAt,
+            'failed',
+            body.error ?? 'service failed',
+            logPath,
+          )
         }
       }
-      return this.fail(runId, manifest, startedAt, 'timeout', 'service did not respond in time', logPath)
+      return this.fail(
+        runId,
+        manifest,
+        startedAt,
+        'timeout',
+        'service did not respond in time',
+        logPath,
+      )
     } catch (err) {
       const status: OneShotStatus = runCtrl.signal.aborted ? 'cancelled' : 'unavailable'
       return this.fail(runId, manifest, startedAt, status, (err as Error).message, logPath)

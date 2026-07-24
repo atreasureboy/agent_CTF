@@ -28,7 +28,10 @@ import type {
   ActionExecutionResult,
   ExecutionRefs,
 } from '../core/ctfReasoning/actionExecutionResult.js'
-import type { StrategyActionExecutor, StrategyActionExecutorContext } from '../core/ctfReasoning/strategyActionExecutor.js'
+import type {
+  StrategyActionExecutor,
+  StrategyActionExecutorContext,
+} from '../core/ctfReasoning/strategyActionExecutor.js'
 import type { SuggestedAction } from '../core/ctfReasoning/suggestedAction.js'
 import type { CTFTaskState } from '../core/ctfRuntime/taskState.js'
 
@@ -125,8 +128,16 @@ export function buildStateForChallenge(challenge: BenchChallenge, taskId: string
       inputDir: `/tmp/bench/${taskId}/i`,
       eventsFile: `/tmp/bench/${taskId}/e.ndjson`,
       profileId: 'triage',
-      contestScope: { allowedFilesRoot: '/tmp/bench', allowPublicNetwork: false, allowHeavyOneShots: false },
-      contestConfig: { allowedFilesRoot: '/tmp/bench', allowPublicNetwork: false, allowHeavyOneShots: false },
+      contestScope: {
+        allowedFilesRoot: '/tmp/bench',
+        allowPublicNetwork: false,
+        allowHeavyOneShots: false,
+      },
+      contestConfig: {
+        allowedFilesRoot: '/tmp/bench',
+        allowPublicNetwork: false,
+        allowHeavyOneShots: false,
+      },
       environment: {},
       abortSignal: new AbortController().signal,
       metadata: { benchmarkId: challenge.id, category: challenge.category },
@@ -151,9 +162,27 @@ export function buildStateForChallenge(challenge: BenchChallenge, taskId: string
     evidence: [],
     strategyDecisions: [],
     pendingActions: [],
-    reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 },
+    reasoningBudget: {
+      strategyCyclesUsed: 0,
+      actionsExecuted: 0,
+      cheapActionsUsed: 0,
+      normalActionsUsed: 0,
+      expensiveActionsUsed: 0,
+      workflowRunsUsed: 0,
+      oneShotRunsUsed: 0,
+      handoffsUsed: 0,
+      estimatedCostUnitsUsed: 0,
+    },
     reasoningBudgetLimits: {
-      maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64,
+      maxStrategyCycles: 8,
+      maxActions: 32,
+      maxCheapActions: 24,
+      maxNormalActions: 12,
+      maxExpensiveActions: 4,
+      maxWorkflowRuns: 8,
+      maxOneShotRuns: 8,
+      maxHandoffs: 4,
+      maxEstimatedCostUnits: 64,
     },
     flagCandidates: [
       {
@@ -216,7 +245,13 @@ export async function runChallenge(
   const store = new CTFTaskStateStore(initial)
   const startedAt = Date.now()
   const candidateActions: SuggestedAction[] = [
-    { type: 'verify_flag', candidateId: 'fix-1', reason: 'fixture attempt', priority: 5, costTier: 'cheap' },
+    {
+      type: 'verify_flag',
+      candidateId: 'fix-1',
+      reason: 'fixture attempt',
+      priority: 5,
+      costTier: 'cheap',
+    },
   ]
   const result = await processNewReasoningInputs(
     {
@@ -284,7 +319,9 @@ export async function runBenchSuite(
   return { results, summaryPath }
 }
 
-function aggregateByCategory(results: ReadonlyArray<BenchChallengeResult>): Record<string, { won: number; lost: number }> {
+function aggregateByCategory(
+  results: ReadonlyArray<BenchChallengeResult>,
+): Record<string, { won: number; lost: number }> {
   const out: Record<string, { won: number; lost: number }> = {}
   for (const r of results) {
     out[r.category] ??= { won: 0, lost: 0 }

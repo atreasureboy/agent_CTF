@@ -65,10 +65,13 @@ export class McpClient {
   private proc: ChildProcessWithoutNullStreams | null = null
   private buffer = ''
   private nextId = 1
-  private pending = new Map<string | number, {
-    resolve: (r: unknown) => void
-    reject: (e: Error) => void
-  }>()
+  private pending = new Map<
+    string | number,
+    {
+      resolve: (r: unknown) => void
+      reject: (e: Error) => void
+    }
+  >()
   private serverInfo: { name?: string; version?: string } | null = null
   private closed = false
 
@@ -96,7 +99,7 @@ export class McpClient {
       )
     }
 
-    this.proc.on('error', err => {
+    this.proc.on('error', (err) => {
       this.logger.error(`MCP "${this.serverName}" process error`, { error: err.message })
       // Reject all pending on a hard process error
       for (const [, p] of this.pending) p.reject(new Error(`MCP server error: ${err.message}`))
@@ -120,23 +123,25 @@ export class McpClient {
     })
 
     // initialize handshake
-    const initResult = await this.request('initialize', {
+    const initResult = (await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: 'ovolv999-agent-base', version: '0.1.0' },
-    }) as { protocolVersion?: string; serverInfo?: { name?: string; version?: string } }
+    })) as { protocolVersion?: string; serverInfo?: { name?: string; version?: string } }
     this.serverInfo = initResult?.serverInfo ?? {}
     // Notify initialized (no response expected)
     this.notify('notifications/initialized', {})
     this.logger.info(
       `MCP "${this.serverName}" ready` +
-      (this.serverInfo.name ? ` (${this.serverInfo.name}${this.serverInfo.version ? '@' + this.serverInfo.version : ''})` : ''),
+        (this.serverInfo.name
+          ? ` (${this.serverInfo.name}${this.serverInfo.version ? '@' + this.serverInfo.version : ''})`
+          : ''),
     )
   }
 
   /** List tools exposed by the server. */
   async listTools(): Promise<McpToolDescriptor[]> {
-    const result = await this.request('tools/list', {}) as { tools?: McpToolDescriptor[] }
+    const result = (await this.request('tools/list', {})) as { tools?: McpToolDescriptor[] }
     return result?.tools ?? []
   }
 
@@ -152,11 +157,9 @@ export class McpClient {
     args: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<McpContentBlock[]> {
-    const result = await this.request(
-      'tools/call',
-      { name, arguments: args },
-      signal,
-    ) as { content?: McpContentBlock[] }
+    const result = (await this.request('tools/call', { name, arguments: args }, signal)) as {
+      content?: McpContentBlock[]
+    }
     return result?.content ?? []
   }
 
@@ -164,14 +167,25 @@ export class McpClient {
   async close(): Promise<void> {
     this.closed = true
     if (!this.proc) return
-    try { this.proc.stdin.end() } catch { /* best-effort */ }
+    try {
+      this.proc.stdin.end()
+    } catch {
+      /* best-effort */
+    }
     const proc = this.proc
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
-        try { proc.kill('SIGKILL') } catch { /* already dead */ }
+        try {
+          proc.kill('SIGKILL')
+        } catch {
+          /* already dead */
+        }
         resolve()
       }, 3000)
-      proc.once('exit', () => { clearTimeout(timer); resolve() })
+      proc.once('exit', () => {
+        clearTimeout(timer)
+        resolve()
+      })
     })
     this.proc = null
   }
@@ -206,7 +220,11 @@ export class McpClient {
         if (signal.aborted) {
           if (this.pending.has(id)) {
             this.pending.delete(id)
-            reject(new Error(`MCP "${this.serverName}" request "${method}" aborted`, { cause: signal.reason }))
+            reject(
+              new Error(`MCP "${this.serverName}" request "${method}" aborted`, {
+                cause: signal.reason,
+              }),
+            )
           }
           return
         }
@@ -215,7 +233,11 @@ export class McpClient {
           () => {
             if (this.pending.has(id)) {
               this.pending.delete(id)
-              reject(new Error(`MCP "${this.serverName}" request "${method}" aborted`, { cause: signal.reason }))
+              reject(
+                new Error(`MCP "${this.serverName}" request "${method}" aborted`, {
+                  cause: signal.reason,
+                }),
+              )
             }
           },
           { once: true },

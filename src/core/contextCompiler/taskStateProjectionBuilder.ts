@@ -6,6 +6,7 @@ import type { CompilerType } from './compiledContext.js'
 import type { FindingStore } from '../findings.js'
 import type { ArtifactStore } from '../artifacts.js'
 import { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
+import { computeCanonicalSnapshotHash } from './canonicalSnapshot.js'
 
 export interface TaskStateProjectionBuilderInput {
   state: Readonly<CTFTaskState>
@@ -15,17 +16,66 @@ export interface TaskStateProjectionBuilderInput {
   targetModel?: ModelCapabilityProfile
   compilerType: CompilerType
   toolVisibilityPolicy?: ToolVisibilityPolicy
+  getRevisionFn?: (taskId: string) => number
 }
 
 export class TaskStateProjectionBuilder {
   public static build(input: TaskStateProjectionBuilderInput): TaskStateProjectionInput {
-    const { state, identity, targetModel, toolVisibilityPolicy } = input
+    const { state, identity, targetModel, toolVisibilityPolicy, getRevisionFn } = input
 
-    const stateRevision = state.updatedAt || 1
-    const snapshotContent = `${state.taskId}:${state.phase}:${state.hypotheses.length}:${state.evidence.length}:${state.attempts.length}:${state.artifactIds.length}`
-    const stateSnapshotHash = `hash_${stateRevision}_${snapshotContent.length}`
+    const stateRevision = getRevisionFn
+      ? getRevisionFn(state.taskId)
+      : ((state as any).revision ?? 1)
 
-    const objective = state.challenge.description || `Solve CTF challenge ${state.taskId} (${state.challenge.category || 'general'})`
+    const policy = toolVisibilityPolicy || new ToolVisibilityPolicy()
+    const allowedTools = policy
+      .filterVisibleTools([], {
+        role: identity.modelRole,
+        modelId: identity.modelId,
+        solverId: identity.solverId,
+        specialistId: identity.specialistId,
+        isOrchestrator: identity.isOrchestrator,
+        isWorkflow: identity.isWorkflow,
+        isOneShot: identity.isOneShot,
+        maxVisibleTools: targetModel?.limits?.maxVisibleTools ?? 20,
+      })
+      .map((t: any) => (typeof t === 'string' ? t : t.name))
+
+    const stateSnapshotHash = computeCanonicalSnapshotHash({
+      taskId: state.taskId,
+      stateRevision,
+      evidence: state.evidence.map((e) => ({
+        id: e.id,
+        confidence: e.confidence,
+        polarity: e.polarity,
+        sourceIds:
+          (e as any).sourceIds ||
+          (e.sources || []).map((s: any) => s.producer?.runId || s.id || 'src'),
+      })),
+      hypotheses: state.hypotheses.map((h) => ({
+        id: h.id,
+        status: h.status,
+        confidence: h.confidence,
+      })),
+      attempts: state.attempts.map((a) => ({
+        id: a.id,
+        status: a.status,
+        fingerprint: a.fingerprint,
+      })),
+      artifacts: state.artifactIds.map((id) => ({
+        id,
+      })),
+      pendingActions: (state.pendingActions || []).map((p: any) => ({
+        id: p.id,
+        status: p.status || 'pending',
+      })),
+      toolExposureHash: allowedTools.sort().join(','),
+      compilerVersion: '3.2.0',
+    })
+
+    const objective =
+      state.challenge.description ||
+      `Solve CTF challenge ${state.taskId} (${state.challenge.category || 'general'})`
     const scopeSummary = state.context.contestScope?.allowedFilesRoot || 'workspace_and_targets'
 
     const evidences = state.evidence.map((e) => ({
@@ -56,18 +106,6 @@ export class TaskStateProjectionBuilder {
       path: id,
       description: `Artifact ${id} for task ${state.taskId}`,
     }))
-
-    const policy = toolVisibilityPolicy || new ToolVisibilityPolicy()
-    const allowedTools = policy.filterVisibleTools([], {
-      role: identity.modelRole,
-      modelId: identity.modelId,
-      solverId: identity.solverId,
-      specialistId: identity.specialistId,
-      isOrchestrator: identity.isOrchestrator,
-      isWorkflow: identity.isWorkflow,
-      isOneShot: identity.isOneShot,
-      maxVisibleTools: targetModel?.limits?.maxVisibleTools ?? 20,
-    }).map((t: any) => typeof t === 'string' ? t : t.name)
 
     const pendingActions = state.pendingActions
       ?.filter((p) => p.status === 'pending')

@@ -162,11 +162,7 @@ export class SemanticMemory {
   }
 
   /** Search by tags and/or keywords in content */
-  search(options: {
-    tags?: string[]
-    keywords?: string[]
-    limit?: number
-  }): SemanticMemoryEntry[] {
+  search(options: { tags?: string[]; keywords?: string[]; limit?: number }): SemanticMemoryEntry[] {
     this.ensureLoaded()
     let results: SemanticMemoryEntry[]
 

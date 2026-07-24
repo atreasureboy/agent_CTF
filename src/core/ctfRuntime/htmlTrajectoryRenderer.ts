@@ -67,7 +67,8 @@ function renderSummary(out: ReplayOutput): string {
 function renderCycle(c: ReplayCycle): string {
   const decisions = c.strategyDecisions
     .map(
-      (d) => `<div class="decision">selected: ${escape(d.selectedAction ?? '(none)')} | reason: ${escape(d.reason)} | hypotheses: ${d.basedOnHypothesisIds.length}</div>`,
+      (d) =>
+        `<div class="decision">selected: ${escape(d.selectedAction ?? '(none)')} | reason: ${escape(d.reason)} | hypotheses: ${d.basedOnHypothesisIds.length}</div>`,
     )
     .join('\n')
   const attempts = c.attempts.map(renderAttempt).join('\n')
@@ -83,7 +84,8 @@ function renderAttempt(a: ReplayAttempt): string {
   const ids: string[] = []
   if (a.observationIds.length) ids.push(`<span class="tag">${a.observationIds.length} obs</span>`)
   if (a.evidenceIds.length) ids.push(`<span class="tag">${a.evidenceIds.length} ev</span>`)
-  if (a.flagCandidateIds.length) ids.push(`<span class="flag">${a.flagCandidateIds.length} flag</span>`)
+  if (a.flagCandidateIds.length)
+    ids.push(`<span class="flag">${a.flagCandidateIds.length} flag</span>`)
   return `<div class="attempt ${escape(statusClass)}">
 <strong>${escape(a.action)}</strong> — ${escape(a.status)} ${ids.join(' ')}
 ${a.error ? `<div class="decision">${escape(a.error)}</div>` : ''}

@@ -57,9 +57,11 @@ export class FileReadTool implements Tool {
     // Audit P1 — file-scope gate. Refuse reads outside the contest's
     // allowedFilesRoot BEFORE opening the file. Mirrors the
     // WebFetch SSRF pattern: read context.__ctf, consult contestScope.
-    const ctfCtx = (context as unknown as {
-      __ctf?: { contestScope?: ContestScopeChecker }
-    }).__ctf
+    const ctfCtx = (
+      context as unknown as {
+        __ctf?: { contestScope?: ContestScopeChecker }
+      }
+    ).__ctf
     const scope = ctfCtx?.contestScope
     if (scope && typeof scope.assertFile === 'function') {
       try {
@@ -82,9 +84,7 @@ export class FileReadTool implements Tool {
       const endLine = Math.min(startLine - 1 + maxLines, total)
 
       const slice = lines.slice(startLine - 1, endLine)
-      const numbered = slice
-        .map((line, i) => `${startLine + i}\t${line}`)
-        .join('\n')
+      const numbered = slice.map((line, i) => `${startLine + i}\t${line}`).join('\n')
 
       const header =
         total > maxLines

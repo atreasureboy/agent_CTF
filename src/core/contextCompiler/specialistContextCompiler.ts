@@ -19,7 +19,12 @@ export class SpecialistContextCompiler {
       artifacts: filteredArtifacts.length > 0 ? filteredArtifacts : input.artifacts.slice(0, 3),
     }
 
-    const ctx = ContextProjection.project(filteredInput, 'specialist_context', targetModelId, targetRole)
+    const ctx = ContextProjection.project(
+      filteredInput,
+      'specialist_context',
+      targetModelId,
+      targetRole,
+    )
 
     const lines: string[] = [
       `=== SPECIALIST BRIEF: ${specialistDomain.toUpperCase()} ===`,

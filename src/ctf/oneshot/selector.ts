@@ -9,11 +9,7 @@
  *   4. dedupe by id (one shot per matched manifest).
  */
 
-import type {
-  OneShotJobProjectionEvent,
-  OneShotLane,
-  OneShotManifest,
-} from './types.js'
+import type { OneShotJobProjectionEvent, OneShotLane, OneShotManifest } from './types.js'
 import type { OneShotCatalog } from './catalog.js'
 
 export interface SelectionInput {
@@ -66,16 +62,21 @@ export function selectManifests(input: SelectionInput, catalog: OneShotCatalog):
 
     const m = manifest.inputMatchers
     if (m?.extensions || m?.mimeTypes || m?.magicPatterns) {
-      const extMatch = m.extensions?.some((e) => input.artifactHints?.some((h) => h.toLowerCase().endsWith(e.toLowerCase()))) ?? false
+      const extMatch =
+        m.extensions?.some((e) =>
+          input.artifactHints?.some((h) => h.toLowerCase().endsWith(e.toLowerCase())),
+        ) ?? false
       // §P1 audit fix — match MIME by full equality on `type/subtype` or
       // by major type prefix. The previous `h.includes(t)` substring
       // check accepted any hint that contained the MIME as a substring
       // (e.g. `"image"` would match anything containing the word "image").
-      const mimeMatch = m.mimeTypes?.some((t) =>
-        input.artifactHints?.some((h) => h === t || h.startsWith(`${t.split('/')[0]}/`)),
-      ) ?? false
+      const mimeMatch =
+        m.mimeTypes?.some((t) =>
+          input.artifactHints?.some((h) => h === t || h.startsWith(`${t.split('/')[0]}/`)),
+        ) ?? false
       const magicMatch = m.magicPatterns?.some((p) => input.taskText.includes(p)) ?? false
-      const requiredArtifactMatch = m.requiredArtifacts?.some((r) => input.artifactHints?.some((h) => h.includes(r))) ?? false
+      const requiredArtifactMatch =
+        m.requiredArtifacts?.some((r) => input.artifactHints?.some((h) => h.includes(r))) ?? false
       const taskTagMatch = m.taskTags?.some((t) => tags.has(t)) ?? false
       if (!(extMatch || mimeMatch || magicMatch || requiredArtifactMatch || taskTagMatch)) {
         continue
@@ -89,10 +90,12 @@ export function selectManifests(input: SelectionInput, catalog: OneShotCatalog):
     let reason = 'profile match'
     if (manifest.inputMatchers?.taskTags?.some((t) => tags.has(t))) {
       reason = 'task-tag match'
-    } else if (manifest.inputMatchers?.extensions ||
-               manifest.inputMatchers?.mimeTypes ||
-               manifest.inputMatchers?.magicPatterns ||
-               manifest.inputMatchers?.requiredArtifacts) {
+    } else if (
+      manifest.inputMatchers?.extensions ||
+      manifest.inputMatchers?.mimeTypes ||
+      manifest.inputMatchers?.magicPatterns ||
+      manifest.inputMatchers?.requiredArtifacts
+    ) {
       reason = 'input match'
     }
 
@@ -119,7 +122,11 @@ export function selectManifests(input: SelectionInput, catalog: OneShotCatalog):
 
 /** Convert a SelectedRun into a queued projection event the BackgroundJobManager
  *  can surface to TaskState. */
-export function projectQueued(run: SelectedRun, taskId: string, at: string): OneShotJobProjectionEvent {
+export function projectQueued(
+  run: SelectedRun,
+  taskId: string,
+  at: string,
+): OneShotJobProjectionEvent {
   return {
     type: 'ONESHOT_QUEUED',
     runId: '', // assigned by dispatcher

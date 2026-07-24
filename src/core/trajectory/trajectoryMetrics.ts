@@ -21,7 +21,8 @@ export class TrajectoryMetricsCalculator {
 
     const schemaEvents = events.filter((e) => e.eventType === 'model_response_schema')
     const validSchemas = schemaEvents.filter((e) => e.payload.valid !== false)
-    const schemaValidRate = schemaEvents.length > 0 ? validSchemas.length / schemaEvents.length : 1.0
+    const schemaValidRate =
+      schemaEvents.length > 0 ? validSchemas.length / schemaEvents.length : 1.0
 
     const candidateEvents = events.filter((e) => e.eventType === 'candidate')
     const rejectedCandidates = candidateEvents.filter((e) => e.payload.rejected === true)
@@ -30,7 +31,8 @@ export class TrajectoryMetricsCalculator {
 
     const attemptEvents = events.filter((e) => e.eventType === 'attempt')
     const duplicates = attemptEvents.filter((e) => e.payload.duplicate === true)
-    const duplicateAttemptRate = attemptEvents.length > 0 ? duplicates.length / attemptEvents.length : 0
+    const duplicateAttemptRate =
+      attemptEvents.length > 0 ? duplicates.length / attemptEvents.length : 0
 
     return {
       schemaValidRate,

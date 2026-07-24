@@ -68,7 +68,12 @@ export type CTFTaskEvent =
   | { type: 'AGENT_RUN_COMPLETED'; agentRunId: string; summary?: string }
   | { type: 'AGENT_RUN_FAILED'; agentRunId: string; error: string }
   | { type: 'AGENT_RUN_CANCELLED'; agentRunId: string; reason: string }
-  | { type: 'AGENT_RUN_OUTPUT_RECORDED'; agentRunId: string; producedFindingIds: string[]; producedArtifactIds: string[] }
+  | {
+      type: 'AGENT_RUN_OUTPUT_RECORDED'
+      agentRunId: string
+      producedFindingIds: string[]
+      producedArtifactIds: string[]
+    }
   | { type: 'FINDING_ADDED'; finding: Finding }
   | { type: 'ARTIFACT_ADDED'; artifactId: string }
   | { type: 'FLAG_CANDIDATE_ADDED'; candidate: FlagCandidate }
@@ -127,7 +132,12 @@ export type CTFTaskEvent =
       runId: string
       patch: Partial<OneShotRunRecord>
     }
-  | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
+  | {
+      type: 'TASK_COMPLETED'
+      status: 'solved' | 'blocked' | 'failed' | 'cancelled'
+      reason: string
+      flagCandidateId?: string
+    }
   | { type: 'TASK_PAUSED'; pausedBy: 'user' | 'system'; reason: string; at: number }
   | { type: 'TASK_RESUMED'; resumedBy: 'user' | 'system'; reason: string; at: number }
   /* ─── Phase 2.1 §六 — structured reasoning events ──────────────────── */
@@ -140,7 +150,13 @@ export type CTFTaskEvent =
     }
   | { type: 'EVIDENCE_MERGED'; evidenceId: string; mergedFrom: string }
   | { type: 'HYPOTHESIS_PROPOSED'; hypothesis: CTFHypothesis }
-  | { type: 'HYPOTHESIS_STATUS_CHANGED'; hypothesisId: string; from: CTFHypothesis['status']; to: CTFHypothesis['status']; reason?: string }
+  | {
+      type: 'HYPOTHESIS_STATUS_CHANGED'
+      hypothesisId: string
+      from: CTFHypothesis['status']
+      to: CTFHypothesis['status']
+      reason?: string
+    }
   | { type: 'ATTEMPT_STARTED'; attempt: CTFAttempt }
   | {
       type: 'ATTEMPT_COMPLETED'
@@ -180,7 +196,12 @@ export type CTFTaskEvent =
       at: number
     }
   | { type: 'PENDING_ACTION_ADDED'; pending: PendingSuggestedAction }
-  | { type: 'PENDING_ACTION_STATUS_CHANGED'; pendingId: string; status: PendingSuggestedAction['status']; at: number }
+  | {
+      type: 'PENDING_ACTION_STATUS_CHANGED'
+      pendingId: string
+      status: PendingSuggestedAction['status']
+      at: number
+    }
   | { type: 'REASONING_BUDGET_CONSUMED'; snapshot: ReasoningBudgetState }
   | { type: 'FLAG_CANDIDATE_DETECTED'; candidate: FlagCandidate }
   | { type: 'FLAG_CANDIDATE_VALIDATED'; candidateId: string; errors: string[] }
@@ -196,7 +217,12 @@ export type CTFTaskEvent =
   | { type: 'SOLVER_RUN_GAVE_UP'; runId: string; reason: string; completedAt: number }
   | { type: 'SOLVER_RUN_CANCELLED'; runId: string; reason: string; completedAt: number }
   | { type: 'SOLVER_RUN_FAILED'; runId: string; error: string; completedAt: number }
-  | { type: 'SOLVER_RUN_OUTPUT_RECORDED'; runId: string; candidateIds: string[]; evidenceIds: string[] }
+  | {
+      type: 'SOLVER_RUN_OUTPUT_RECORDED'
+      runId: string
+      candidateIds: string[]
+      evidenceIds: string[]
+    }
 
 /** A subscriber receives every event AFTER it has been applied. */
 export type TaskStateListener = (event: CTFTaskEvent, state: Readonly<CTFTaskState>) => void

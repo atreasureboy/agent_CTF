@@ -23,22 +23,29 @@ export const zstegParser: ResultParser = {
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content || input.content.trim() === '') {
       return {
-        observations: [{
-          kind: 'negative_result',
-          source: input.source,
-          summary: 'zsteg: no meaningful result',
-          confidence: 0.7,
-        }],
-        evidence: [{
-          kind: 'negative_result',
-          claim: 'image does not appear to contain steganographic payload',
-          polarity: 'neutral',
-          source: {
-            producer: { type: 'parser', id: 'zsteg' },
-            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-            confidence: 0.6, createdAt: Date.now(),
+        observations: [
+          {
+            kind: 'negative_result',
+            source: input.source,
+            summary: 'zsteg: no meaningful result',
+            confidence: 0.7,
           },
-        }],
+        ],
+        evidence: [
+          {
+            kind: 'negative_result',
+            claim: 'image does not appear to contain steganographic payload',
+            polarity: 'neutral',
+            source: {
+              producer: { type: 'parser', id: 'zsteg' },
+              observationIds: [],
+              artifactIds: input.artifactIds,
+              attemptIds: [],
+              confidence: 0.6,
+              createdAt: Date.now(),
+            },
+          },
+        ],
         suggestedActions: [],
         flagCandidateDrafts: [],
         warnings: ['zsteg: empty'],
@@ -99,8 +106,11 @@ export const zstegParser: ResultParser = {
             polarity: 'supports',
             source: {
               producer: { type: 'parser', id: 'zsteg' },
-              observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-              confidence: 0.75, createdAt: Date.now(),
+              observationIds: [],
+              artifactIds: input.artifactIds,
+              attemptIds: [],
+              confidence: 0.75,
+              createdAt: Date.now(),
             },
           })
         }
@@ -115,22 +125,30 @@ export const zstegParser: ResultParser = {
         polarity: 'neutral',
         source: {
           producer: { type: 'parser', id: 'zsteg' },
-          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-          confidence: 0.5, createdAt: Date.now(),
+          observationIds: [],
+          artifactIds: input.artifactIds,
+          attemptIds: [],
+          confidence: 0.5,
+          createdAt: Date.now(),
         },
       })
     }
     return {
       observations,
       evidence,
-      suggestedActions: highQuality > 0 ? [{
-        type: 'call_tool',
-        toolId: 'image-stego',
-        input: { channels: highQuality },
-        reason: 'zsteg produced high-quality text — escalate to image-stego specialist',
-        priority: 4,
-        costTier: 'normal',
-      }] : [],
+      suggestedActions:
+        highQuality > 0
+          ? [
+              {
+                type: 'call_tool',
+                toolId: 'image-stego',
+                input: { channels: highQuality },
+                reason: 'zsteg produced high-quality text — escalate to image-stego specialist',
+                priority: 4,
+                costTier: 'normal',
+              },
+            ]
+          : [],
       flagCandidateDrafts,
       warnings: [],
       rawArtifactIds: input.artifactIds,

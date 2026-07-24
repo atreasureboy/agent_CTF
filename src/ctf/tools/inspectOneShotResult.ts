@@ -53,7 +53,9 @@ export function makeInspectOneShotTool(
         if (!result.startedAt || !result.finishedAt) return 0
         return Date.parse(result.finishedAt) - Date.parse(result.startedAt)
       })()
-      const paths = resolvePaths ? resolvePaths(runId) : { evidenceRoot: '<unknown>', resultPath: '<unknown>' }
+      const paths = resolvePaths
+        ? resolvePaths(runId)
+        : { evidenceRoot: '<unknown>', resultPath: '<unknown>' }
       return {
         content:
           `manifest=${result.manifestId} status=${result.status}\n` +

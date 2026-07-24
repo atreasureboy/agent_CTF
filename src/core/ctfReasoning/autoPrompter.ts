@@ -66,36 +66,45 @@ export class TemplateAutoPrompter implements AutoPrompter {
   }
 }
 
-function buildFraming(category: ChallengeCategory, actions: ReadonlyArray<SuggestedAction>): string {
+function buildFraming(
+  category: ChallengeCategory,
+  actions: ReadonlyArray<SuggestedAction>,
+): string {
   const base = `Category: ${category}. `
   const types = actions.map((a) => a.type).join(', ')
   switch (category) {
     case 'crypto':
-      return base +
+      return (
+        base +
         'Look for known primitives (RSA / AES / ChaCha / XOR). ' +
         'Try small-exponent / small-message attacks first. ' +
         `Suggested actions in this cycle: ${types}.`
+      )
     case 'pwn':
-      return base +
+      return (
+        base +
         'Run checksec first. ' +
         'Look for stack / heap / format-string / UAF. ' +
         'Capture the binary and the libc. ' +
         `Suggested actions: ${types}.`
+      )
     case 'web':
-      return base +
+      return (
+        base +
         'Inspect cookies, headers, and path parameters. ' +
         'Try common XSS / SQLi / path-traversal / IDOR. ' +
         `Suggested actions: ${types}.`
+      )
     case 'reverse':
-      return base +
+      return (
+        base +
         'Run `file` and `strings` first. ' +
         'Decompile with Ghidra / radare2. ' +
         `Suggested actions: ${types}.`
+      )
     case 'misc':
     default:
-      return base +
-        'No category-specific heuristics. ' +
-        `Suggested actions: ${types}.`
+      return base + 'No category-specific heuristics. ' + `Suggested actions: ${types}.`
   }
 }
 

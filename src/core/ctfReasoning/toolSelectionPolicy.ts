@@ -15,7 +15,8 @@ import type { SuggestedAction } from './suggestedAction.js'
 
 export interface ToolSelectionDecision {
   allowed: boolean
-  reason?: 'insufficient_evidence' | 'already_completed' | 'triage_exists' | 'lower_value_alternative'
+  reason?:
+    'insufficient_evidence' | 'already_completed' | 'triage_exists' | 'lower_value_alternative'
   alternativeId?: string
 }
 
@@ -27,14 +28,22 @@ export function shouldRunTool(
   alternatives: SuggestedAction[] = [],
 ): ToolSelectionDecision {
   // If a satisfied attempt exists for the same target + kind, refuse.
-  const targetId = action.type === 'run_oneshot' ? action.manifestId
-    : action.type === 'run_workflow' ? action.workflowId
-    : action.type === 'call_tool' ? action.toolId
-    : null
-  const expectedKind = action.type === 'run_oneshot' ? 'oneshot'
-    : action.type === 'run_workflow' ? 'workflow'
-    : action.type === 'call_tool' ? 'tool'
-    : null
+  const targetId =
+    action.type === 'run_oneshot'
+      ? action.manifestId
+      : action.type === 'run_workflow'
+        ? action.workflowId
+        : action.type === 'call_tool'
+          ? action.toolId
+          : null
+  const expectedKind =
+    action.type === 'run_oneshot'
+      ? 'oneshot'
+      : action.type === 'run_workflow'
+        ? 'workflow'
+        : action.type === 'call_tool'
+          ? 'tool'
+          : null
   if (targetId && expectedKind) {
     // §round-4 audit fix — also match `kind`. A succeeded
     // `run_workflow` with workflowId='file' previously blocked a
@@ -57,12 +66,18 @@ export function shouldRunTool(
 
 function idOf(a: SuggestedAction): string {
   switch (a.type) {
-    case 'run_workflow': return a.workflowId
-    case 'run_oneshot': return a.manifestId
-    case 'call_tool': return a.toolId
-    case 'request_handoff': return a.capability
-    case 'verify_flag': return a.candidateId
-    case 'stop': return 'stop'
+    case 'run_workflow':
+      return a.workflowId
+    case 'run_oneshot':
+      return a.manifestId
+    case 'call_tool':
+      return a.toolId
+    case 'request_handoff':
+      return a.capability
+    case 'verify_flag':
+      return a.candidateId
+    case 'stop':
+      return 'stop'
   }
   // §round-5 audit fix — exhaustive default. Adding a new action
   // type without updating this switch would have returned undefined.

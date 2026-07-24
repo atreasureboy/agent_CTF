@@ -77,7 +77,10 @@ export class ShotgunCoordinator {
         continue
       }
       if (!m.allowedProfiles.includes(this.taskContext.profileId)) {
-        rejected.push({ manifestId: id, reason: `profile ${this.taskContext.profileId} not allowed` })
+        rejected.push({
+          manifestId: id,
+          reason: `profile ${this.taskContext.profileId} not allowed`,
+        })
         continue
       }
       if (!this.isManifestReady(id)) {
@@ -134,9 +137,9 @@ export class ShotgunCoordinator {
 
   /** Convenience: pick eligible manifests for the active profile. */
   eligible(): import('../oneshot/types.js').OneShotManifest[] {
-    return this.registry.list().filter((m) =>
-      m.allowedProfiles.includes(this.taskContext.profileId),
-    )
+    return this.registry
+      .list()
+      .filter((m) => m.allowedProfiles.includes(this.taskContext.profileId))
   }
 
   private summarize(results: OneShotResult[]): string {

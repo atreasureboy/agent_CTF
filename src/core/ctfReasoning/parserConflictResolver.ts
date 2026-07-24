@@ -93,24 +93,35 @@ function priorityForParser(parserId: string): ParserPriority {
     parserId === 'checksec' ||
     parserId === 'exiftool' ||
     parserId === 'strings'
-  ) return 'specialized_parser'
+  )
+    return 'specialized_parser'
   if (parserId === 'file') return 'file_command'
   return 'generic'
 }
 
 function rank(p: ParserPriority): number {
   switch (p) {
-    case 'magic_signature': return 4
-    case 'specialized_parser': return 3
-    case 'file_command': return 2
-    case 'generic': return 1
+    case 'magic_signature':
+      return 4
+    case 'specialized_parser':
+      return 3
+    case 'file_command':
+      return 2
+    case 'generic':
+      return 1
   }
 }
 
-export function withPartialWarning(result: MaterializedResult, parserId: string): MaterializedResult {
+export function withPartialWarning(
+  result: MaterializedResult,
+  parserId: string,
+): MaterializedResult {
   return {
     ...result,
-    warnings: [...result.warnings, `parser ${parserId}: partial — tool exited with error but produced evidence`],
+    warnings: [
+      ...result.warnings,
+      `parser ${parserId}: partial — tool exited with error but produced evidence`,
+    ],
   }
 }
 

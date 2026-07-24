@@ -15,12 +15,7 @@
 
 import type { SuggestedAction } from './suggestedAction.js'
 
-export type ReasoningInputSource =
-  | 'main-agent'
-  | 'workflow'
-  | 'oneshot'
-  | 'specialist'
-  | 'manual'
+export type ReasoningInputSource = 'main-agent' | 'workflow' | 'oneshot' | 'specialist' | 'manual'
 
 export interface StructuredRunOutput {
   taskId: string
@@ -41,7 +36,9 @@ export interface StructuredRunOutput {
   warnings: string[]
 }
 
-export function buildStructuredRunOutput(input: Omit<StructuredRunOutput, 'status'> & { status?: StructuredRunOutput['status'] }): StructuredRunOutput {
+export function buildStructuredRunOutput(
+  input: Omit<StructuredRunOutput, 'status'> & { status?: StructuredRunOutput['status'] },
+): StructuredRunOutput {
   return { ...input, status: input.status ?? 'completed' }
 }
 

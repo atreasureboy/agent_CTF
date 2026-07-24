@@ -13,11 +13,7 @@
  * the §六 contract.
  */
 
-import type {
-  CandidateValue,
-  NormalizedFinding,
-  OneShotResult,
-} from './types.js'
+import type { CandidateValue, NormalizedFinding, OneShotResult } from './types.js'
 import { runParser } from './outputParser.js'
 import { runParser as _runParser } from './outputParser.js'
 void _runParser
@@ -79,13 +75,20 @@ export function normalizeResult(
   }
   const candidates = [...candMap.values()]
 
-  const summary = buildSummary(result, findings.slice(0, limits.maxFindings), candidates.slice(0, limits.maxCandidates))
+  const summary = buildSummary(
+    result,
+    findings.slice(0, limits.maxFindings),
+    candidates.slice(0, limits.maxCandidates),
+  )
 
   return {
     ...result,
     findings: findings.slice(0, limits.maxFindings),
     candidates: candidates.slice(0, limits.maxCandidates),
-    diagnostics: { ...result.diagnostics, parserWarnings: [...result.diagnostics.parserWarnings, ...parsed.warnings] },
+    diagnostics: {
+      ...result.diagnostics,
+      parserWarnings: [...result.diagnostics.parserWarnings, ...parsed.warnings],
+    },
     summary,
   }
 }
@@ -99,10 +102,17 @@ function buildSummary(
   parts.push(`OneShot ${result.manifestId} ${result.status}`)
   if (result.durationMs !== undefined) parts.push(`(${result.durationMs}ms)`)
   if (candidates.length > 0) {
-    parts.push(`\nCandidates: ${candidates.map((c) => `${c.value.slice(0, 30)}(${c.confidence})`).join(', ')}`)
+    parts.push(
+      `\nCandidates: ${candidates.map((c) => `${c.value.slice(0, 30)}(${c.confidence})`).join(', ')}`,
+    )
   }
   if (findings.length > 0) {
-    parts.push(`\nFindings (${findings.length}): ${findings.slice(0, 5).map((f) => f.title.slice(0, 50)).join('; ')}`)
+    parts.push(
+      `\nFindings (${findings.length}): ${findings
+        .slice(0, 5)
+        .map((f) => f.title.slice(0, 50))
+        .join('; ')}`,
+    )
   }
   if (result.diagnostics.truncated) {
     parts.push('\n[output truncated — full log on disk]')

@@ -9,7 +9,12 @@
  */
 
 import type OpenAI from 'openai'
-import type { AgentModule, ModuleBootResult, ModuleIterationContext, ModuleIterationResult } from '../core/module.js'
+import type {
+  AgentModule,
+  ModuleBootResult,
+  ModuleIterationContext,
+  ModuleIterationResult,
+} from '../core/module.js'
 import {
   CRITIC_INTERVAL,
   CRITIC_MIN_ITERATIONS,
@@ -42,19 +47,41 @@ export class CriticModule implements AgentModule {
     if (recent.length < 4) return
 
     try {
-      const { OpenAICompatibleProvider } = await import('../core/modelReliability/providers/openAICompatibleProvider.js')
+      const { OpenAICompatibleProvider } =
+        await import('../core/modelReliability/providers/openAICompatibleProvider.js')
       const provider = new OpenAICompatibleProvider(this.client)
       const res = await provider.executeStructured(
         {
           id: this.model,
+          providerId: 'openai-compatible',
+          providerModelName: this.model,
           provider: 'openai-compatible',
           model: this.model,
+          trustLevel: 'standard',
+          reliabilityClass: 'standard',
           contextWindow: 128000,
-          capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
-          reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+          capabilities: {
+            toolCalling: false,
+            structuredOutput: true,
+            vision: false,
+            longContext: true,
+            codeExecutionPlanning: false,
+          },
+          reliability: {
+            structuredOutput: 0.9,
+            toolArguments: 0.9,
+            longHorizonPlanning: 0.8,
+            summarization: 0.9,
+            instructionFollowing: 0.9,
+          },
           economics: {},
           allowedRoles: ['specialist'],
-          limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+          limits: {
+            maxVisibleTools: 5,
+            maxIterations: 1,
+            maxRepairAttempts: 1,
+            maxConsecutiveFailures: 2,
+          },
           fallbackModelIds: [],
         },
         {

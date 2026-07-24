@@ -19,7 +19,16 @@ export interface ReplayAttempt {
   attemptId: string
   cycle: number
   action: string
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped' | 'skipped_duplicate' | 'skipped_policy' | 'skipped_budget'
+  status:
+    | 'pending'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled'
+    | 'skipped'
+    | 'skipped_duplicate'
+    | 'skipped_policy'
+    | 'skipped_budget'
   startedAt: number
   completedAt?: number
   observationIds: string[]
@@ -110,14 +119,20 @@ export function replayFromEvents(events: ReadonlyArray<CTFTaskEvent>): ReplayOut
     if (event.type === 'STRATEGY_DECISION_RECORDED') {
       // A new strategy decision closes the previous cycle (which
       // by then has its attempt bound) and starts a fresh one.
-      if (currentCycle && (currentCycle.attempts.length > 0 || currentCycle.strategyDecisions.length > 0)) {
+      if (
+        currentCycle &&
+        (currentCycle.attempts.length > 0 || currentCycle.strategyDecisions.length > 0)
+      ) {
         cycles.push(currentCycle)
         cycleIndex += 1
       }
       currentCycle = newCycle(cycleIndex, state.reasoningBudget.actionsExecuted)
       currentCycle.strategyDecisions.push({
         selectedAction: event.decision.selectedAction?.type,
-        rejected: event.decision.rejectedActions.map((r) => ({ action: r.action.type, reason: r.reason })),
+        rejected: event.decision.rejectedActions.map((r) => ({
+          action: r.action.type,
+          reason: r.reason,
+        })),
         reason: event.decision.reason,
         basedOnHypothesisIds: event.decision.basedOnHypothesisIds,
       })

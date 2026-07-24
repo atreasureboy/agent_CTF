@@ -32,9 +32,7 @@ import type { TaskContext } from '../config/settings.js'
  */
 function prependBullets(items: Array<string | string[]>): string[] {
   return items.flatMap((item) =>
-    Array.isArray(item)
-      ? item.map((sub) => `   - ${sub}`)
-      : [` - ${item}`],
+    Array.isArray(item) ? item.map((sub) => `   - ${sub}`) : [` - ${item}`],
   )
 }
 
@@ -78,12 +76,7 @@ function getMindsetSection(): string {
     '不臆造 — 不确定某能力是否可用时先查证（依赖、环境、文档），不要假设',
     '出错就修 — 工具报错先读输出、诊断原因、重试，不要跳过继续',
   ]
-  return [
-    '# 工作准则',
-    '',
-    '## 核心原则',
-    ...prependBullets(principles),
-  ].join('\n')
+  return ['# 工作准则', '', '## 核心原则', ...prependBullets(principles)].join('\n')
 }
 
 function getToolUsageSection(): string {
@@ -200,7 +193,11 @@ function getAutonomySection(): string {
 
 // ─── assembly ───────────────────────────────────────────────────────────────
 
-export function getSystemPrompt(cwd: string, taskContext?: TaskContext, sessionDir?: string): string {
+export function getSystemPrompt(
+  cwd: string,
+  taskContext?: TaskContext,
+  sessionDir?: string,
+): string {
   const sections: Array<string | null> = [
     getIntroSection(cwd, sessionDir),
     taskContext ? formatTaskContextSection(taskContext, sessionDir) : null,
@@ -286,5 +283,3 @@ You are currently in PLAN MODE. Rules for this mode:
 
 `
 }
-
-

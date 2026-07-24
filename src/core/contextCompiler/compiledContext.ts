@@ -2,11 +2,7 @@ import type { ModelRole } from '../modelReliability/modelCapability.js'
 import type { CTFHypothesis } from '../ctfRuntime/taskState.js'
 
 export type CompilerType =
-  | 'challenge_prompt'
-  | 'solver_brief'
-  | 'progress_handoff'
-  | 'retry_handoff'
-  | 'specialist_context'
+  'challenge_prompt' | 'solver_brief' | 'progress_handoff' | 'retry_handoff' | 'specialist_context'
 
 export interface CompiledEvidenceRef {
   id: string

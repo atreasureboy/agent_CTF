@@ -32,10 +32,7 @@ export class LocalFixtureBenchmarkAdapter implements ChallengeBenchmarkAdapter {
     // No-op for offline local fixture
   }
 
-  public async verifyCandidate(
-    challenge: BenchmarkChallenge,
-    candidate: string,
-  ): Promise<boolean> {
+  public async verifyCandidate(challenge: BenchmarkChallenge, candidate: string): Promise<boolean> {
     if (challenge.expectedFlagPattern) {
       const regex = new RegExp(challenge.expectedFlagPattern)
       return regex.test(candidate.trim())

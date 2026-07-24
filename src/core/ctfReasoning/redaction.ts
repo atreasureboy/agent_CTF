@@ -17,9 +17,15 @@ const PATTERNS: Array<{ re: RegExp; label: string }> = [
   // JWT (header.payload.signature)
   { re: /\beyJ[A-Za-z0-9_=-]+\.eyJ[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]+/g, label: 'jwt' },
   // PEM private key block
-  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, label: 'pem_private_key' },
+  {
+    re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    label: 'pem_private_key',
+  },
   // password= / token= assignments
-  { re: /\b(password|passwd|pass|pwd|token|api[_-]?key|secret|signature)\s*=\s*([^\s&"']+)/gi, label: 'kv_secret' },
+  {
+    re: /\b(password|passwd|pass|pwd|token|api[_-]?key|secret|signature)\s*=\s*([^\s&"']+)/gi,
+    label: 'kv_secret',
+  },
   // Authorization: Bearer ... — stop at trailing punctuation by
   // excluding `.` and only matching word chars + `-` + `_`.
   { re: /(Authorization:\s*Bearer\s+)([A-Za-z0-9_-]+)/gi, label: 'bearer_token' },

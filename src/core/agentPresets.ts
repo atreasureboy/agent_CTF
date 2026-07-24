@@ -107,7 +107,22 @@ export const AGENT_PRESETS: Record<string, AgentConfig> = {
       workspace: { enabled: true },
     },
     // Exclude Agent to prevent recursion
-    tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'TodoWrite', 'WebFetch', 'WebSearch', 'TmuxSession', 'load_skill', 'memory_write', 'memory_search', 'memory_recall'],
+    tools: [
+      'Bash',
+      'Read',
+      'Write',
+      'Edit',
+      'Glob',
+      'Grep',
+      'TodoWrite',
+      'WebFetch',
+      'WebSearch',
+      'TmuxSession',
+      'load_skill',
+      'memory_write',
+      'memory_search',
+      'memory_recall',
+    ],
     maxIterations: 60,
   },
 }
@@ -119,10 +134,7 @@ export const PRESET_NAMES = Object.keys(AGENT_PRESETS)
  * Resolve agent configuration from either a preset name or a custom config.
  * Falls back to 'general-purpose' preset if nothing specified.
  */
-export function resolveAgentConfig(input: {
-  preset?: string
-  config?: AgentConfig
-}): AgentConfig {
+export function resolveAgentConfig(input: { preset?: string; config?: AgentConfig }): AgentConfig {
   if (input.config) return input.config
   const preset = input.preset ?? 'general-purpose'
   const found = AGENT_PRESETS[preset] ?? AGENT_PRESETS['general-purpose']
@@ -155,11 +167,12 @@ export function validateAgentConfig(raw: unknown): AgentConfig | null {
       systemPrompt,
       planMode: id.planMode === true,
     },
-    modules: typeof obj.modules === 'object' && obj.modules !== null
-      ? obj.modules
+    modules: typeof obj.modules === 'object' && obj.modules !== null ? obj.modules : undefined,
+    tools: Array.isArray(obj.tools)
+      ? (obj.tools as unknown[]).filter((t): t is string => typeof t === 'string')
       : undefined,
-    tools: Array.isArray(obj.tools) ? (obj.tools as unknown[]).filter((t): t is string => typeof t === 'string') : undefined,
-    maxIterations: typeof obj.maxIterations === 'number' ? Math.min(obj.maxIterations, 200) : undefined,
+    maxIterations:
+      typeof obj.maxIterations === 'number' ? Math.min(obj.maxIterations, 200) : undefined,
     temperature: typeof obj.temperature === 'number' ? obj.temperature : undefined,
     maxOutputTokens: typeof obj.maxOutputTokens === 'number' ? obj.maxOutputTokens : undefined,
   }

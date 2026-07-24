@@ -7,11 +7,7 @@ export interface SubmissionRequest {
   modelId: string
 }
 
-export type SubmissionStatus =
-  | 'simulated_accepted'
-  | 'accepted'
-  | 'rejected'
-  | 'error'
+export type SubmissionStatus = 'simulated_accepted' | 'accepted' | 'rejected' | 'error'
 
 export interface SubmissionResponse {
   status: SubmissionStatus

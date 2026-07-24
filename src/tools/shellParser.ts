@@ -38,8 +38,12 @@ function firstExecutableToken(rest: string): string | null {
   // Helper-less wrappers / privilege escalation — consume them along with any
   // short/long flag they accept (`env -i VAR=x …`, `sudo -E -u root …`).
   if (
-    tokens[i] === 'sudo' || tokens[i] === 'command' || tokens[i] === 'env' ||
-    tokens[i] === 'nice' || tokens[i] === 'nohup' || tokens[i] === 'timeout'
+    tokens[i] === 'sudo' ||
+    tokens[i] === 'command' ||
+    tokens[i] === 'env' ||
+    tokens[i] === 'nice' ||
+    tokens[i] === 'nohup' ||
+    tokens[i] === 'timeout'
   ) {
     i++
     while (i < tokens.length && /^(-[A-Za-z]|--[A-Za-z][A-Za-z-]*)/.test(tokens[i])) {
@@ -175,7 +179,7 @@ export function parseShellCommand(command: string): ParseResult {
       i += 2
       continue
     }
-    if (c === '`' ) {
+    if (c === '`') {
       // Backtick subshell — consume until matching backtick (no nesting).
       const end = command.indexOf('`', i + 1)
       if (end < 0) {
@@ -285,7 +289,10 @@ export function parseShellCommand(command: string): ParseResult {
 }
 
 /** Convenience: parse + flatten to first-executables-per-segment. */
-export function allExecutablesShellSafe(command: string): { executables: string[]; unknown: boolean } {
+export function allExecutablesShellSafe(command: string): {
+  executables: string[]
+  unknown: boolean
+} {
   const r = parseShellCommand(command)
   if (r.unknown) return { executables: [], unknown: true }
   const exes = r.segments

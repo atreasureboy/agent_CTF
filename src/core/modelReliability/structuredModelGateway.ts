@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type OpenAI from 'openai'
 
-import { ModelRole } from './modelCapability.js'
+import { ModelCapabilityProfile, ModelRole } from './modelCapability.js'
 import { ModelCircuitBreaker } from './modelCircuitBreaker.js'
 import { ModelHealthStore } from './modelHealth.js'
 import { ModelRolePolicy } from './modelRolePolicy.js'
@@ -9,6 +9,12 @@ import { ModelRouter, ModelRoutingDecision } from './modelRouter.js'
 import { ModelProvider } from './providers/modelProvider.js'
 import { MissingModelProviderError } from './errors.js'
 import { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
+import { MonitoredAgentTurnStream } from './monitoredStream.js'
+
+export interface ModelProfileResolver {
+  getRequired(modelId: string): ModelCapabilityProfile
+  getProfile(modelId: string): ModelCapabilityProfile
+}
 
 export interface AgentTurnModelRequest {
   taskId: string
@@ -61,28 +67,32 @@ export interface ModelInvocationGateway {
     input: AgentTurnModelRequest,
   ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>>
 
-  executeStructured<T>(
-    input: StructuredModelRequest<T>,
-  ): Promise<StructuredModelResponse<T>>
+  executeStructured<T>(input: StructuredModelRequest<T>): Promise<StructuredModelResponse<T>>
 }
 
 export class StructuredModelGateway implements ModelInvocationGateway {
   private router: ModelRouter
   private healthStore: ModelHealthStore
   private circuitBreaker: ModelCircuitBreaker
+  private profileResolver?: ModelProfileResolver
   private trajectoryRecorder?: TrajectoryRecorder
+  private getRevisionFn?: (taskId: string) => number
   private providers = new Map<string, ModelProvider>()
 
   constructor(
     router: ModelRouter,
     healthStore: ModelHealthStore,
     circuitBreaker: ModelCircuitBreaker,
+    profileResolver?: ModelProfileResolver,
     trajectoryRecorder?: TrajectoryRecorder,
+    getRevisionFn?: (taskId: string) => number,
   ) {
     this.router = router
     this.healthStore = healthStore
     this.circuitBreaker = circuitBreaker
+    this.profileResolver = profileResolver
     this.trajectoryRecorder = trajectoryRecorder
+    this.getRevisionFn = getRevisionFn
   }
 
   public registerProvider(provider: ModelProvider): void {
@@ -97,6 +107,10 @@ export class StructuredModelGateway implements ModelInvocationGateway {
     return this.providers.has(id)
   }
 
+  public getRevision(taskId: string): number {
+    return this.getRevisionFn ? this.getRevisionFn(taskId) : 1
+  }
+
   public async streamAgentTurn(
     req: AgentTurnModelRequest,
   ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>> {
@@ -105,7 +119,13 @@ export class StructuredModelGateway implements ModelInvocationGateway {
       preferredModelId: req.preferredModelId,
       requiredCapabilities: req.requiredCapabilities,
       taskId: req.taskId,
-      hasProvider: (pId) => this.providers.size > 0 ? this.providers.has(pId) : true,
+      hasProvider: (pId) => {
+        if (this.providers.size === 0) return true
+        return (
+          this.providers.has(pId) ||
+          Array.from(this.providers.values()).some((p) => p.id.includes(pId) || pId.includes(p.id))
+        )
+      },
     })
 
     this.trajectoryRecorder?.record(
@@ -117,50 +137,83 @@ export class StructuredModelGateway implements ModelInvocationGateway {
         role: req.role,
         mode: 'streaming',
       },
-      1,
+      this.getRevision(req.taskId),
       req.agentRunId,
     )
 
-    const candidateModels = [
-      routingDecision.selectedModelId,
-      ...routingDecision.fallbackModelIds,
-    ]
+    const candidateModels = [routingDecision.selectedModelId, ...routingDecision.fallbackModelIds]
 
     let lastError: Error | null = null
 
     for (let i = 0; i < candidateModels.length; i++) {
       const activeModelId = candidateModels[i]
 
+      const modelProfile = this.profileResolver
+        ? this.profileResolver.getProfile(activeModelId)
+        : {
+            id: activeModelId,
+            providerId: 'openai-compatible',
+            providerModelName: activeModelId,
+            provider: 'openai-compatible',
+            model: activeModelId,
+            trustLevel: 'standard' as const,
+            reliabilityClass: 'standard' as const,
+            contextWindow: 128000,
+            capabilities: {
+              toolCalling: true,
+              structuredOutput: true,
+              vision: false,
+              longContext: true,
+              codeExecutionPlanning: true,
+            },
+            reliability: {
+              structuredOutput: 0.9,
+              toolArguments: 0.9,
+              longHorizonPlanning: 0.8,
+              summarization: 0.9,
+              instructionFollowing: 0.9,
+            },
+            economics: {},
+            allowedRoles: [req.role],
+            limits: {
+              maxVisibleTools: 20,
+              maxIterations: 50,
+              maxRepairAttempts: 1,
+              maxConsecutiveFailures: 2,
+            },
+            fallbackModelIds: [],
+          }
+
       const roleCheck = ModelRolePolicy.validateRolePermission(
-        activeModelId,
+        modelProfile,
         req.role,
         'stream_agent_turn',
       )
       if (!roleCheck.allowed) {
-        this.healthStore.recordFailure(activeModelId, 'schema', roleCheck.reason, req.taskId)
+        // Record role_denied, not schema failure
+        this.healthStore.recordFailure(
+          activeModelId,
+          'role',
+          `role_denied: ${roleCheck.reason}`,
+          req.taskId,
+        )
         continue
       }
 
       try {
-        let provider = Array.from(this.providers.values())[0]
+        const providerId = modelProfile.providerId || modelProfile.provider
+        let provider = this.providers.get(providerId)
+        if (!provider && this.providers.size > 0) {
+          provider =
+            Array.from(this.providers.values()).find(
+              (p) => p.id.includes(providerId) || providerId.includes(p.id),
+            ) || Array.from(this.providers.values())[0]
+        }
         if (!provider) {
-          throw new MissingModelProviderError(activeModelId, 'openai-compatible')
+          throw new MissingModelProviderError(activeModelId, providerId)
         }
 
-        const modelProfile = {
-          id: activeModelId,
-          provider: provider.id,
-          model: activeModelId,
-          contextWindow: 128000,
-          capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: true },
-          reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
-          economics: {},
-          allowedRoles: [req.role],
-          limits: { maxVisibleTools: 20, maxIterations: 50, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
-          fallbackModelIds: [],
-        }
-
-        const stream = await provider.streamAgentTurn(modelProfile, {
+        const rawStream = await provider.streamAgentTurn(modelProfile, {
           taskId: req.taskId,
           agentRunId: req.agentRunId,
           role: req.role,
@@ -172,15 +225,15 @@ export class StructuredModelGateway implements ModelInvocationGateway {
           signal: req.signal,
         })
 
-        this.healthStore.recordSuccess(activeModelId, req.taskId)
-        return stream
-      } catch (err: any) {
-        this.healthStore.recordFailure(
+        return new MonitoredAgentTurnStream(
+          rawStream,
           activeModelId,
-          'provider',
-          err.message,
           req.taskId,
+          this.healthStore,
+          this.circuitBreaker,
         )
+      } catch (err: any) {
+        this.healthStore.recordFailure(activeModelId, 'provider', err.message, req.taskId)
         lastError = err
       }
     }
@@ -202,7 +255,13 @@ export class StructuredModelGateway implements ModelInvocationGateway {
       role: req.role,
       preferredModelId: req.preferredModelId,
       taskId: req.taskId,
-      hasProvider: (pId) => this.providers.size > 0 ? this.providers.has(pId) : true,
+      hasProvider: (pId) => {
+        if (this.providers.size === 0) return true
+        return (
+          this.providers.has(pId) ||
+          Array.from(this.providers.values()).some((p) => p.id.includes(pId) || pId.includes(p.id))
+        )
+      },
     })
 
     this.trajectoryRecorder?.record(
@@ -214,14 +273,11 @@ export class StructuredModelGateway implements ModelInvocationGateway {
         role: req.role,
         mode: 'structured',
       },
-      1,
+      this.getRevision(req.taskId),
       req.agentRunId,
     )
 
-    const candidateModels = [
-      routingDecision.selectedModelId,
-      ...routingDecision.fallbackModelIds,
-    ]
+    const candidateModels = [routingDecision.selectedModelId, ...routingDecision.fallbackModelIds]
 
     let lastError: Error | null = null
     const maxChars = req.maxRepairRawChars ?? 4000
@@ -230,36 +286,72 @@ export class StructuredModelGateway implements ModelInvocationGateway {
       const activeModelId = candidateModels[i]
       const isFallback = i > 0
 
+      const modelProfile = this.profileResolver
+        ? this.profileResolver.getProfile(activeModelId)
+        : {
+            id: activeModelId,
+            providerId: 'openai-compatible',
+            providerModelName: activeModelId,
+            provider: 'openai-compatible',
+            model: activeModelId,
+            trustLevel: 'standard' as const,
+            reliabilityClass: 'standard' as const,
+            contextWindow: 128000,
+            capabilities: {
+              toolCalling: true,
+              structuredOutput: true,
+              vision: false,
+              longContext: true,
+              codeExecutionPlanning: true,
+            },
+            reliability: {
+              structuredOutput: 0.9,
+              toolArguments: 0.9,
+              longHorizonPlanning: 0.8,
+              summarization: 0.9,
+              instructionFollowing: 0.9,
+            },
+            economics: {},
+            allowedRoles: [req.role],
+            limits: {
+              maxVisibleTools: 20,
+              maxIterations: 50,
+              maxRepairAttempts: 1,
+              maxConsecutiveFailures: 2,
+            },
+            fallbackModelIds: [],
+          }
+
       const roleCheck = ModelRolePolicy.validateRolePermission(
-        activeModelId,
+        modelProfile,
         req.role,
         'structured_query',
       )
       if (!roleCheck.allowed) {
-        this.healthStore.recordFailure(activeModelId, 'schema', roleCheck.reason, req.taskId)
+        this.healthStore.recordFailure(
+          activeModelId,
+          'role',
+          `role_denied: ${roleCheck.reason}`,
+          req.taskId,
+        )
         continue
       }
 
       try {
         let executor = req.llmExecutor
         if (!executor) {
-          const provider = Array.from(this.providers.values())[0]
+          const providerId = modelProfile.providerId || modelProfile.provider
+          let provider = this.providers.get(providerId)
+          if (!provider && this.providers.size > 0) {
+            provider =
+              Array.from(this.providers.values()).find(
+                (p) => p.id.includes(providerId) || providerId.includes(p.id),
+              ) || Array.from(this.providers.values())[0]
+          }
           if (!provider) {
-            throw new MissingModelProviderError(activeModelId, 'default')
+            throw new MissingModelProviderError(activeModelId, providerId)
           }
           executor = async (mId, sys, user) => {
-            const modelProfile = {
-              id: mId,
-              provider: provider.id,
-              model: mId,
-              contextWindow: 128000,
-              capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: true },
-              reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
-              economics: {},
-              allowedRoles: [req.role],
-              limits: { maxVisibleTools: 20, maxIterations: 50, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
-              fallbackModelIds: [],
-            }
             const res = await provider.executeStructured(modelProfile, {
               taskId: req.taskId,
               agentRunId: req.agentRunId,
@@ -306,11 +398,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
 
           const truncatedRaw = res.rawText.slice(0, maxChars)
           const repairPrompt = `Your previous JSON output failed validation with error: ${parseErr.message}. Output ONLY valid JSON matching the schema. Raw text was: ${truncatedRaw}`
-          const repairRes = await executor(
-            activeModelId,
-            req.systemPrompt,
-            repairPrompt,
-          )
+          const repairRes = await executor(activeModelId, req.systemPrompt, repairPrompt)
 
           try {
             const repairedJson = JSON.parse(repairRes.rawText)
@@ -346,12 +434,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
           }
         }
       } catch (err: any) {
-        this.healthStore.recordFailure(
-          activeModelId,
-          'provider',
-          err.message,
-          req.taskId,
-        )
+        this.healthStore.recordFailure(activeModelId, 'provider', err.message, req.taskId)
         lastError = err
       }
     }

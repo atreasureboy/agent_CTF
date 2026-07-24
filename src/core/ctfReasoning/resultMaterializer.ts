@@ -19,7 +19,11 @@ import type { ObservationDraft } from './observation.js'
 import type { EvidenceDraft } from './evidence.js'
 import type { SuggestedAction } from './suggestedAction.js'
 import type { FlagCandidateDraft } from './flagCandidate.js'
-import { materializeViaRegistry, type ParserInput, type ParserSelectionInput } from './parserRegistry.js'
+import {
+  materializeViaRegistry,
+  type ParserInput,
+  type ParserSelectionInput,
+} from './parserRegistry.js'
 
 export interface MaterializedResult {
   observations: ObservationDraft[]
@@ -97,15 +101,15 @@ export function selectParsersFor(result: MaterializableResult): ParserSelectionI
   }
 }
 
-export function toParserInput(
-  taskId: string,
-  result: MaterializableResult,
-): ParserInput {
+export function toParserInput(taskId: string, result: MaterializableResult): ParserInput {
   const source: ParserInput['source'] =
-    result.type === 'tool' ? { type: 'tool', toolId: result.toolId }
-    : result.type === 'oneshot' ? { type: 'oneshot', oneShotRunId: result.oneShotRunId }
-    : result.type === 'workflow_step' ? { type: 'workflow', workflowId: result.workflowId, stepId: result.stepId }
-    : { type: 'specialist', handoffId: result.handoffId, agentRunId: result.agentRunId }
+    result.type === 'tool'
+      ? { type: 'tool', toolId: result.toolId }
+      : result.type === 'oneshot'
+        ? { type: 'oneshot', oneShotRunId: result.oneShotRunId }
+        : result.type === 'workflow_step'
+          ? { type: 'workflow', workflowId: result.workflowId, stepId: result.stepId }
+          : { type: 'specialist', handoffId: result.handoffId, agentRunId: result.agentRunId }
   const stdoutPath = result.type === 'specialist' ? undefined : result.stdoutPath
   const stderrPath = result.type === 'specialist' ? undefined : result.stderrPath
   const exitCode = 'exitCode' in result ? result.exitCode : undefined

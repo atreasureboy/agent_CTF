@@ -118,7 +118,10 @@ export class FindingStore {
   }
 
   /** Resolve artifact metadata references inside a finding. */
-  static resolveArtifacts(f: Finding, store: { read(id: string): ArtifactMeta | null }): ArtifactMeta[] {
+  static resolveArtifacts(
+    f: Finding,
+    store: { read(id: string): ArtifactMeta | null },
+  ): ArtifactMeta[] {
     return f.artifactIds.map((id) => store.read(id)).filter((a): a is ArtifactMeta => a !== null)
   }
 }

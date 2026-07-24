@@ -53,7 +53,7 @@ export class ReflectionModule implements AgentModule {
 
   async onComplete(ctx: ModuleRunContext): Promise<void> {
     // Skip if the run was too short to yield useful insights
-    const toolCallCount = ctx.messages.filter(m => m.role === 'tool').length
+    const toolCallCount = ctx.messages.filter((m) => m.role === 'tool').length
     if (toolCallCount < 3) return
 
     // Skip if the run ended in error
@@ -62,19 +62,41 @@ export class ReflectionModule implements AgentModule {
     try {
       const conversationSummary = this.serializeForReflection(ctx.messages)
 
-      const { OpenAICompatibleProvider } = await import('../core/modelReliability/providers/openAICompatibleProvider.js')
+      const { OpenAICompatibleProvider } =
+        await import('../core/modelReliability/providers/openAICompatibleProvider.js')
       const provider = new OpenAICompatibleProvider(this.client)
       const res = await provider.executeStructured(
         {
           id: this.model,
+          providerId: 'openai-compatible',
+          providerModelName: this.model,
           provider: 'openai-compatible',
           model: this.model,
+          trustLevel: 'standard',
+          reliabilityClass: 'standard',
           contextWindow: 128000,
-          capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
-          reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+          capabilities: {
+            toolCalling: false,
+            structuredOutput: true,
+            vision: false,
+            longContext: true,
+            codeExecutionPlanning: false,
+          },
+          reliability: {
+            structuredOutput: 0.9,
+            toolArguments: 0.9,
+            longHorizonPlanning: 0.8,
+            summarization: 0.9,
+            instructionFollowing: 0.9,
+          },
           economics: {},
           allowedRoles: ['reporter'],
-          limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+          limits: {
+            maxVisibleTools: 5,
+            maxIterations: 1,
+            maxRepairAttempts: 1,
+            maxConsecutiveFailures: 2,
+          },
           fallbackModelIds: [],
         },
         {
@@ -115,7 +137,9 @@ export class ReflectionModule implements AgentModule {
     }
   }
 
-  private serializeForReflection(messages: { role: string; content: string | null; tool_calls?: unknown[] }[]): string {
+  private serializeForReflection(
+    messages: { role: string; content: string | null; tool_calls?: unknown[] }[],
+  ): string {
     const parts: string[] = []
     for (const msg of messages.slice(-30)) {
       if (msg.role === 'user' && typeof msg.content === 'string') {
@@ -124,7 +148,8 @@ export class ReflectionModule implements AgentModule {
         if (msg.content) parts.push(`[ASSISTANT]: ${msg.content.slice(0, 200)}`)
         if (msg.tool_calls?.length) {
           const names = (msg.tool_calls as Array<{ function: { name: string } }>)
-            .map(tc => tc.function.name).join(', ')
+            .map((tc) => tc.function.name)
+            .join(', ')
           parts.push(`[TOOLS USED]: ${names}`)
         }
       } else if (msg.role === 'tool' && typeof msg.content === 'string') {
@@ -150,8 +175,8 @@ function parseReflection(output: string): Array<{
       }>
     }
     return (parsed.knowledge ?? [])
-      .filter(e => e.content && e.content.length > 10)
-      .map(e => ({
+      .filter((e) => e.content && e.content.length > 10)
+      .map((e) => ({
         content: e.content.slice(0, 500),
         tags: e.tags ?? [],
         confidence: typeof e.confidence === 'number' ? e.confidence : 0.5,
@@ -181,25 +206,49 @@ export async function consolidateSession(
     return { episodes: episodes.length, knowledgeExtracted: 0 }
   }
 
-  const sessionSummary = episodes.map((e, i) => {
-    const icon = e.outcome === 'success' ? '✓' : '✗'
-    return `${i + 1}. ${icon} ${e.toolName}: ${e.inputSummary.slice(0, 60)} → ${e.resultSummary.slice(0, 80)}`
-  }).join('\n')
+  const sessionSummary = episodes
+    .map((e, i) => {
+      const icon = e.outcome === 'success' ? '✓' : '✗'
+      return `${i + 1}. ${icon} ${e.toolName}: ${e.inputSummary.slice(0, 60)} → ${e.resultSummary.slice(0, 80)}`
+    })
+    .join('\n')
 
   try {
-    const { OpenAICompatibleProvider } = await import('../core/modelReliability/providers/openAICompatibleProvider.js')
+    const { OpenAICompatibleProvider } =
+      await import('../core/modelReliability/providers/openAICompatibleProvider.js')
     const provider = new OpenAICompatibleProvider(client)
     const res = await provider.executeStructured(
       {
         id: model,
+        providerId: 'openai-compatible',
+        providerModelName: model,
         provider: 'openai-compatible',
         model,
+        trustLevel: 'standard',
+        reliabilityClass: 'standard',
         contextWindow: 128000,
-        capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
-        reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+        capabilities: {
+          toolCalling: false,
+          structuredOutput: true,
+          vision: false,
+          longContext: true,
+          codeExecutionPlanning: false,
+        },
+        reliability: {
+          structuredOutput: 0.9,
+          toolArguments: 0.9,
+          longHorizonPlanning: 0.8,
+          summarization: 0.9,
+          instructionFollowing: 0.9,
+        },
         economics: {},
         allowedRoles: ['reporter'],
-        limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+        limits: {
+          maxVisibleTools: 5,
+          maxIterations: 1,
+          maxRepairAttempts: 1,
+          maxConsecutiveFailures: 2,
+        },
         fallbackModelIds: [],
       },
       {
@@ -213,9 +262,9 @@ export async function consolidateSession(
     )
 
     const output = res.rawText ?? ''
-      const parsed = parseReflection(output)
+    const parsed = parseReflection(output)
 
-      for (const entry of parsed) {
+    for (const entry of parsed) {
       semantic.write({
         content: `[session] ${entry.content}`,
         tags: entry.tags,

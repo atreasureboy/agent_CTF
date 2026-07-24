@@ -34,9 +34,9 @@ export type EventType =
 
 export interface EventLogEntry {
   id: string
-  timestamp: string  // ISO 8601
+  timestamp: string // ISO 8601
   type: EventType
-  source: string     // 工具名 / agent 类型 / 系统模块
+  source: string // 工具名 / agent 类型 / 系统模块
   detail: Record<string, unknown>
   tags?: string[]
 }
@@ -50,7 +50,11 @@ export class EventLog {
 
   constructor(sessionDir: string) {
     this.filePath = join(sessionDir, 'events.ndjson')
-    try { mkdirSync(sessionDir, { recursive: true }) } catch { /* best-effort */ }
+    try {
+      mkdirSync(sessionDir, { recursive: true })
+    } catch {
+      /* best-effort */
+    }
   }
 
   /** Append a new event (best-effort, never throws) */

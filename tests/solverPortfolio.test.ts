@@ -90,7 +90,13 @@ describe('Solver Portfolio & Swarm Suite', () => {
   it('runs challenge swarm successfully', async () => {
     const bus = new CrossSolverEvidenceBus()
     const swarm = new ChallengeSwarm(bus)
-    swarm.registerAdapter(new NativeSolverAdapter())
+    swarm.registerAdapter(
+      new NativeSolverAdapter({
+        async runMainAgent() {
+          return { summary: 'Swarm test done' }
+        },
+      }),
+    )
 
     const input = {
       taskId: 'task_swarm',

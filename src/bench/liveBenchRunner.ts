@@ -20,9 +20,20 @@
  * end-to-end without depending on a specific CTF dataset.
  */
 
-import { askLlmForAction, MockLlmProvider, type LlmProvider, type ToolDefinition } from '../core/llm/llmToolUse.js'
-import type { ActionExecutionResult, ExecutionRefs } from '../core/ctfReasoning/actionExecutionResult.js'
-import type { StrategyActionExecutor, StrategyActionExecutorContext } from '../core/ctfReasoning/strategyActionExecutor.js'
+import {
+  askLlmForAction,
+  MockLlmProvider,
+  type LlmProvider,
+  type ToolDefinition,
+} from '../core/llm/llmToolUse.js'
+import type {
+  ActionExecutionResult,
+  ExecutionRefs,
+} from '../core/ctfReasoning/actionExecutionResult.js'
+import type {
+  StrategyActionExecutor,
+  StrategyActionExecutorContext,
+} from '../core/ctfReasoning/strategyActionExecutor.js'
 import type { CTFTaskState, FlagCandidate } from '../core/ctfRuntime/taskState.js'
 import { processNewReasoningInputs } from '../core/ctfReasoning/reasoningCoordinator.js'
 import { CTFTaskStateStore } from '../core/ctfRuntime/taskStateStore.js'
@@ -63,7 +74,9 @@ const DEFAULT_TOOL_DEFS: ToolDefinition[] = [
  *  the expected flag. For everything else, it returns a generic
  *  success with a synthetic observation. */
 export function createLlmToolActionExecutor(
-  options: { expectedFlag: string; onToolCall?: (toolName: string, input: unknown) => void } = { expectedFlag: '' },
+  options: { expectedFlag: string; onToolCall?: (toolName: string, input: unknown) => void } = {
+    expectedFlag: '',
+  },
 ): StrategyActionExecutor {
   return {
     async execute(ctx: StrategyActionExecutorContext): Promise<ActionExecutionResult> {
@@ -80,16 +93,18 @@ export function createLlmToolActionExecutor(
               evidence: [],
               suggestedActions: [],
               flagCandidateDrafts: won
-                ? [{
-                    value,
-                    normalizedValue: value.toLowerCase().trim(),
-                    sourceObservationIds: [],
-                    sourceEvidenceIds: [],
-                    sourceArtifactIds: [],
-                    sourceRunIds: [],
-                    confidence: 0.99,
-                    producer: { type: 'parser', id: 'live' },
-                  }]
+                ? [
+                    {
+                      value,
+                      normalizedValue: value.toLowerCase().trim(),
+                      sourceObservationIds: [],
+                      sourceEvidenceIds: [],
+                      sourceArtifactIds: [],
+                      sourceRunIds: [],
+                      confidence: 0.99,
+                      producer: { type: 'parser', id: 'live' },
+                    },
+                  ]
                 : [],
               warnings: won ? [] : [`live: wrong flag ${value}`],
               rawArtifactIds: [],
@@ -100,12 +115,14 @@ export function createLlmToolActionExecutor(
         return {
           status: 'executed',
           materializedResult: {
-            observations: [{
-              kind: 'command_status',
-              source: { type: 'tool', toolId: a.toolId },
-              summary: `${a.toolId} ran`,
-              confidence: 0.6,
-            }],
+            observations: [
+              {
+                kind: 'command_status',
+                source: { type: 'tool', toolId: a.toolId },
+                summary: `${a.toolId} ran`,
+                confidence: 0.6,
+              },
+            ],
             evidence: [],
             suggestedActions: [],
             flagCandidateDrafts: [],
@@ -127,16 +144,18 @@ export function createLlmToolActionExecutor(
             evidence: [],
             suggestedActions: [],
             flagCandidateDrafts: won
-              ? [{
-                  value,
-                  normalizedValue: value.toLowerCase().trim(),
-                  sourceObservationIds: [],
-                  sourceEvidenceIds: [],
-                  sourceArtifactIds: [],
-                  sourceRunIds: [],
-                  confidence: 0.99,
-                  producer: { type: 'parser', id: 'live' },
-                }]
+              ? [
+                  {
+                    value,
+                    normalizedValue: value.toLowerCase().trim(),
+                    sourceObservationIds: [],
+                    sourceEvidenceIds: [],
+                    sourceArtifactIds: [],
+                    sourceRunIds: [],
+                    confidence: 0.99,
+                    producer: { type: 'parser', id: 'live' },
+                  },
+                ]
               : [],
             warnings: won ? [] : ['live: wrong flag'],
             rawArtifactIds: [],
@@ -173,7 +192,8 @@ export async function runLiveChallenge(
   const baseState = buildStateForChallenge(challenge, taskId) as unknown as CTFTaskState
   const initial = { ...baseState, flagCandidates: [], diagnostics: [] } as unknown as CTFTaskState
   const store = new CTFTaskStateStore(initial)
-  const executor = options.executor ?? createLlmToolActionExecutor({ expectedFlag: challenge.expectedFlag })
+  const executor =
+    options.executor ?? createLlmToolActionExecutor({ expectedFlag: challenge.expectedFlag })
   const history: LiveBenchResult['history'] = []
   const notes: string[] = []
   const startedAt = Date.now()
@@ -185,10 +205,12 @@ export async function runLiveChallenge(
   for (let c = 0; c < maxCycles; c++) {
     cycles = c + 1
     notes.push(`cycle ${c}: entering`)
-    const flagHint = store.getState().flagCandidates
-      .map((f) => `${f.id}=${f.value}`)
+    const flagHint = store
+      .getState()
+      .flagCandidates.map((f) => `${f.id}=${f.value}`)
       .join(',')
-    const prompt = `task ${challenge.id} (${challenge.category}): expected flag ${challenge.expectedFlag}; ` +
+    const prompt =
+      `task ${challenge.id} (${challenge.category}): expected flag ${challenge.expectedFlag}; ` +
       `existing candidates: [${flagHint || 'none'}]. Pick a single next action.`
     const actionResult = await askLlmForAction(options.provider, prompt, toolDefs)
     if (actionResult.kind === 'no-tool-call') {
@@ -209,7 +231,13 @@ export async function runLiveChallenge(
         taskId,
         state: store.getState(),
         store,
-        budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 8, perTaskHeavyRuns: 1 },
+        budgetLimits: {
+          fastConcurrency: 1,
+          mediumConcurrency: 1,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 8,
+          perTaskHeavyRuns: 1,
+        },
         heavyApproved: false,
         executor,
         maxStrategyCycles: 1,
@@ -223,7 +251,9 @@ export async function runLiveChallenge(
     )
     const stateAfter = store.getState()
     const allCandidates = stateAfter.flagCandidates
-    notes.push(`cycle ${c}: tool=${action.type} action=${actionResult.kind} candidates=[${allCandidates.map((f) => f.value).join('|')}] attempts=${stateAfter.attempts.length} stopReason=${result.stopReason}`)
+    notes.push(
+      `cycle ${c}: tool=${action.type} action=${actionResult.kind} candidates=[${allCandidates.map((f) => f.value).join('|')}] attempts=${stateAfter.attempts.length} stopReason=${result.stopReason}`,
+    )
     const validated = allCandidates.find((f: FlagCandidate) => f.value === challenge.expectedFlag)
     if (validated && validated.value === challenge.expectedFlag) {
       won = true

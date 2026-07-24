@@ -15,10 +15,7 @@
  * `dependencyFailurePolicy`.
  */
 
-import type {
-  TypedWorkflowDefinition,
-  TypedWorkflowStep,
-} from './workflowDefinition.js'
+import type { TypedWorkflowDefinition, TypedWorkflowStep } from './workflowDefinition.js'
 import type { WorkflowCondition } from './ctfReasoning/workflowCondition.js'
 import { evaluateWorkflowCondition } from './ctfReasoning/workflowCondition.js'
 import type { AttemptExecution } from './ctfRuntime/taskState.js'
@@ -71,9 +68,18 @@ export interface TypedDagRunContext {
 }
 
 export interface TypedStepRunner {
-  runTool(step: Extract<TypedWorkflowStep, { kind: 'tool' }>, ctx: TypedDagRunContext): Promise<{ content: string; isError: boolean; errorCode?: string; artifactIds: string[] }>
-  runHandoff(step: Extract<TypedWorkflowStep, { kind: 'request_handoff' }>, ctx: TypedDagRunContext): Promise<{ content: string; isError: boolean; artifactIds: string[] }>
-  emitFinding(step: Extract<TypedWorkflowStep, { kind: 'emit_finding' }>, ctx: TypedDagRunContext): Promise<{ observationIds: string[]; evidenceIds: string[] }>
+  runTool(
+    step: Extract<TypedWorkflowStep, { kind: 'tool' }>,
+    ctx: TypedDagRunContext,
+  ): Promise<{ content: string; isError: boolean; errorCode?: string; artifactIds: string[] }>
+  runHandoff(
+    step: Extract<TypedWorkflowStep, { kind: 'request_handoff' }>,
+    ctx: TypedDagRunContext,
+  ): Promise<{ content: string; isError: boolean; artifactIds: string[] }>
+  emitFinding(
+    step: Extract<TypedWorkflowStep, { kind: 'emit_finding' }>,
+    ctx: TypedDagRunContext,
+  ): Promise<{ observationIds: string[]; evidenceIds: string[] }>
 }
 
 export class TypedDagValidationError extends Error {
@@ -103,9 +109,7 @@ export function validateTypedDag(workflow: TypedWorkflowDefinition): void {
   for (const step of workflow.steps) {
     for (const dep of step.dependsOn ?? []) {
       if (!ids.has(dep)) {
-        throw new TypedDagValidationError(
-          `step ${step.id} depends on unknown step ${dep}`,
-        )
+        throw new TypedDagValidationError(`step ${step.id} depends on unknown step ${dep}`)
       }
     }
   }
@@ -169,7 +173,9 @@ function retryShouldGiveUp(
   // previous code returned `false` (continue retrying) for any
   // unclassified error, which silently retries cancelled runs.
   if (!errorCode) return true
-  return !retry.retryOn.includes(errorCode as 'timeout' | 'temporary_error' | 'tool_unavailable' | 'nonzero_exit')
+  return !retry.retryOn.includes(
+    errorCode as 'timeout' | 'temporary_error' | 'tool_unavailable' | 'nonzero_exit',
+  )
 }
 
 async function runStepWithRetry(
@@ -193,7 +199,14 @@ async function runStepWithRetry(
     try {
       const r = await runner.runTool(step, ctx)
       const status = r.isError ? 'failed' : 'succeeded'
-      executions.push({ index: i, startedAt: execStart, completedAt: Date.now(), status: status === 'succeeded' ? 'succeeded' : 'failed', errorCode: r.errorCode, errorMessage: r.isError ? r.content : undefined })
+      executions.push({
+        index: i,
+        startedAt: execStart,
+        completedAt: Date.now(),
+        status: status === 'succeeded' ? 'succeeded' : 'failed',
+        errorCode: r.errorCode,
+        errorMessage: r.isError ? r.content : undefined,
+      })
       if (!r.isError) {
         lastResult = r
         break
@@ -202,11 +215,19 @@ async function runStepWithRetry(
       lastError = r.content
       if (retryShouldGiveUp(retry, i, r.errorCode ?? 'nonzero_exit')) break
       if (i < retry.maxAttempts - 1) {
-        const backoff = (retry.backoffMs ?? DEFAULT_BACKOFF_MS) * Math.pow(retry.backoffMultiplier ?? DEFAULT_BACKOFF_MULTIPLIER, i)
+        const backoff =
+          (retry.backoffMs ?? DEFAULT_BACKOFF_MS) *
+          Math.pow(retry.backoffMultiplier ?? DEFAULT_BACKOFF_MULTIPLIER, i)
         try {
           await sleep(backoff, ctx.signal)
         } catch (err) {
-          executions.push({ index: i, startedAt: execStart, completedAt: Date.now(), status: 'cancelled', errorMessage: (err as Error).message })
+          executions.push({
+            index: i,
+            startedAt: execStart,
+            completedAt: Date.now(),
+            status: 'cancelled',
+            errorMessage: (err as Error).message,
+          })
           ctx.recordExecutions(attemptId, step.id, executions)
           return {
             outcome: {
@@ -222,7 +243,13 @@ async function runStepWithRetry(
         }
       }
     } catch (err) {
-      executions.push({ index: i, startedAt: execStart, completedAt: Date.now(), status: 'failed', errorMessage: (err as Error).message })
+      executions.push({
+        index: i,
+        startedAt: execStart,
+        completedAt: Date.now(),
+        status: 'failed',
+        errorMessage: (err as Error).message,
+      })
       lastError = (err as Error).message
       if (retryShouldGiveUp(retry, i, 'temporary_error')) break
     }
@@ -293,7 +320,8 @@ export async function runTypedDag(
           // if/emit_finding/request_handoff end as 'failed'.
           const start = Date.now()
           const cond = evaluateWorkflowCondition(step.condition, {
-            state: { taskId: ctx.taskId,
+            state: {
+              taskId: ctx.taskId,
               attempts: [],
               hypotheses: [],
               observations: [],
@@ -304,7 +332,10 @@ export async function runTypedDag(
             stepOutcomes: stepOutcomesToMap(outcomes),
           })
           const branch = cond ? step.then : (step.else ?? [])
-          const childResults: Array<{ status: 'succeeded' | 'failed' | 'cancelled'; error?: string }> = []
+          const childResults: Array<{
+            status: 'succeeded' | 'failed' | 'cancelled'
+            error?: string
+          }> = []
           for (const sub of branch) {
             if (ctx.signal?.aborted) {
               childResults.push({ status: 'cancelled', error: 'aborted' })
@@ -378,22 +409,49 @@ export async function runTypedDag(
           evidenceIds.push(...out.evidenceIds)
           // §round-3 audit fix — record an outcome for emit_finding so
           // the workflow status derivation sees the step succeeded.
-          outcomes.push({ stepId: step.id, status: 'succeeded', durationMs: Date.now() - start, executions: [] })
+          outcomes.push({
+            stepId: step.id,
+            status: 'succeeded',
+            durationMs: Date.now() - start,
+            executions: [],
+          })
           completed.add(step.id)
-          return { step, status: 'succeeded' as const, executions: [], durationMs: Date.now() - start }
+          return {
+            step,
+            status: 'succeeded' as const,
+            executions: [],
+            durationMs: Date.now() - start,
+          }
         }
         if (step.kind === 'request_handoff') {
           const start = Date.now()
           await runner.runHandoff(step, ctx)
           // §round-3 audit fix — record an outcome.
-          outcomes.push({ stepId: step.id, status: 'succeeded', durationMs: Date.now() - start, executions: [] })
+          outcomes.push({
+            stepId: step.id,
+            status: 'succeeded',
+            durationMs: Date.now() - start,
+            executions: [],
+          })
           completed.add(step.id)
-          return { step, status: 'succeeded' as const, executions: [], durationMs: Date.now() - start }
+          return {
+            step,
+            status: 'succeeded' as const,
+            executions: [],
+            durationMs: Date.now() - start,
+          }
         }
         // tool
         const attemptId = ctx.issueAttemptId()
         const r = await runStepWithRetry(step, ctx, runner, attemptId)
-        return { step, status: r.outcome.status, executions: r.outcome.executions, durationMs: r.outcome.durationMs, error: r.outcome.error, attemptId: r.outcome.attemptId }
+        return {
+          step,
+          status: r.outcome.status,
+          executions: r.outcome.executions,
+          durationMs: r.outcome.durationMs,
+          error: r.outcome.error,
+          attemptId: r.outcome.attemptId,
+        }
       }),
     )
     for (const [i, r] of results.entries()) {
@@ -403,13 +461,32 @@ export async function runTypedDag(
         if (v.status === 'succeeded') {
           completed.add(step.id)
           if (step.kind === 'tool') {
-            outcomes.push({ stepId: step.id, status: 'succeeded', durationMs: v.durationMs, executions: v.executions, attemptId: v.attemptId })
+            outcomes.push({
+              stepId: step.id,
+              status: 'succeeded',
+              durationMs: v.durationMs,
+              executions: v.executions,
+              attemptId: v.attemptId,
+            })
           }
         } else if (v.status === 'cancelled') {
-          outcomes.push({ stepId: step.id, status: 'cancelled', durationMs: v.durationMs, executions: v.executions, error: v.error })
+          outcomes.push({
+            stepId: step.id,
+            status: 'cancelled',
+            durationMs: v.durationMs,
+            executions: v.executions,
+            error: v.error,
+          })
           stoppedEarly = true
         } else {
-          outcomes.push({ stepId: step.id, status: 'failed', durationMs: v.durationMs, executions: v.executions, error: v.error, attemptId: v.attemptId })
+          outcomes.push({
+            stepId: step.id,
+            status: 'failed',
+            durationMs: v.durationMs,
+            executions: v.executions,
+            error: v.error,
+            attemptId: v.attemptId,
+          })
           // Mark descendants as dep-failed per policy.
           const descendants = collectDescendants(step.id, adj)
           for (const d of descendants) depFailure.add(d)
@@ -443,7 +520,8 @@ export async function runTypedDag(
     // After each wave, evaluate stop conditions.
     if (!stoppedEarly) {
       const condCtx: Parameters<typeof evaluateWorkflowCondition>[1] = {
-        state: { taskId: ctx.taskId,
+        state: {
+          taskId: ctx.taskId,
           attempts: [],
           hypotheses: [],
           observations: [],
@@ -505,7 +583,9 @@ export async function runTypedDag(
   }
 }
 
-function stepOutcomesToMap(outcomes: TypedStepOutcome[]): Map<string, { status: 'succeeded' | 'failed' | 'cancelled' | 'skipped' }> {
+function stepOutcomesToMap(
+  outcomes: TypedStepOutcome[],
+): Map<string, { status: 'succeeded' | 'failed' | 'cancelled' | 'skipped' }> {
   const m = new Map<string, { status: 'succeeded' | 'failed' | 'cancelled' | 'skipped' }>()
   for (const o of outcomes) {
     m.set(o.stepId, { status: o.status as 'succeeded' | 'failed' | 'cancelled' })

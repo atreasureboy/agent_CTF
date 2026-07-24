@@ -13,20 +13,20 @@ import { lookup } from 'dns/promises'
 type LookupAddress = { address: string; family: number }
 
 const BLOCKED_CIDRS_V4: ReadonlyArray<[string, number]> = [
-  ['0.0.0.0', 8],          // current network
-  ['10.0.0.0', 8],         // RFC1918 private
-  ['100.64.0.0', 10],      // carrier-grade NAT
-  ['127.0.0.0', 8],        // loopback
-  ['169.254.0.0', 16],     // link-local (incl. AWS IMDS 169.254.169.254)
-  ['172.16.0.0', 12],      // RFC1918 private
-  ['192.0.0.0', 24],       // IETF protocol assignments
-  ['192.0.2.0', 24],       // TEST-NET-1
-  ['192.168.0.0', 16],     // RFC1918 private
-  ['198.18.0.0', 15],      // benchmarking
-  ['198.51.100.0', 24],    // TEST-NET-2
-  ['203.0.113.0', 24],     // TEST-NET-3
-  ['224.0.0.0', 4],        // multicast
-  ['240.0.0.0', 4],        // reserved
+  ['0.0.0.0', 8], // current network
+  ['10.0.0.0', 8], // RFC1918 private
+  ['100.64.0.0', 10], // carrier-grade NAT
+  ['127.0.0.0', 8], // loopback
+  ['169.254.0.0', 16], // link-local (incl. AWS IMDS 169.254.169.254)
+  ['172.16.0.0', 12], // RFC1918 private
+  ['192.0.0.0', 24], // IETF protocol assignments
+  ['192.0.2.0', 24], // TEST-NET-1
+  ['192.168.0.0', 16], // RFC1918 private
+  ['198.18.0.0', 15], // benchmarking
+  ['198.51.100.0', 24], // TEST-NET-2
+  ['203.0.113.0', 24], // TEST-NET-3
+  ['224.0.0.0', 4], // multicast
+  ['240.0.0.0', 4], // reserved
   ['255.255.255.255', 32], // broadcast
 ]
 
@@ -84,7 +84,12 @@ export async function validateUrl(url: string): Promise<SsrfGuardResult> {
     // IPv6 — block loopback / link-local / unique-local.
     if (a.family === 6) {
       const lower = a.address.toLowerCase()
-      if (lower === '::1' || lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) {
+      if (
+        lower === '::1' ||
+        lower.startsWith('fe80:') ||
+        lower.startsWith('fc') ||
+        lower.startsWith('fd')
+      ) {
         return { allowed: false, reason: 'blocked_ipv6_scope', resolvedIp: a.address }
       }
     }

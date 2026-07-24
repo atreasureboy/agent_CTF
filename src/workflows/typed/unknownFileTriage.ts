@@ -44,11 +44,12 @@ export function isMigratedUnknownFileTriageStop(
 ): { stopped: boolean; reason: string | undefined } {
   for (const cond of [flagCandidateExists, archiveProduced, allStepsSucceeded]) {
     if (evaluateWorkflowCondition(cond, ctx)) {
-      const reason = cond.type === 'flag_candidate_exists'
-        ? 'flag_candidate_validated'
-        : cond.type === 'artifact_exists'
-          ? 'archive_extracted'
-          : 'all_steps_succeeded'
+      const reason =
+        cond.type === 'flag_candidate_exists'
+          ? 'flag_candidate_validated'
+          : cond.type === 'artifact_exists'
+            ? 'archive_extracted'
+            : 'all_steps_succeeded'
       return { stopped: true, reason }
     }
   }
@@ -62,11 +63,7 @@ export const UNKNOWN_FILE_TRIAGE_TYPED: TypedWorkflowDefinition = {
   legacy: false,
   executionMode: 'dag',
   inputs: ['FILE_INPUT'],
-  stopConditions: [
-    flagCandidateExists,
-    archiveProduced,
-    allStepsSucceeded,
-  ],
+  stopConditions: [flagCandidateExists, archiveProduced, allStepsSucceeded],
   steps: [
     {
       id: 'identify-file',
@@ -110,20 +107,24 @@ export const UNKNOWN_FILE_TRIAGE_TYPED: TypedWorkflowDefinition = {
           { type: 'step_succeeded', stepId: 'extract-strings' },
         ],
       },
-      then: [{
-        id: 'classify-image',
-        kind: 'tool',
-        toolId: 'classify-by-type',
-        dependsOn: [],
-        emit_finding: false,
-      }],
-      else: [{
-        id: 'classify-unknown',
-        kind: 'tool',
-        toolId: 'classify-unknown',
-        dependsOn: [],
-        emit_finding: false,
-      }],
+      then: [
+        {
+          id: 'classify-image',
+          kind: 'tool',
+          toolId: 'classify-by-type',
+          dependsOn: [],
+          emit_finding: false,
+        },
+      ],
+      else: [
+        {
+          id: 'classify-unknown',
+          kind: 'tool',
+          toolId: 'classify-unknown',
+          dependsOn: [],
+          emit_finding: false,
+        },
+      ],
       dependsOn: ['identify-file'],
     },
     {

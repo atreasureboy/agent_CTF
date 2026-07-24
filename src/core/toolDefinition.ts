@@ -91,7 +91,10 @@ export interface CTFToolImpl {
   concurrencySafe?: boolean
   execute(input: Record<string, unknown>, context: CTFToolContext): Promise<CTFToolResult>
   // Re-exported for the broker to push to the LLM.
-  readonly definition: { type: 'function'; function: { name: string; description: string; parameters: unknown } }
+  readonly definition: {
+    type: 'function'
+    function: { name: string; description: string; parameters: unknown }
+  }
 }
 
 export interface CTFToolResult {

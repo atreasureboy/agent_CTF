@@ -30,9 +30,7 @@ export function buildFlagCandidateId(): string {
 /** Normalize a candidate value: trim whitespace, collapse case for
  *  ASCII letters, drop zero-width chars. */
 export function normalizeFlagValue(v: string): string {
-  return v
-    .replace(/[​‌‍﻿]/g, '')
-    .trim()
+  return v.replace(/[​‌‍﻿]/g, '').trim()
 }
 
 export const DEFAULT_FLAG_PATTERNS: RegExp[] = [

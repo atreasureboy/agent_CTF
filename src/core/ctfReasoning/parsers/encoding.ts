@@ -52,21 +52,34 @@ function classify(s: string): string | null {
 export const encodingParser: ResultParser = {
   id: 'encoding',
   supports(input) {
-    return input.toolId === 'encoding-detect' || input.manifestId === 'encoding' || input.stepId === 'encoding'
+    return (
+      input.toolId === 'encoding-detect' ||
+      input.manifestId === 'encoding' ||
+      input.stepId === 'encoding'
+    )
   },
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
-      return { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: ['encoding: no content'], rawArtifactIds: input.artifactIds }
+      return {
+        observations: [],
+        evidence: [],
+        suggestedActions: [],
+        flagCandidateDrafts: [],
+        warnings: ['encoding: no content'],
+        rawArtifactIds: input.artifactIds,
+      }
     }
     const codec = classify(input.content.trim())
     if (!codec) {
       return {
-        observations: [{
-          kind: 'encoding_result',
-          source: input.source,
-          summary: 'no common encoding detected',
-          confidence: 0.3,
-        }],
+        observations: [
+          {
+            kind: 'encoding_result',
+            source: input.source,
+            summary: 'no common encoding detected',
+            confidence: 0.3,
+          },
+        ],
         evidence: [],
         suggestedActions: [],
         flagCandidateDrafts: [],
@@ -75,31 +88,40 @@ export const encodingParser: ResultParser = {
       }
     }
     return {
-      observations: [{
-        kind: 'encoding_result',
-        source: input.source,
-        summary: `looks like ${codec}`,
-        attributes: { codec },
-        confidence: 0.5,
-      }],
-      evidence: [{
-        kind: 'encoding_layer',
-        claim: `input is ${codec} encoded`,
-        polarity: 'supports',
-        source: {
-          producer: { type: 'parser', id: 'encoding' },
-          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-          confidence: 0.5, createdAt: Date.now(),
+      observations: [
+        {
+          kind: 'encoding_result',
+          source: input.source,
+          summary: `looks like ${codec}`,
+          attributes: { codec },
+          confidence: 0.5,
         },
-      }],
-      suggestedActions: [{
-        type: 'run_workflow',
-        workflowId: 'encoding_sweep',
-        inputs: { codec, content: input.content.slice(0, 4096) },
-        reason: `decode ${codec} layer via encoding_sweep`,
-        priority: 6,
-        costTier: 'cheap',
-      }],
+      ],
+      evidence: [
+        {
+          kind: 'encoding_layer',
+          claim: `input is ${codec} encoded`,
+          polarity: 'supports',
+          source: {
+            producer: { type: 'parser', id: 'encoding' },
+            observationIds: [],
+            artifactIds: input.artifactIds,
+            attemptIds: [],
+            confidence: 0.5,
+            createdAt: Date.now(),
+          },
+        },
+      ],
+      suggestedActions: [
+        {
+          type: 'run_workflow',
+          workflowId: 'encoding_sweep',
+          inputs: { codec, content: input.content.slice(0, 4096) },
+          reason: `decode ${codec} layer via encoding_sweep`,
+          priority: 6,
+          costTier: 'cheap',
+        },
+      ],
       flagCandidateDrafts: [],
       warnings: [],
       rawArtifactIds: input.artifactIds,

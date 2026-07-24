@@ -37,11 +37,7 @@ import type {
 import { createTools, findTool, getToolDefinitions } from '../tools/index.js'
 import { getPlanModePrefix } from '../prompts/system.js'
 import type { Renderer } from '../ui/renderer.js'
-import {
-  maybeCompact,
-  calculateContextState,
-  MODEL_MAX_CONTEXT_TOKENS,
-} from './compact.js'
+import { maybeCompact, calculateContextState, MODEL_MAX_CONTEXT_TOKENS } from './compact.js'
 import type { AgentModule, ModuleBootResult, ModuleBootContext } from './module.js'
 import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
@@ -53,13 +49,7 @@ import { profileAllowsTool } from './capabilityProfile.js'
 const MAX_TOOL_RESULT_LENGTH = 20_000
 
 /** Plan mode — only read-only tools are exposed */
-const PLAN_MODE_TOOLS = new Set([
-  'Read',
-  'Glob',
-  'Grep',
-  'WebFetch',
-  'WebSearch',
-])
+const PLAN_MODE_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'])
 
 /**
  * Default fallback concurrency-safe tool set used by the pure
@@ -111,11 +101,7 @@ interface ToolBatch {
 function isCancelLikeError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const name = (err as { name?: string }).name
-  return (
-    name === 'AbortError' ||
-    name === 'APIUserAbortError' ||
-    name === 'APIConnectionAbortError'
-  )
+  return name === 'AbortError' || name === 'APIUserAbortError' || name === 'APIConnectionAbortError'
 }
 
 /**
@@ -123,9 +109,7 @@ function isCancelLikeError(err: unknown): boolean {
  * soft-abort reasons as `'interrupted'` (history-preserving soft pause)
  * and any other reason as `'cancelled'`.
  */
-function abortReasonFromSignalValue(
-  signal: AbortSignal,
-): 'cancelled' | 'interrupted' {
+function abortReasonFromSignalValue(signal: AbortSignal): 'cancelled' | 'interrupted' {
   const reason = signal.reason
   if (reason === 'soft_abort' || reason === 'softAbort') return 'interrupted'
   return 'cancelled'
@@ -221,11 +205,11 @@ export class ExecutionEngine {
       new OpenAI({
         apiKey: config.apiKey,
         baseURL: config.baseURL,
-        maxRetries: 5,      // SDK auto-retries 429/5xx with exponential backoff
-        timeout: 120_000,   // 2 min — covers slow reasoning models (deepseek-reasoner)
+        maxRetries: 5, // SDK auto-retries 429/5xx with exponential backoff
+        timeout: 120_000, // 2 min — covers slow reasoning models (deepseek-reasoner)
       })
     this.tools = createTools(config.extraTools ?? [])
-    this.allTools = this.tools  // will be updated with module tools in runTurn
+    this.allTools = this.tools // will be updated with module tools in runTurn
     this.eventLog = config.eventLog
     // Build concurrency-safe set ONCE from the base tools. Module-provided
     // tools are merged in by extending the set during runTurn (P2-7).
@@ -235,13 +219,14 @@ export class ExecutionEngine {
 
     // Resolve enabled modules
     const enabledNames = this.deriveEnabledModules()
-    this.modules = enabledNames.length > 0
-      ? globalModuleRegistry.resolve(enabledNames, {
-          client: this.client,
-          model: config.model,
-          config,
-        })
-      : []
+    this.modules =
+      enabledNames.length > 0
+        ? globalModuleRegistry.resolve(enabledNames, {
+            client: this.client,
+            model: config.model,
+            config,
+          })
+        : []
   }
 
   /**
@@ -281,9 +266,10 @@ export class ExecutionEngine {
 
   private buildSystemPrompt(planMode: boolean, moduleSections: string[] = []): string {
     const baseSystemPrompt = this.config.systemPrompt ?? ''
-    const sections = moduleSections.length > 0
-      ? baseSystemPrompt + '\n\n---\n\n' + moduleSections.join('\n\n---\n\n')
-      : baseSystemPrompt
+    const sections =
+      moduleSections.length > 0
+        ? baseSystemPrompt + '\n\n---\n\n' + moduleSections.join('\n\n---\n\n')
+        : baseSystemPrompt
     if (planMode) {
       return getPlanModePrefix() + sections
     }
@@ -351,11 +337,7 @@ export class ExecutionEngine {
     }
   }
 
-  private runPostToolCallHook(
-    toolName: string,
-    content: string,
-    isError: boolean,
-  ): void {
+  private runPostToolCallHook(toolName: string, content: string, isError: boolean): void {
     if (!this.config.hookRunner?.runPostToolCall) return
     try {
       this.config.hookRunner.runPostToolCall(toolName, content, isError)
@@ -369,10 +351,7 @@ export class ExecutionEngine {
     }
   }
 
-  private runOnErrorHook(
-    err: Error,
-    ctx: { turnNumber: number; lastToolName?: string },
-  ): void {
+  private runOnErrorHook(err: Error, ctx: { turnNumber: number; lastToolName?: string }): void {
     if (!this.config.hookRunner?.runOnError) return
     try {
       this.config.hookRunner.runOnError(err, ctx)
@@ -400,10 +379,7 @@ export class ExecutionEngine {
     }
   }
 
-  private runOnContextOverflowHook(
-    tokensBefore: number,
-    tokensAfter: number,
-  ): void {
+  private runOnContextOverflowHook(tokensBefore: number, tokensAfter: number): void {
     if (!this.config.hookRunner?.runOnContextOverflow) return
     try {
       this.config.hookRunner.runOnContextOverflow(tokensBefore, tokensAfter)
@@ -419,9 +395,7 @@ export class ExecutionEngine {
   }
 
   /** Translate an aborted signal's reason to a TurnResult reason. */
-  private abortReasonFromSignal(
-    signal: AbortSignal,
-  ): 'cancelled' | 'interrupted' {
+  private abortReasonFromSignal(signal: AbortSignal): 'cancelled' | 'interrupted' {
     return abortReasonFromSignalValue(signal)
   }
 
@@ -431,8 +405,7 @@ export class ExecutionEngine {
     messages: OpenAIMessage[],
     turnAbortSignal: AbortSignal,
   ): Promise<void> {
-    const maxCtxTokens =
-      this.config.maxContextTokens ?? MODEL_MAX_CONTEXT_TOKENS
+    const maxCtxTokens = this.config.maxContextTokens ?? MODEL_MAX_CONTEXT_TOKENS
     // Single computation path — shares the threshold constants with compact.ts
     const state = calculateContextState(messages, maxCtxTokens, this.systemPromptTokens)
 
@@ -460,20 +433,14 @@ export class ExecutionEngine {
       if (compactResult.compacted) {
         messages.length = 0
         messages.push(...compactResult.messages)
-        this.renderer.compactDone(
-          compactResult.originalTokens,
-          compactResult.summaryTokens,
-        )
+        this.renderer.compactDone(compactResult.originalTokens, compactResult.summaryTokens)
         this.eventLog?.append('context_compact', 'engine', {
           tokens_after: compactResult.summaryTokens,
           reduction: compactResult.originalTokens - compactResult.summaryTokens,
         })
         // Lifecycle hook: OnContextOverflow. Wrap so a buggy hook cannot
         // crash the engine loop mid-compaction.
-        this.runOnContextOverflowHook(
-          compactResult.originalTokens,
-          compactResult.summaryTokens,
-        )
+        this.runOnContextOverflowHook(compactResult.originalTokens, compactResult.summaryTokens)
       }
     }
   }
@@ -511,19 +478,41 @@ export class ExecutionEngine {
           signal: turnAbortSignal,
         })
       } else {
-        const { OpenAICompatibleProvider } = await import('./modelReliability/providers/openAICompatibleProvider.js')
+        const { OpenAICompatibleProvider } =
+          await import('./modelReliability/providers/openAICompatibleProvider.js')
         const provider = new OpenAICompatibleProvider(this.client)
         stream = await provider.streamAgentTurn(
           {
             id: this.config.model,
+            providerId: 'openai-compatible',
+            providerModelName: this.config.model,
             provider: 'openai-compatible',
             model: this.config.model,
+            trustLevel: 'standard',
+            reliabilityClass: 'standard',
             contextWindow: 128000,
-            capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: true },
-            reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+            capabilities: {
+              toolCalling: true,
+              structuredOutput: true,
+              vision: false,
+              longContext: true,
+              codeExecutionPlanning: true,
+            },
+            reliability: {
+              structuredOutput: 0.9,
+              toolArguments: 0.9,
+              longHorizonPlanning: 0.8,
+              summarization: 0.9,
+              instructionFollowing: 0.9,
+            },
             economics: {},
             allowedRoles: [(this.config.profile?.id as any) || 'task_planner'],
-            limits: { maxVisibleTools: 20, maxIterations: 50, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+            limits: {
+              maxVisibleTools: 20,
+              maxIterations: 50,
+              maxRepairAttempts: 1,
+              maxConsecutiveFailures: 2,
+            },
             fallbackModelIds: [],
           },
           {
@@ -564,7 +553,8 @@ export class ExecutionEngine {
     let finishReason: string | null = null
     const toolCallsMap = new Map<number, StreamingToolCall>()
     let firstToken = true
-    let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
+    let usage:
+      { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
 
     try {
       for await (const chunk of stream) {
@@ -625,9 +615,7 @@ export class ExecutionEngine {
       this.renderer.endAssistantText()
     }
 
-    const rawToolCalls = Array.from(toolCallsMap.values()).sort(
-      (a, b) => a.index - b.index,
-    )
+    const rawToolCalls = Array.from(toolCallsMap.values()).sort((a, b) => a.index - b.index)
 
     return { assistantText, finishReason, rawToolCalls, usage }
   }
@@ -706,10 +694,15 @@ export class ExecutionEngine {
     // is gated exactly once. Denied calls return an error result the model sees.
     if (this.config.permissionChecker) {
       const decision = await this.config.permissionChecker.check({ tool: toolName, input })
-      this.eventLog?.append('permission', toolName, {
-        allowed: decision.allowed,
-        reason: decision.reason,
-      }, [toolName, decision.allowed ? 'allowed' : 'denied'])
+      this.eventLog?.append(
+        'permission',
+        toolName,
+        {
+          allowed: decision.allowed,
+          reason: decision.reason,
+        },
+        [toolName, decision.allowed ? 'allowed' : 'denied'],
+      )
       if (!decision.allowed) {
         return {
           content: `Permission denied: ${decision.reason}. Tool "${toolName}" was not executed.`,
@@ -765,10 +758,15 @@ export class ExecutionEngine {
           `Error: malformed arguments for ${tc.name} — ${call.parseError}. ` +
           `Re-emit the call with valid JSON matching the tool's schema. Raw: ${tc.arguments.slice(0, 200)}`
         this.renderer.toolResult(tc.name, errContent, true)
-        this.eventLog?.append('tool_result', tc.name, {
-          parse_error: call.parseError,
-          isError: true,
-        }, [tc.name, 'parse_error'])
+        this.eventLog?.append(
+          'tool_result',
+          tc.name,
+          {
+            parse_error: call.parseError,
+            isError: true,
+          },
+          [tc.name, 'parse_error'],
+        )
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
@@ -920,15 +918,15 @@ export class ExecutionEngine {
       userMessage,
     }
     this.moduleBootResults = await Promise.all(
-      this.modules.map(m => Promise.resolve(m.boot(bootCtx))),
+      this.modules.map((m) => Promise.resolve(m.boot(bootCtx))),
     )
-    const moduleSections = this.moduleBootResults.flatMap(r => r.systemPromptSections ?? [])
+    const moduleSections = this.moduleBootResults.flatMap((r) => r.systemPromptSections ?? [])
     const toolContextPatch = this.moduleBootResults.reduce(
       (acc, r) => ({ ...acc, ...r.toolContextPatch }),
       {} as Partial<ToolContext>,
     )
     // Collect tools provided by modules
-    const moduleTools = this.moduleBootResults.flatMap(r => r.tools ?? [])
+    const moduleTools = this.moduleBootResults.flatMap((r) => r.tools ?? [])
     this.allTools = [...this.tools, ...moduleTools]
     // Extend the concurrency-safe set with module-provided tools (P2-7).
     // The base set was built in the constructor from `this.tools`.
@@ -943,7 +941,7 @@ export class ExecutionEngine {
     // Record boot trajectory (AgentOS pattern)
     this.eventLog?.append('boot_context', 'engine', {
       trajectory: 'boot_context',
-      modules: this.modules.map(m => m.name),
+      modules: this.modules.map((m) => m.name),
       module_sections: moduleSections.length,
       module_tools: moduleTools.length,
       user_message_length: userMessage.length,
@@ -982,10 +980,10 @@ export class ExecutionEngine {
     let iterations = 0
     let finalOutput = ''
     let turnNumber = 0
-    const toolContext = this.buildToolContext(
-      turnAbortController.signal,
-      { ...toolContextPatch, availableToolNames: toolDefs.map(t => t.function.name) },
-    )
+    const toolContext = this.buildToolContext(turnAbortController.signal, {
+      ...toolContextPatch,
+      availableToolNames: toolDefs.map((t) => t.function.name),
+    })
 
     let result: TurnResult
     let lastToolName: string | undefined
@@ -1048,13 +1046,12 @@ export class ExecutionEngine {
         }
 
         // ── Streaming LLM call ───────────────────────────────────
-        const { assistantText, finishReason, rawToolCalls, usage } =
-          await this.callLLM(
-            systemPrompt,
-            messages,
-            toolDefs,
-            turnAbortController.signal,
-          )
+        const { assistantText, finishReason, rawToolCalls, usage } = await this.callLLM(
+          systemPrompt,
+          messages,
+          toolDefs,
+          turnAbortController.signal,
+        )
 
         // Track token usage + cost for observability (best-effort).
         if (usage) this.recordUsage(usage)
@@ -1140,9 +1137,7 @@ export class ExecutionEngine {
 
       // If loop completed without break (max iterations)
       if (!result!) {
-        this.renderer.warn(
-          `Max iterations (${this.config.maxIterations}) reached`,
-        )
+        this.renderer.warn(`Max iterations (${this.config.maxIterations}) reached`)
         result = { stopped: true, reason: 'max_iterations', output: finalOutput }
       }
     } catch (err) {
@@ -1245,8 +1240,9 @@ export class ExecutionEngine {
     const pricing = this.config.pricing
     const callCost =
       pricing && (pricing.inputPer1M || pricing.outputPer1M)
-        ? ((usage.prompt_tokens * (pricing.inputPer1M ?? 0)) +
-           (usage.completion_tokens * (pricing.outputPer1M ?? 0))) / 1_000_000
+        ? (usage.prompt_tokens * (pricing.inputPer1M ?? 0) +
+            usage.completion_tokens * (pricing.outputPer1M ?? 0)) /
+          1_000_000
         : 0
     this.tokenUsage = {
       promptTokens: prev.promptTokens + usage.prompt_tokens,

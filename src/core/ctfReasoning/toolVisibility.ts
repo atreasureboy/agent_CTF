@@ -57,7 +57,14 @@ export const PERMISSIVE_VISIBILITY: RoleVisibilityMap = {
 
 export const DEFAULT_VISIBILITY: RoleVisibilityMap = {
   roles: {
-    orchestrator: new Set(['verify_flag', 'submit_flag', 'request_handoff', 'run_workflow', 'run_oneshot', 'call_tool']),
+    orchestrator: new Set([
+      'verify_flag',
+      'submit_flag',
+      'request_handoff',
+      'run_workflow',
+      'run_oneshot',
+      'call_tool',
+    ]),
     browser: new Set(['webFetch', 'notifyCoordinator', 'request_handoff']),
     reverse: new Set(['decompile', 'strings', 'binwalk', 'runCommand']),
     pwn: new Set(['decompile', 'runCommand', 'gdb', 'verify_flag']),

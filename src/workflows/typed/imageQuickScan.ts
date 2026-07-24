@@ -35,7 +35,10 @@ const archiveExtracted: WorkflowCondition = {
   producedByWorkflowRunId: '$current',
   minCreatedAt: '$workflowStartedAt',
 }
-const handoffRequested: WorkflowCondition = { type: 'step_succeeded', stepId: 'request-image-stego-handoff' }
+const handoffRequested: WorkflowCondition = {
+  type: 'step_succeeded',
+  stepId: 'request-image-stego-handoff',
+}
 
 export const IMAGE_QUICK_SCAN_TYPED: TypedWorkflowDefinition = {
   id: 'image_quick_scan',
@@ -46,11 +49,46 @@ export const IMAGE_QUICK_SCAN_TYPED: TypedWorkflowDefinition = {
   inputs: ['FILE_INPUT'],
   stopConditions: [flagValidated, archiveExtracted, handoffRequested],
   steps: [
-    { id: 'file', kind: 'tool', toolId: 'file', dependsOn: [], emit_finding: false, inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } } },
-    { id: 'exiftool', kind: 'tool', toolId: 'exiftool', dependsOn: ['file'], emit_finding: false, inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } } },
-    { id: 'strings', kind: 'tool', toolId: 'strings', dependsOn: ['file'], emit_finding: false, inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } } },
-    { id: 'binwalk', kind: 'tool', toolId: 'binwalk', dependsOn: ['file'], emit_finding: false, inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } } },
-    { id: 'zsteg', kind: 'tool', toolId: 'zsteg', dependsOn: ['file'], emit_finding: false, inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } } },
+    {
+      id: 'file',
+      kind: 'tool',
+      toolId: 'file',
+      dependsOn: [],
+      emit_finding: false,
+      inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } },
+    },
+    {
+      id: 'exiftool',
+      kind: 'tool',
+      toolId: 'exiftool',
+      dependsOn: ['file'],
+      emit_finding: false,
+      inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } },
+    },
+    {
+      id: 'strings',
+      kind: 'tool',
+      toolId: 'strings',
+      dependsOn: ['file'],
+      emit_finding: false,
+      inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } },
+    },
+    {
+      id: 'binwalk',
+      kind: 'tool',
+      toolId: 'binwalk',
+      dependsOn: ['file'],
+      emit_finding: false,
+      inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } },
+    },
+    {
+      id: 'zsteg',
+      kind: 'tool',
+      toolId: 'zsteg',
+      dependsOn: ['file'],
+      emit_finding: false,
+      inputs: { FILE_INPUT: { ref: '$FILE_INPUT' } },
+    },
     {
       id: 'materialize',
       kind: 'if',
@@ -61,15 +99,36 @@ export const IMAGE_QUICK_SCAN_TYPED: TypedWorkflowDefinition = {
           { type: 'step_succeeded', stepId: 'strings' },
         ],
       },
-      then: [{ id: 'materialize-image', kind: 'tool', toolId: 'materialize-image', dependsOn: [], emit_finding: false }],
+      then: [
+        {
+          id: 'materialize-image',
+          kind: 'tool',
+          toolId: 'materialize-image',
+          dependsOn: [],
+          emit_finding: false,
+        },
+      ],
       else: [],
       dependsOn: ['file'],
     },
     {
       id: 'conditional-zsteg-decision',
       kind: 'if',
-      condition: { type: 'evidence_exists', kind: 'negative_result', scope: { workflowRunId: '$current', stepId: 'zsteg' }, minConfidence: 0.5 },
-      then: [{ id: 'request-image-stego-handoff', kind: 'request_handoff', capability: 'image-stego', dependsOn: [], emit_finding: false }],
+      condition: {
+        type: 'evidence_exists',
+        kind: 'negative_result',
+        scope: { workflowRunId: '$current', stepId: 'zsteg' },
+        minConfidence: 0.5,
+      },
+      then: [
+        {
+          id: 'request-image-stego-handoff',
+          kind: 'request_handoff',
+          capability: 'image-stego',
+          dependsOn: [],
+          emit_finding: false,
+        },
+      ],
       else: [],
       dependsOn: ['zsteg'],
     },
@@ -77,7 +136,10 @@ export const IMAGE_QUICK_SCAN_TYPED: TypedWorkflowDefinition = {
       id: 'emit-summary',
       kind: 'emit_finding',
       dependsOn: ['materialize', 'conditional-zsteg-decision'],
-      fromObservations: { kinds: ['metadata', 'embedded_data', 'printable_text'], minConfidence: 0.4 },
+      fromObservations: {
+        kinds: ['metadata', 'embedded_data', 'printable_text'],
+        minConfidence: 0.4,
+      },
       fromEvidence: { minConfidence: 0.4 },
       includeSuggestedActions: true,
     },

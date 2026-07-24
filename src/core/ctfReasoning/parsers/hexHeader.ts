@@ -37,12 +37,18 @@ function detectFromHex(hex: string): string | null {
     // printable ASCII at the end separated by a space).
     const asciiSplit = body.split('|')
     const hexSide = (asciiSplit[0] ?? body).trim()
-    const bytes = hexSide.split(/\s+/).map((b) => Number.parseInt(b, 16)).filter((b) => Number.isFinite(b))
+    const bytes = hexSide
+      .split(/\s+/)
+      .map((b) => Number.parseInt(b, 16))
+      .filter((b) => Number.isFinite(b))
     for (const m of MAGIC) {
       if (bytes.length < m.magic.length) continue
       let ok = true
       for (let i = 0; i < m.magic.length; i++) {
-        if (bytes[i] !== m.magic[i]) { ok = false; break }
+        if (bytes[i] !== m.magic[i]) {
+          ok = false
+          break
+        }
       }
       if (ok) return m.label
     }
@@ -53,21 +59,32 @@ function detectFromHex(hex: string): string | null {
 export const hexHeaderParser: ResultParser = {
   id: 'hex-header',
   supports(input) {
-    return input.toolId === 'hex' || input.manifestId === 'hex_header' || input.stepId === 'hex_header'
+    return (
+      input.toolId === 'hex' || input.manifestId === 'hex_header' || input.stepId === 'hex_header'
+    )
   },
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
-      return { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: ['hex: no content'], rawArtifactIds: input.artifactIds }
+      return {
+        observations: [],
+        evidence: [],
+        suggestedActions: [],
+        flagCandidateDrafts: [],
+        warnings: ['hex: no content'],
+        rawArtifactIds: input.artifactIds,
+      }
     }
     const label = detectFromHex(input.content)
     if (!label) {
       return {
-        observations: [{
-          kind: 'file_magic',
-          source: input.source,
-          summary: 'no magic matched',
-          confidence: 0.3,
-        }],
+        observations: [
+          {
+            kind: 'file_magic',
+            source: input.source,
+            summary: 'no magic matched',
+            confidence: 0.3,
+          },
+        ],
         evidence: [],
         suggestedActions: [],
         flagCandidateDrafts: [],
@@ -76,23 +93,30 @@ export const hexHeaderParser: ResultParser = {
       }
     }
     return {
-      observations: [{
-        kind: 'file_magic',
-        source: input.source,
-        summary: label,
-        attributes: { label },
-        confidence: 0.85,
-      }],
-      evidence: [{
-        kind: 'known_magic',
-        claim: `file header matches ${label}`,
-        polarity: 'supports',
-        source: {
-          producer: { type: 'parser', id: 'hex-header' },
-          observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-          confidence: 0.85, createdAt: Date.now(),
+      observations: [
+        {
+          kind: 'file_magic',
+          source: input.source,
+          summary: label,
+          attributes: { label },
+          confidence: 0.85,
         },
-      }],
+      ],
+      evidence: [
+        {
+          kind: 'known_magic',
+          claim: `file header matches ${label}`,
+          polarity: 'supports',
+          source: {
+            producer: { type: 'parser', id: 'hex-header' },
+            observationIds: [],
+            artifactIds: input.artifactIds,
+            attemptIds: [],
+            confidence: 0.85,
+            createdAt: Date.now(),
+          },
+        },
+      ],
       suggestedActions: [],
       flagCandidateDrafts: [],
       warnings: [],

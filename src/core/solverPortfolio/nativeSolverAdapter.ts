@@ -1,6 +1,13 @@
 import type { OperatorMessage } from './operatorMessage.js'
 import type { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
-import type { ExternalSolverResult, SolverChallengeInput, SolverHealth, SolverRunRecord } from './solverTypes.js'
+import {
+  ExternalSolverResult,
+  SolverChallengeInput,
+  SolverEvent,
+  SolverHealth,
+  SolverRunRecord,
+  SolverUnavailableError,
+} from './solverTypes.js'
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface NativeSolverRuntimeDelegate {
@@ -10,7 +17,10 @@ export interface NativeSolverRuntimeDelegate {
     artifacts?: Array<{ path: string; description: string }>
     flagCandidates?: Array<{ value: string; confidence: number }>
   }>
-  runWorkflow?(workflowId: string, input: SolverChallengeInput): Promise<{
+  runWorkflow?(
+    workflowId: string,
+    input: SolverChallengeInput,
+  ): Promise<{
     summary?: string
     observations?: Array<{ summary: string; confidence: number }>
     artifacts?: Array<{ path: string; description: string }>
@@ -33,6 +43,13 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
   }
 
   public async probe(): Promise<SolverHealth> {
+    if (!this.delegate) {
+      return {
+        status: 'unavailable',
+        reason: 'NativeSolverRuntimeDelegate not configured',
+        capabilities: ['native_task_runtime', 'structured_reasoning', 'workflow_dag'],
+      }
+    }
     return {
       status: 'ready',
       capabilities: ['native_task_runtime', 'structured_reasoning', 'workflow_dag'],
@@ -40,11 +57,25 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
   }
 
   public async start(input: SolverChallengeInput): Promise<SolverRunHandle> {
+    if (!this.delegate) {
+      throw new SolverUnavailableError(this.id, 'NativeSolverRuntimeDelegate not configured')
+    }
+
     const runId = `run_native_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
     let cancelled = false
     let cancelReason = ''
     const guidanceLog: OperatorMessage[] = []
     const startTime = Date.now()
+    const eventQueue: SolverEvent[] = []
+    let eventResolver: (() => void) | null = null
+
+    const emitEvent = (ev: SolverEvent) => {
+      eventQueue.push(ev)
+      if (eventResolver) {
+        eventResolver()
+        eventResolver = null
+      }
+    }
 
     const record: SolverRunRecord = {
       id: runId,
@@ -62,10 +93,13 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
       startedAt: startTime,
     }
 
+    emitEvent({ type: 'status', status: 'running', timestamp: startTime })
+
     const waitPromise = (async (): Promise<ExternalSolverResult> => {
       if (cancelled) {
         record.status = 'cancelled'
         record.failureReason = cancelReason
+        emitEvent({ type: 'status', status: 'cancelled', timestamp: Date.now() })
         return {
           runId,
           solverId: this.id,
@@ -81,6 +115,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         const out = await this.delegate.runMainAgent(input)
         record.status = 'completed'
         record.completedAt = Date.now()
+        emitEvent({ type: 'status', status: 'completed', timestamp: Date.now() })
         return {
           runId,
           solverId: this.id,
@@ -97,6 +132,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         const out = await this.delegate.runWorkflow('default', input)
         record.status = 'completed'
         record.completedAt = Date.now()
+        emitEvent({ type: 'status', status: 'completed', timestamp: Date.now() })
         return {
           runId,
           solverId: this.id,
@@ -109,19 +145,14 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         }
       }
 
-      // Default real delegate fallback
       record.status = 'completed'
       record.completedAt = Date.now()
+      emitEvent({ type: 'status', status: 'completed', timestamp: Date.now() })
       return {
         runId,
         solverId: this.id,
         status: 'completed',
-        observations: [
-          {
-            summary: `Native solver executed context: ${input.compiledContext.objective}`,
-            confidence: 0.9,
-          },
-        ],
+        observations: [],
         artifacts: [],
         flagCandidates: [],
         metrics: { durationMs: Date.now() - startTime },
@@ -135,6 +166,25 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
       async wait() {
         return waitPromise
       },
+      async *events() {
+        let index = 0
+        while (true) {
+          if (index < eventQueue.length) {
+            yield eventQueue[index++]
+            continue
+          }
+          if (
+            record.status === 'completed' ||
+            record.status === 'cancelled' ||
+            record.status === 'failed'
+          ) {
+            break
+          }
+          await new Promise<void>((resolve) => {
+            eventResolver = resolve
+          })
+        }
+      },
       async sendGuidance(msg: OperatorMessage) {
         guidanceLog.push(msg)
         const text = msg.type === 'hint' ? msg.text : JSON.stringify(msg)
@@ -146,6 +196,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         cancelled = true
         cancelReason = reason
         record.status = 'cancelled'
+        emitEvent({ type: 'status', status: 'cancelled', timestamp: Date.now() })
         if (delegate?.cancel) {
           await delegate.cancel(reason)
         }

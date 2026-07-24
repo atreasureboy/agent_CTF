@@ -1,18 +1,23 @@
-import { CrossSolverEvidenceBus } from './crossSolverEvidenceBus.js'
-
-import { GenericProcessSolverAdapter } from './genericProcessSolverAdapter.js'
-
-import { NativeSolverAdapter } from './nativeSolverAdapter.js'
 import { ExternalSolverAdapter } from './solverAdapter.js'
 import { ExternalSolverResult, SolverChallengeInput } from './solverTypes.js'
 
+export interface SolverPortfolioDependencies {
+  stateStore?: any
+  contextCompiler?: any
+  resultNormalizer?: any
+  trajectoryRecorder?: any
+  adapters?: ExternalSolverAdapter[]
+}
+
 export class SolverPortfolio {
   private adapters = new Map<string, ExternalSolverAdapter>()
-  public readonly evidenceBus: CrossSolverEvidenceBus
 
-  constructor() {
-    this.evidenceBus = new CrossSolverEvidenceBus()
-    this.registerDefaultAdapters()
+  constructor(deps?: SolverPortfolioDependencies) {
+    if (deps?.adapters) {
+      for (const adapter of deps.adapters) {
+        this.registerAdapter(adapter)
+      }
+    }
   }
 
   public registerAdapter(adapter: ExternalSolverAdapter): void {
@@ -37,15 +42,5 @@ export class SolverPortfolio {
     }
     const handle = await adapter.start(input)
     return handle.wait()
-  }
-
-  private registerDefaultAdapters(): void {
-    this.registerAdapter(new NativeSolverAdapter())
-    this.registerAdapter(
-      new GenericProcessSolverAdapter('generic-process-solver', {
-        executablePath: 'node',
-        args: ['-e', 'console.log(JSON.stringify({type:"observation",summary:"Generic mock solver output",confidence:0.85}))'],
-      }),
-    )
   }
 }

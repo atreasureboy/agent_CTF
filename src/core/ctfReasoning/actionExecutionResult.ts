@@ -28,13 +28,7 @@ export interface ExecutionRefs {
 }
 
 export type SkipReason =
-  | 'duplicate'
-  | 'scope'
-  | 'profile'
-  | 'budget'
-  | 'unavailable'
-  | 'approval'
-  | 'policy'
+  'duplicate' | 'scope' | 'profile' | 'budget' | 'unavailable' | 'approval' | 'policy'
 
 export type ActionExecutionResult =
   | {
@@ -72,15 +66,23 @@ export interface ReasoningResult {
   finalEvidenceIds: string[]
 }
 
-export function isExecuted(r: ActionExecutionResult): r is Extract<ActionExecutionResult, { status: 'executed' }> {
+export function isExecuted(
+  r: ActionExecutionResult,
+): r is Extract<ActionExecutionResult, { status: 'executed' }> {
   return r.status === 'executed'
 }
-export function isSkipped(r: ActionExecutionResult): r is Extract<ActionExecutionResult, { status: 'skipped' }> {
+export function isSkipped(
+  r: ActionExecutionResult,
+): r is Extract<ActionExecutionResult, { status: 'skipped' }> {
   return r.status === 'skipped'
 }
-export function isStop(r: ActionExecutionResult): r is Extract<ActionExecutionResult, { status: 'stop' }> {
+export function isStop(
+  r: ActionExecutionResult,
+): r is Extract<ActionExecutionResult, { status: 'stop' }> {
   return r.status === 'stop'
 }
-export function isFailed(r: ActionExecutionResult): r is Extract<ActionExecutionResult, { status: 'failed' }> {
+export function isFailed(
+  r: ActionExecutionResult,
+): r is Extract<ActionExecutionResult, { status: 'failed' }> {
   return r.status === 'failed'
 }

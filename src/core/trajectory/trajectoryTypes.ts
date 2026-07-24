@@ -15,6 +15,20 @@ export type TrajectoryEventType =
   | 'validation'
   | 'stop_pause'
 
+export interface TrajectoryEventEnvelope {
+  schemaVersion: '1.0'
+  eventId: string
+  timestamp: number
+  taskId: string
+  stateRevision: number
+  solverRunId?: string
+  agentRunId?: string
+  attemptId?: string
+  eventType: TrajectoryEventType
+  payload: unknown
+  payloadHash: string
+}
+
 export interface TrajectoryEvent {
   timestamp: number
   taskId: string

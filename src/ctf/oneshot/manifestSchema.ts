@@ -13,7 +13,10 @@ const nonNegativeInt = z.number().int().nonnegative()
 
 export const oneShotManifestSchema = z
   .object({
-    id: z.string().min(1).regex(/^[a-z0-9_-]+$/, 'id must be kebab/snake'),
+    id: z
+      .string()
+      .min(1)
+      .regex(/^[a-z0-9_-]+$/, 'id must be kebab/snake'),
     displayName: z.string().min(1),
     category: z.string().min(1),
     description: z.string().min(1),
@@ -26,7 +29,10 @@ export const oneShotManifestSchema = z
         // §P1 audit fix — accept only the canonical sha256:hex digest
         // format. Doctor + ContainerRunner enforce the same regex; the
         // schema rejects malformed digests at load time.
-        imageDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+        imageDigest: z
+          .string()
+          .regex(/^sha256:[a-f0-9]{64}$/)
+          .optional(),
         homepage: z.string().optional(),
       })
       .strict(),
@@ -172,5 +178,8 @@ export function safeParseManifest(
 ): { ok: true; manifest: OneShotManifestValidated } | { ok: false; error: string } {
   const r = oneShotManifestSchema.safeParse(raw)
   if (r.success) return { ok: true, manifest: r.data }
-  return { ok: false, error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }
+  return {
+    ok: false,
+    error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+  }
 }

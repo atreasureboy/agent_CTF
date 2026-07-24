@@ -31,7 +31,8 @@ export type EvidenceKind =
   | 'negative_result'
   | 'generic'
 
-export type EvidenceProducerType = 'parser' | 'workflow' | 'oneshot' | 'agent' | 'specialist' | 'manual'
+export type EvidenceProducerType =
+  'parser' | 'workflow' | 'oneshot' | 'agent' | 'specialist' | 'manual'
 
 export interface EvidenceProducer {
   type: EvidenceProducerType
@@ -149,8 +150,14 @@ export function createEvidence(taskId: string, draft: EvidenceDraft): Evidence {
   if (!draft.source.producer.type || !draft.source.producer.id) {
     throw new Error('createEvidence: source.producer.type and source.producer.id are required')
   }
-  if (draft.source.confidence < 0 || draft.source.confidence > 1 || !Number.isFinite(draft.source.confidence)) {
-    throw new Error(`createEvidence: source confidence must be in [0, 1], got ${draft.source.confidence}`)
+  if (
+    draft.source.confidence < 0 ||
+    draft.source.confidence > 1 ||
+    !Number.isFinite(draft.source.confidence)
+  ) {
+    throw new Error(
+      `createEvidence: source confidence must be in [0, 1], got ${draft.source.confidence}`,
+    )
   }
   const source = draft.source
   const fingerprint = evidenceFingerprint({
@@ -181,7 +188,12 @@ export function createEvidence(taskId: string, draft: EvidenceDraft): Evidence {
 }
 
 export function mergeEvidence(a: Evidence, b: Evidence): Evidence {
-  if (a.taskId !== b.taskId || a.kind !== b.kind || a.normalizedClaim !== b.normalizedClaim || a.polarity !== b.polarity) {
+  if (
+    a.taskId !== b.taskId ||
+    a.kind !== b.kind ||
+    a.normalizedClaim !== b.normalizedClaim ||
+    a.polarity !== b.polarity
+  ) {
     throw new Error('mergeEvidence: fingerprint mismatch')
   }
   const sources = [...a.sources, ...b.sources]

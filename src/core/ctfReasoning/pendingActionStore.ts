@@ -18,12 +18,7 @@
 
 import type { SuggestedAction } from './suggestedAction.js'
 
-export type PendingActionStatus =
-  | 'pending'
-  | 'selected'
-  | 'executed'
-  | 'rejected'
-  | 'expired'
+export type PendingActionStatus = 'pending' | 'selected' | 'executed' | 'rejected' | 'expired'
 
 export interface PendingSuggestedAction {
   /** Stable id (sha256 of fingerprint). */
@@ -38,12 +33,14 @@ export interface PendingSuggestedAction {
 }
 
 export interface PendingActionStore {
-  add(actions: ReadonlyArray<{
-    action: SuggestedAction
-    observationIds: string[]
-    evidenceIds: string[]
-    hypothesisIds: string[]
-  }>): string[]
+  add(
+    actions: ReadonlyArray<{
+      action: SuggestedAction
+      observationIds: string[]
+      evidenceIds: string[]
+      hypothesisIds: string[]
+    }>,
+  ): string[]
   select(id: string): void
   markExecuted(id: string): void
   reject(id: string): void
@@ -67,12 +64,18 @@ function fingerprint(action: SuggestedAction): string {
 
 function targetIdOf(a: SuggestedAction): string {
   switch (a.type) {
-    case 'run_workflow': return a.workflowId
-    case 'run_oneshot': return a.manifestId
-    case 'call_tool': return a.toolId
-    case 'request_handoff': return a.capability
-    case 'verify_flag': return a.candidateId
-    case 'stop': return 'stop'
+    case 'run_workflow':
+      return a.workflowId
+    case 'run_oneshot':
+      return a.manifestId
+    case 'call_tool':
+      return a.toolId
+    case 'request_handoff':
+      return a.capability
+    case 'verify_flag':
+      return a.candidateId
+    case 'stop':
+      return 'stop'
   }
 }
 

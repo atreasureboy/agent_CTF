@@ -8,9 +8,34 @@ export interface TaskStateProjectionInput {
   objective: string
   scopeSummary: string
 
-  evidences: Array<{ id: string; title: string; factSummary: string; confidence: number; confirmed: boolean }>
-  hypotheses: Array<{ id: string; title: string; status: 'active' | 'pending' | 'proposed' | 'testing' | 'supported' | 'rejected' | 'confirmed' | 'inconclusive'; reasoning?: string }>
-  attempts: Array<{ id: string; actionSummary: string; fingerprint: string; outcome: string; reason?: string }>
+  evidences: Array<{
+    id: string
+    title: string
+    factSummary: string
+    confidence: number
+    confirmed: boolean
+  }>
+  hypotheses: Array<{
+    id: string
+    title: string
+    status:
+      | 'active'
+      | 'pending'
+      | 'proposed'
+      | 'testing'
+      | 'supported'
+      | 'rejected'
+      | 'confirmed'
+      | 'inconclusive'
+    reasoning?: string
+  }>
+  attempts: Array<{
+    id: string
+    actionSummary: string
+    fingerprint: string
+    outcome: string
+    reason?: string
+  }>
   artifacts: Array<{ id: string; path: string; sha256?: string; description: string }>
   actions?: Array<{ id: string; actionName: string; target: string; rationale: string }>
 
@@ -35,18 +60,37 @@ export class ContextProjection {
       }))
 
     const activeHyp = input.hypotheses
-      .filter((h) => h.status === 'active' || h.status === 'proposed' || h.status === 'testing' || h.status === 'supported' || h.status === 'confirmed' || h.status === 'pending')
+      .filter(
+        (h) =>
+          h.status === 'active' ||
+          h.status === 'proposed' ||
+          h.status === 'testing' ||
+          h.status === 'supported' ||
+          h.status === 'confirmed' ||
+          h.status === 'pending',
+      )
       .map((h) => ({
         id: h.id,
         statement: h.title,
         title: h.title,
-        status: h.status === 'active' || h.status === 'confirmed' ? ('supported' as const) : h.status === 'pending' ? ('proposed' as const) : h.status,
+        status:
+          h.status === 'active' || h.status === 'confirmed'
+            ? ('supported' as const)
+            : h.status === 'pending'
+              ? ('proposed' as const)
+              : h.status,
         reasoning: h.reasoning,
       }))
 
     const rejectedHyp = input.hypotheses
       .filter((h) => h.status === 'rejected')
-      .map((h) => ({ id: h.id, statement: h.title, title: h.title, status: 'rejected' as const, reasoning: h.reasoning }))
+      .map((h) => ({
+        id: h.id,
+        statement: h.title,
+        title: h.title,
+        status: 'rejected' as const,
+        reasoning: h.reasoning,
+      }))
 
     const failedAtt = input.attempts
       .filter((a) => a.outcome === 'failed' || a.outcome === 'error')

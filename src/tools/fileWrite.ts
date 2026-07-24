@@ -52,9 +52,11 @@ export class FileWriteTool implements Tool {
     // Audit P1 — SSRF-style file-write gate. Even though file_path is
     // typically trusted, an LLM that hallucinates /etc/passwd or escapes
     // the workspace via `../../` must be refused by the contest scope.
-    const ctfCtx = (context as unknown as {
-      __ctf?: { contestScope?: ContestScopeChecker }
-    }).__ctf
+    const ctfCtx = (
+      context as unknown as {
+        __ctf?: { contestScope?: ContestScopeChecker }
+      }
+    ).__ctf
     const scope = ctfCtx?.contestScope
     if (scope && typeof scope.assertFile === 'function') {
       try {
@@ -82,7 +84,9 @@ export class FileWriteTool implements Tool {
         try {
           const { unlink } = await import('fs/promises')
           await unlink(tmp)
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         throw renameErr
       }
 

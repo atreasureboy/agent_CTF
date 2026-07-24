@@ -39,14 +39,22 @@ import { BackgroundJobManager } from './backgroundJobs.js'
 import type { ArtifactStore } from './artifacts.js'
 import type { FindingStore } from './findings.js'
 import type { HandoffStore } from './handoff.js'
-import { createDefaultContestConfig, loadContestConfig, mergeContestConfig } from './contestConfig.js'
+import {
+  createDefaultContestConfig,
+  loadContestConfig,
+  mergeContestConfig,
+} from './contestConfig.js'
 import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
 import type { ProfileStore } from './ctfRuntime/profileStore.js'
 
 import { WorkflowRegistry } from './workflowRegistry.js'
 import { WorkflowEngine, type RunContext, type WorkflowRunner } from './workflowEngine.js'
 import { ensureWorkflowsRegistered } from '../workflows/index.js'
-import { ensureProfilesRegistered, PROFILES, getBuiltinProfile } from '../capabilityProfiles/index.js'
+import {
+  ensureProfilesRegistered,
+  PROFILES,
+  getBuiltinProfile,
+} from '../capabilityProfiles/index.js'
 import { WorkflowBrokerRunner } from './workflowRunner.js'
 
 import { TaskWorkspace, makeContestId, makeTaskId } from '../modules/taskWorkspace.js'
@@ -146,7 +154,18 @@ export interface HarnessBundle {
   ): Promise<WorkflowRunResult>
   /** Run a single iteration (turn) under the harness. The caller supplies the
    * prompt and a fresh `history`. */
-  runTurn(userMessage: string, history: import('./types.js').OpenAIMessage[], options?: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }> }): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }>
+  runTurn(
+    userMessage: string,
+    history: import('./types.js').OpenAIMessage[],
+    options?: {
+      systemPromptAddon?: string
+      inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
+      inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>
+    },
+  ): Promise<{
+    result: import('./types.js').TurnResult
+    newHistory: import('./types.js').OpenAIMessage[]
+  }>
   /** Switch the active profile — re-routes the broker. */
   switchProfile(next: string | Profile): void
   /** Approve a pending handoff and dispatch to the suggested agent. */
@@ -169,10 +188,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     ? fileResult.config
     : createDefaultContestConfig({ cwd: input.cwd })
   const mergedConfig = input.contestScope
-    ? mergeContestConfig(
-        baseConfig,
-        input.contestScope,
-      )
+    ? mergeContestConfig(baseConfig, input.contestScope)
     : baseConfig
   const contestScope = new ContestScopeChecker(mergedConfig)
 
@@ -234,8 +250,10 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
         taskId,
         agentId: spec.agentId,
       })
-      if (r.result.isError) return { error: r.result.content, summary: r.result.content.slice(0, 500) }
-      const summary = r.result.content.length > 1500 ? r.result.content.slice(0, 1500) + '…' : r.result.content
+      if (r.result.isError)
+        return { error: r.result.content, summary: r.result.content.slice(0, 500) }
+      const summary =
+        r.result.content.length > 1500 ? r.result.content.slice(0, 1500) + '…' : r.result.content
       return { summary, artifactId: r.artifactId }
     },
   )
@@ -257,8 +275,10 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
         taskId,
         agentId: spec.agentId,
       })
-      if (r.result.isError) return { error: r.result.content, summary: r.result.content.slice(0, 500) }
-      const summary = r.result.content.length > 1500 ? r.result.content.slice(0, 1500) + '…' : r.result.content
+      if (r.result.isError)
+        return { error: r.result.content, summary: r.result.content.slice(0, 500) }
+      const summary =
+        r.result.content.length > 1500 ? r.result.content.slice(0, 1500) + '…' : r.result.content
       return { summary, artifactId: r.artifactId }
     },
     artifactStore,
@@ -323,24 +343,27 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     // and the projector's run-id filter all reference the SAME id.
     // Falls back to a freshly-generated id when no Orchestrator is
     // wired (legacy callers / unit tests).
-    const workflowRunId =
-      options.workflowRunId ?? `wf_${Math.random().toString(16).slice(2, 14)}`
-    return workflowEngine.run(workflow, {
-      taskId,
-      agentId: profile.id,
-      workflowId: workflow.id,
-      inputs: runInputs,
-      capturedOutputs: new Map(),
-      // The originating agent run id (if any) is forwarded so tools
-      // triggered from a specialist handoff can attribute emitted
-      // findings/artifacts back to the parent run as well.
-      workflowRunId,
-      agentRunId: currentAgentRunId(),
-    }, {
-      // Phase 1.7 §四 — pass the Task-level abort signal to WorkflowEngine
-      // so cancel() can short-circuit the workflow's run loop.
-      signal: taskExecutionContext.abortSignal,
-    })
+    const workflowRunId = options.workflowRunId ?? `wf_${Math.random().toString(16).slice(2, 14)}`
+    return workflowEngine.run(
+      workflow,
+      {
+        taskId,
+        agentId: profile.id,
+        workflowId: workflow.id,
+        inputs: runInputs,
+        capturedOutputs: new Map(),
+        // The originating agent run id (if any) is forwarded so tools
+        // triggered from a specialist handoff can attribute emitted
+        // findings/artifacts back to the parent run as well.
+        workflowRunId,
+        agentRunId: currentAgentRunId(),
+      },
+      {
+        // Phase 1.7 §四 — pass the Task-level abort signal to WorkflowEngine
+        // so cancel() can short-circuit the workflow's run loop.
+        signal: taskExecutionContext.abortSignal,
+      },
+    )
   }
 
   // Approve a pending HandoffRequest. The Harness's approveHandoff is a
@@ -353,7 +376,9 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     const req = handoffStore.list().find((h) => h.id === handoffId)
     if (!req) throw new Error(`HandoffRequest not found: ${handoffId}`)
     if (req.status !== 'pending') {
-      throw new Error(`HandoffRequest ${handoffId} is not pending (status=${req.status}); refuse to re-approve.`)
+      throw new Error(
+        `HandoffRequest ${handoffId} is not pending (status=${req.status}); refuse to re-approve.`,
+      )
     }
     handoffStore.decide(handoffId, 'approved', 'harness approveHandoff shim')
     return { handoff: { ...req, status: 'approved' }, approved: true }
@@ -379,8 +404,16 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   function runTurn(
     userMessage: string,
     history: import('./types.js').OpenAIMessage[],
-    options: { systemPromptAddon?: string; inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>; inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>; handoffId?: string } = {},
-  ): Promise<{ result: import('./types.js').TurnResult; newHistory: import('./types.js').OpenAIMessage[] }> {
+    options: {
+      systemPromptAddon?: string
+      inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
+      inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>
+      handoffId?: string
+    } = {},
+  ): Promise<{
+    result: import('./types.js').TurnResult
+    newHistory: import('./types.js').OpenAIMessage[]
+  }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
     // §十三.3 — issue an agent run id at the start of each main turn so
     // subsequent workflow steps and tool calls can attribute their
@@ -433,8 +466,8 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // emitted from a Specialist carry the handoffId into the broker's
       // __ctf context and the projector can match against
       // projectDiff({...handoffId}) without inventing a synthetic match.
-      handoffId: options.handoffId
-        ?? (taskExecutionContext.metadata?.['fromHandoff'] as string | undefined),
+      handoffId:
+        options.handoffId ?? (taskExecutionContext.metadata?.['fromHandoff'] as string | undefined),
       // Phase 1.7 §四.2 — forward the Task-level abort signal into the
       // engine so cancelling the Task aborts the in-flight LLM call.
       signal: taskExecutionContext.abortSignal,
@@ -485,7 +518,9 @@ function resolveProfile(input: string | Profile | (string | Profile)[]): Profile
   if (typeof input === 'string') {
     const found = getBuiltinProfile(input) ?? PROFILES[input]
     if (found) return found
-    throw new Error(`No builtin profile named "${input}". Known: ${Object.keys(PROFILES).join(', ')}`)
+    throw new Error(
+      `No builtin profile named "${input}". Known: ${Object.keys(PROFILES).join(', ')}`,
+    )
   }
   return parseCapabilityProfile(input)
 }

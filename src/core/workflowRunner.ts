@@ -16,10 +16,7 @@
  * workspace — never in `process.cwd()` and never with `sessionDir: undefined`.
  */
 
-import type {
-  WorkflowRunner,
-  RunContext,
-} from './workflowEngine.js'
+import type { WorkflowRunner, RunContext } from './workflowEngine.js'
 import type { WorkflowStep } from './workflowDefinition.js'
 import type { ToolBroker } from './toolBroker.js'
 import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'

@@ -13,7 +13,16 @@
  *   - The store is restart-safe — `loadTask(taskId)` rehydrates.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, unlinkSync, statSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+  unlinkSync,
+  statSync,
+} from 'fs'
 import { dirname, join } from 'path'
 import type { OneShotResult } from './types.js'
 
@@ -67,7 +76,11 @@ export class OneShotResultStore {
     } catch (err) {
       // Best-effort fallback — even unlinked temp is preferable to leaving
       // a corrupt .json. Caller sees the original error.
-      try { unlinkSync(tmp) } catch { /* ignore */ }
+      try {
+        unlinkSync(tmp)
+      } catch {
+        /* ignore */
+      }
       throw err
     }
     // Append to index (idempotent re-read tolerant — each line is a snapshot).
@@ -80,7 +93,9 @@ export class OneShotResultStore {
         finishedAt: result.finishedAt,
       })
       writeFileSync(this.indexPath, `${line}\n`, { encoding: 'utf8', flag: 'a' })
-    } catch { /* best-effort — single result file is authoritative */ }
+    } catch {
+      /* best-effort — single result file is authoritative */
+    }
 
     this.cacheSet(result.runId, result, target)
     const refs = this.refsByTask.get(result.taskId) ?? new Set<string>()
@@ -128,7 +143,9 @@ export class OneShotResultStore {
       try {
         const obj = JSON.parse(readFileSync(join(this.resultsRoot, file), 'utf8')) as OneShotResult
         if (obj.taskId === taskId) out.push(obj)
-      } catch { /* skip corrupt */ }
+      } catch {
+        /* skip corrupt */
+      }
     }
     // Newest first.
     out.sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))
@@ -139,7 +156,11 @@ export class OneShotResultStore {
   async delete(runId: string): Promise<boolean> {
     const file = join(this.resultsRoot, `${runId}.json`)
     if (!existsSync(file)) return false
-    try { unlinkSync(file) } catch { return false }
+    try {
+      unlinkSync(file)
+    } catch {
+      return false
+    }
     this.cache.delete(runId)
     return true
   }
@@ -208,7 +229,9 @@ export class OneShotResultStore {
           this.cacheSet(obj.runId, obj, join(this.resultsRoot, file))
           out.push(obj)
         }
-      } catch { /* skip corrupt */ }
+      } catch {
+        /* skip corrupt */
+      }
     }
     return out
   }
@@ -225,12 +248,16 @@ export class OneShotResultStore {
       for (const file of readdirSync(this.resultsRoot)) {
         if (!file.endsWith('.json') || file === 'index.jsonl') continue
         try {
-          const obj = JSON.parse(readFileSync(join(this.resultsRoot, file), 'utf8')) as OneShotResult
+          const obj = JSON.parse(
+            readFileSync(join(this.resultsRoot, file), 'utf8'),
+          ) as OneShotResult
           if (obj.taskId === taskId) {
             disk++
             sizeBytes += statSync(join(this.resultsRoot, file)).size
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
     return { cached, disk, sizeBytes }

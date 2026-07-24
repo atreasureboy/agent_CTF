@@ -60,8 +60,7 @@ const DANGEROUS_COMMAND_PATTERNS: Array<{ name: string; re: RegExp }> = [
 ]
 
 /** Matches zero-width / bidi-control characters we want to strip. */
-const ZERO_WIDTH_RE =
-  /[​-‍⁠﻿‎‏‪-‮]/
+const ZERO_WIDTH_RE = /[​-‍⁠﻿‎‏‪-‮]/
 
 export function sanitizeInput(
   text: string,
@@ -118,7 +117,10 @@ export function sanitizeOutput(
   return { sanitized: sanitised, modified, detected }
 }
 
-function redactMatches(text: string, patterns: ReadonlyArray<{ name: string; re: RegExp }>): string {
+function redactMatches(
+  text: string,
+  patterns: ReadonlyArray<{ name: string; re: RegExp }>,
+): string {
   let out = text
   for (const { re } of patterns) {
     out = out.replace(re, '[REDACTED]')

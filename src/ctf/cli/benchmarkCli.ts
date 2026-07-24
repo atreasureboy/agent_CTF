@@ -5,10 +5,7 @@
  */
 
 import { join } from 'path'
-import {
-  runBenchmark,
-  formatBenchmarkSummary,
-} from './benchmark.js'
+import { runBenchmark, formatBenchmarkSummary } from './benchmark.js'
 
 export interface BenchmarkCliDeps {
   stdout: NodeJS.WritableStream
@@ -16,10 +13,7 @@ export interface BenchmarkCliDeps {
   fixturesRoot?: string
 }
 
-export async function runBenchmarkCommand(
-  argv: string[],
-  deps: BenchmarkCliDeps,
-): Promise<number> {
+export async function runBenchmarkCommand(argv: string[], deps: BenchmarkCliDeps): Promise<number> {
   const { stdout } = deps
   const cwd = process.cwd()
   const fixturesRoot = deps.fixturesRoot ?? join(cwd, 'tests', 'fixtures')

@@ -275,9 +275,7 @@ export class HandoffCoordinator {
       return { agentId: explicitAgentId }
     }
 
-    const fromRun = this.deps.store.getState().agentRuns.find(
-      (r) => r.id === fromAgentRunId,
-    )
+    const fromRun = this.deps.store.getState().agentRuns.find((r) => r.id === fromAgentRunId)
     const fromProfile = fromRun ? resolveProfile(fromRun.profileId) : undefined
     if (fromProfile?.preferredAgentsForHandoff) {
       for (const pref of fromProfile.preferredAgentsForHandoff) {
@@ -314,10 +312,7 @@ export class HandoffCoordinator {
     return `agent "${agentId}" missing required binaries: ${missing}`
   }
 
-  private async runSpecialist(
-    handoffId: string,
-    agentId: string,
-  ): Promise<AgentRunResult> {
+  private async runSpecialist(handoffId: string, agentId: string): Promise<AgentRunResult> {
     const profile = resolveProfile(agentId)
     if (!profile) {
       const err = `No profile for agent "${agentId}"`
@@ -389,9 +384,7 @@ export class HandoffCoordinator {
         handle.artifactStore,
       )
       const before = childProjector.captureSnapshot()
-      let engineOut:
-        | { result: TurnResult; newHistory: OpenAIMessage[] }
-        | undefined
+      let engineOut: { result: TurnResult; newHistory: OpenAIMessage[] } | undefined
       try {
         engineOut = await handle.harness.runTurn(
           `Continue from handoff ${handoffId}: ${handoffRec.objective}`,
@@ -525,10 +518,7 @@ export class HandoffCoordinator {
    *   - allowedHosts / allowedDomains / allowedCidrs / allowedPorts =
    *     inherited as-is (specialist inherits network allow-list)
    */
-  private narrowSpecialistScope(
-    parentScope: ContestScope,
-    handoffId: string,
-  ): ContestScope {
+  private narrowSpecialistScope(parentScope: ContestScope, handoffId: string): ContestScope {
     const subtaskDir = join(parentScope.allowedFilesRoot, `spec_${handoffId.slice(-6)}`)
     return {
       ...parentScope,
@@ -537,12 +527,7 @@ export class HandoffCoordinator {
   }
 
   private isTerminal(s: HandoffRecordStatus): boolean {
-    return (
-      s === 'completed' ||
-      s === 'failed' ||
-      s === 'cancelled' ||
-      s === 'rejected'
-    )
+    return s === 'completed' || s === 'failed' || s === 'cancelled' || s === 'rejected'
   }
 }
 

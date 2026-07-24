@@ -184,7 +184,11 @@ export type TypedWorkflowStep =
       id: string
       kind: 'emit_finding'
       dependsOn?: string[]
-      fromEvidence?: { kinds?: string[]; minConfidence?: number; polarity?: 'supports' | 'contradicts' | 'neutral' }
+      fromEvidence?: {
+        kinds?: string[]
+        minConfidence?: number
+        polarity?: 'supports' | 'contradicts' | 'neutral'
+      }
       fromObservations?: { kinds?: string[]; minConfidence?: number }
       includeSuggestedActions?: boolean
       description?: string

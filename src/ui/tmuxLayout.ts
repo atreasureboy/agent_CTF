@@ -30,7 +30,7 @@ function sq(s: string): string {
 // ─────────────────────────────────────────────────────────────
 function toWindowName(label: string): string {
   return label
-    .replace(/^\[([^\]]+)\]\s*/, '$1-')   // [explore] xxx → explore-xxx
+    .replace(/^\[([^\]]+)\]\s*/, '$1-') // [explore] xxx → explore-xxx
     .replace(/[^a-zA-Z0-9_-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/, '')
@@ -88,10 +88,16 @@ export class TmuxLayout {
       const out = execSync('tmux ls -F "#{session_name}"', { stdio: 'pipe' }).toString()
       for (const name of out.trim().split('\n')) {
         if (name.startsWith(OVOGO_SESSION_PREFIX)) {
-          try { execSync(`tmux kill-session -t ${sq(name)}`, { stdio: 'pipe' }) } catch { /* ok */ }
+          try {
+            execSync(`tmux kill-session -t ${sq(name)}`, { stdio: 'pipe' })
+          } catch {
+            /* ok */
+          }
         }
       }
-    } catch { /* no existing sessions */ }
+    } catch {
+      /* no existing sessions */
+    }
 
     try {
       mkdirSync(logDir, { recursive: true })
@@ -105,13 +111,12 @@ export class TmuxLayout {
 
     try {
       // 创建后台 tmux session（不 attach，不影响主终端）
-      execSync(
-        `tmux new-session -d -s ${sq(this.sessionName)} -x 200 -y 50`,
-        { stdio: 'pipe' },
-      )
+      execSync(`tmux new-session -d -s ${sq(this.sessionName)} -x 200 -y 50`, { stdio: 'pipe' })
 
       // 重命名第一个窗口为状态总览
-      execSync(`tmux rename-window -t ${sq(this.sessionName + ':0')} 'OVOGO-Status'`, { stdio: 'pipe' })
+      execSync(`tmux rename-window -t ${sq(this.sessionName + ':0')} 'OVOGO-Status'`, {
+        stdio: 'pipe',
+      })
 
       // 在状态窗口写欢迎信息
       const welcome = [
@@ -121,11 +126,13 @@ export class TmuxLayout {
         `echo "\\033[2m  子 agent 窗口将在这里自动出现（Ctrl+B + 数字 切换）\\033[0m"`,
         `echo "\\033[1m\\033[95m${'═'.repeat(60)}\\033[0m"`,
       ].join(' && ')
-      execSync(`tmux send-keys -t ${sq(this.sessionName + ':0')} ${JSON.stringify(welcome)} Enter`, { stdio: 'pipe' })
+      execSync(
+        `tmux send-keys -t ${sq(this.sessionName + ':0')} ${JSON.stringify(welcome)} Enter`,
+        { stdio: 'pipe' },
+      )
 
       this.initialized = true
       return true
-
     } catch {
       this.sessionName = ''
       return false
@@ -151,7 +158,9 @@ export class TmuxLayout {
       `\x1b[1m\x1b[95m${'═'.repeat(58)}\x1b[0m\n`
     try {
       writeFileSync(logFile, startBanner)
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
 
     let windowId = ''
     try {
@@ -160,7 +169,9 @@ export class TmuxLayout {
       const newOut = execSync(
         `tmux new-window -P -F '#{window_id}' -t ${sq(this.sessionName)} -n ${sq(windowName)}`,
         { stdio: 'pipe' },
-      ).toString().trim()
+      )
+        .toString()
+        .trim()
       windowId = newOut
 
       // 窗口内运行 tail -f 实时显示 agent 输出
@@ -169,7 +180,6 @@ export class TmuxLayout {
         `tmux send-keys -t ${sq(this.sessionName + ':' + windowId)} ${JSON.stringify(tailCmd)} Enter`,
         { stdio: 'pipe' },
       )
-
     } catch {
       // 窗口创建失败，仍然返回 logFile 供 Renderer.forFile 使用
     }
@@ -182,7 +192,7 @@ export class TmuxLayout {
    * 子 agent 完成后标记窗口为 done（在日志结尾写入 footer，更新窗口名）。
    */
   releaseSlot(slot: number): void {
-    const win = this.activeWindows.find(w => w.slot === slot)
+    const win = this.activeWindows.find((w) => w.slot === slot)
     if (!win) return
 
     // 写入完成 footer
@@ -191,7 +201,11 @@ export class TmuxLayout {
       `\x1b[32m  ✓ "${win.agentLabel}" 完成\x1b[0m\n` +
       `\x1b[2m  ${new Date().toLocaleTimeString()}\x1b[0m\n` +
       `\x1b[2m${'─'.repeat(58)}\x1b[0m\n`
-    try { writeFileSync(win.logFile, footer, { flag: 'a' }) } catch { /* best-effort */ }
+    try {
+      writeFileSync(win.logFile, footer, { flag: 'a' })
+    } catch {
+      /* best-effort */
+    }
 
     // 重命名窗口加 ✓ 标记 — 用 captured window id 寻址，避免与同名窗口碰撞
     if (win.windowId) {
@@ -201,10 +215,12 @@ export class TmuxLayout {
           `tmux rename-window -t ${sq(this.sessionName + ':' + win.windowId)} ${sq(doneWindowName)}`,
           { stdio: 'pipe' },
         )
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
 
-    this.activeWindows = this.activeWindows.filter(w => w.slot !== slot)
+    this.activeWindows = this.activeWindows.filter((w) => w.slot !== slot)
   }
 
   /**
@@ -228,7 +244,9 @@ export class TmuxLayout {
     if (!this.initialized || !this.sessionName) return
     try {
       execSync(`tmux kill-session -t ${sq(this.sessionName)}`, { stdio: 'pipe' })
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     this.initialized = false
     this.sessionName = ''
     this.activeWindows = []

@@ -79,13 +79,9 @@ export interface LoadContestConfigResult {
  * validated ContestConfig. Missing file is not an error — the harness falls
  * back to safe defaults so an empty repo can still run.
  */
-export function loadContestConfig(
-  opts: LoadContestConfigOptions = {},
-): LoadContestConfigResult {
+export function loadContestConfig(opts: LoadContestConfigOptions = {}): LoadContestConfigResult {
   const cwd = opts.cwd ?? process.cwd()
-  const candidate = opts.explicitPath
-    ? resolve(opts.explicitPath)
-    : pickExisting(cwd)
+  const candidate = opts.explicitPath ? resolve(opts.explicitPath) : pickExisting(cwd)
   if (!candidate) {
     return {
       sourcePath: null,

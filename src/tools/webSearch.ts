@@ -47,7 +47,9 @@ function composeAbort(
     } else {
       context.signal.addEventListener(
         'abort',
-        () => { controller.abort('user_cancelled') },
+        () => {
+          controller.abort('user_cancelled')
+        },
         { once: true },
       )
     }
@@ -58,10 +60,14 @@ function composeAbort(
   }
 }
 
-function getAssertNetwork(context: ToolContext): ((host: string) => { allowed: boolean; reason?: string }) | null {
-  const ctfCtx = (context as unknown as {
-    __ctf?: { contestScope?: ContestScopeChecker }
-  }).__ctf
+function getAssertNetwork(
+  context: ToolContext,
+): ((host: string) => { allowed: boolean; reason?: string }) | null {
+  const ctfCtx = (
+    context as unknown as {
+      __ctf?: { contestScope?: ContestScopeChecker }
+    }
+  ).__ctf
   const scope = ctfCtx?.contestScope
   if (!scope || typeof scope.assertNetwork !== 'function') return null
   const assertFn = scope.assertNetwork
@@ -107,7 +113,7 @@ async function duckduckgoSearch(
 
     if (!resp.ok) return []
 
-    const data = await resp.json() as {
+    const data = (await resp.json()) as {
       AbstractText?: string
       AbstractURL?: string
       AbstractSource?: string
@@ -175,11 +181,11 @@ async function googleSearch(
     clearTimer()
     if (!resp.ok) return []
 
-    const data = await resp.json() as {
+    const data = (await resp.json()) as {
       items?: Array<{ title: string; link: string; snippet: string }>
     }
 
-    return (data.items ?? []).map(item => ({
+    return (data.items ?? []).map((item) => ({
       title: item.title,
       url: item.link,
       snippet: item.snippet,
@@ -220,11 +226,11 @@ async function serpApiSearch(
     clearTimer()
     if (!resp.ok) return []
 
-    const data = await resp.json() as {
+    const data = (await resp.json()) as {
       organic_results?: Array<{ title: string; link: string; snippet: string }>
     }
 
-    return (data.organic_results ?? []).map(r => ({
+    return (data.organic_results ?? []).map((r) => ({
       title: r.title,
       url: r.link,
       snippet: r.snippet,

@@ -41,7 +41,12 @@ function which(bin: string, envPath: string = process.env.PATH ?? ''): string | 
     if (existsSync(join(dir, bin))) return join(dir, bin)
   }
   // Common fallback locations (Windows / Mac / WSL)
-  for (const dir of ['/usr/local/bin', '/usr/bin', '/opt/homebrew/bin', 'C:\\Program Files\\Git\\usr\\bin']) {
+  for (const dir of [
+    '/usr/local/bin',
+    '/usr/bin',
+    '/opt/homebrew/bin',
+    'C:\\Program Files\\Git\\usr\\bin',
+  ]) {
     if (existsSync(join(dir, bin))) return join(dir, bin)
   }
   return null
@@ -70,8 +75,15 @@ class BinaryTool implements Tool {
               type: 'string',
               description: `Optional raw command to append after \`${opts.binary}\`.`,
             },
-            target: { type: 'string', description: 'Target file / host / value (the primary input).' },
-            args: { type: 'array', items: { type: 'string' }, description: 'Additional raw CLI args.' },
+            target: {
+              type: 'string',
+              description: 'Target file / host / value (the primary input).',
+            },
+            args: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Additional raw CLI args.',
+            },
             timeout: { type: 'number', description: 'Timeout in milliseconds (default 60 000).' },
           },
         },
@@ -101,24 +113,42 @@ class BinaryTool implements Tool {
     let cmd = this.opts.buildCommand(input)
     const userCmd = typeof input.command === 'string' ? input.command : null
     if (userCmd) cmd = `${cmd} ${userCmd}`
-    const extraArgs = Array.isArray(input.args) ? input.args.filter((v): v is string => typeof v === 'string') : []
+    const extraArgs = Array.isArray(input.args)
+      ? input.args.filter((v): v is string => typeof v === 'string')
+      : []
     if (extraArgs.length > 0) cmd = `${cmd} ${extraArgs.join(' ')}`
 
     const timeoutMs = typeof input.timeout === 'number' ? Math.max(1000, input.timeout) : 60_000
 
     return await new Promise<ToolResult>((resolve) => {
       let settled = false
-      const proc = spawn(cmd, { shell: '/bin/bash', cwd: context.cwd, env: process.env, signal: context.signal })
+      const proc = spawn(cmd, {
+        shell: '/bin/bash',
+        cwd: context.cwd,
+        env: process.env,
+        signal: context.signal,
+      })
       let stdout = ''
       let stderr = ''
       const timer = setTimeout(() => {
         if (settled) return
         settled = true
-        try { proc.kill('SIGTERM') } catch { /* best-effort */ }
-        resolve({ content: `${this.name} timed out after ${timeoutMs}ms. First 1KB:\n${stdout.slice(0, 1024)}\n[stderr]\n${stderr.slice(0, 512)}`, isError: true })
+        try {
+          proc.kill('SIGTERM')
+        } catch {
+          /* best-effort */
+        }
+        resolve({
+          content: `${this.name} timed out after ${timeoutMs}ms. First 1KB:\n${stdout.slice(0, 1024)}\n[stderr]\n${stderr.slice(0, 512)}`,
+          isError: true,
+        })
       }, timeoutMs)
-      proc.stdout.on('data', (chunk) => { stdout += chunk.toString() })
-      proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+      proc.stdout.on('data', (chunk) => {
+        stdout += chunk.toString()
+      })
+      proc.stderr.on('data', (chunk) => {
+        stderr += chunk.toString()
+      })
       proc.on('error', (err) => {
         if (settled) return
         settled = true
@@ -136,12 +166,20 @@ class BinaryTool implements Tool {
         resolve({ content: formatted + (code !== 0 ? `\n[exit ${code}]` : ''), isError })
       })
       if (context.signal) {
-        context.signal.addEventListener('abort', () => {
-          if (settled) return
-          settled = true
-          try { proc.kill('SIGTERM') } catch { /* best-effort */ }
-          resolve({ content: `${this.name} cancelled.`, isError: true })
-        }, { once: true })
+        context.signal.addEventListener(
+          'abort',
+          () => {
+            if (settled) return
+            settled = true
+            try {
+              proc.kill('SIGTERM')
+            } catch {
+              /* best-effort */
+            }
+            resolve({ content: `${this.name} cancelled.`, isError: true })
+          },
+          { once: true },
+        )
       }
     })
   }
@@ -152,454 +190,523 @@ class BinaryTool implements Tool {
 export function createCTFTools(): Tool[] {
   const tools: Tool[] = []
 
-  tools.push(new BinaryTool({
-    name: 'zsteg',
-    description: 'PNG/BMP 隐写扫描(zsteg)。建议先用 image_quick_scan 工作流。',
-    binary: 'zsteg',
-    requiredBinaries: ['zsteg'],
-    domains: ['image'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `zsteg -a ${JSON.stringify(target) ?? '""'}`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'zsteg',
+      description: 'PNG/BMP 隐写扫描(zsteg)。建议先用 image_quick_scan 工作流。',
+      binary: 'zsteg',
+      requiredBinaries: ['zsteg'],
+      domains: ['image'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `zsteg -a ${JSON.stringify(target) ?? '""'}`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'binwalk',
-    description: 'binwalk 文件嵌套/嵌入扫描,支持 -e 自动解包。',
-    binary: 'binwalk',
-    requiredBinaries: ['binwalk'],
-    domains: ['forensics'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const extract = typeof input.command === 'string' && input.command.includes('-e') ? '' : '-e'
-      return `binwalk ${extract} ${JSON.stringify(target) ?? '""'}`.trim()
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'binwalk',
+      description: 'binwalk 文件嵌套/嵌入扫描,支持 -e 自动解包。',
+      binary: 'binwalk',
+      requiredBinaries: ['binwalk'],
+      domains: ['forensics'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const extract =
+          typeof input.command === 'string' && input.command.includes('-e') ? '' : '-e'
+        return `binwalk ${extract} ${JSON.stringify(target) ?? '""'}`.trim()
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'exiftool',
-    description: '读取文件 metadata;优先于 strings 猜测。',
-    binary: 'exiftool',
-    requiredBinaries: ['exiftool'],
-    domains: ['forensics'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `exiftool ${JSON.stringify(target) ?? '""'}`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'exiftool',
+      description: '读取文件 metadata;优先于 strings 猜测。',
+      binary: 'exiftool',
+      requiredBinaries: ['exiftool'],
+      domains: ['forensics'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `exiftool ${JSON.stringify(target) ?? '""'}`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'pngcheck',
-    description: 'PNG 结构完整性检查(pngcheck -v)。',
-    binary: 'pngcheck',
-    requiredBinaries: ['pngcheck'],
-    domains: ['image'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `pngcheck -v ${JSON.stringify(target) ?? '""'}`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'pngcheck',
+      description: 'PNG 结构完整性检查(pngcheck -v)。',
+      binary: 'pngcheck',
+      requiredBinaries: ['pngcheck'],
+      domains: ['image'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `pngcheck -v ${JSON.stringify(target) ?? '""'}`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'identify',
-    description: 'ImageMagick identify 读取图片基本信息。',
-    binary: 'identify',
-    requiredBinaries: ['identify'],
-    domains: ['image'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `identify -verbose ${JSON.stringify(target) ?? '""'}`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'identify',
+      description: 'ImageMagick identify 读取图片基本信息。',
+      binary: 'identify',
+      requiredBinaries: ['identify'],
+      domains: ['image'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `identify -verbose ${JSON.stringify(target) ?? '""'}`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'steghide',
-    description: 'steghide 隐写提取(需要 passphrase)。',
-    binary: 'steghide',
-    requiredBinaries: ['steghide'],
-    domains: ['image'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const passphrase = typeof input.passphrase === 'string' ? input.passphrase : ''
-      return `steghide extract -sf ${JSON.stringify(target) ?? '""'} -p ${JSON.stringify(passphrase) ?? '""'} -xf ./extracted.bin`
-    },
-    formatOutput: (stdout) => `extracted to ./extracted.bin\n${stdout}`,
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'steghide',
+      description: 'steghide 隐写提取(需要 passphrase)。',
+      binary: 'steghide',
+      requiredBinaries: ['steghide'],
+      domains: ['image'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const passphrase = typeof input.passphrase === 'string' ? input.passphrase : ''
+        return `steghide extract -sf ${JSON.stringify(target) ?? '""'} -p ${JSON.stringify(passphrase) ?? '""'} -xf ./extracted.bin`
+      },
+      formatOutput: (stdout) => `extracted to ./extracted.bin\n${stdout}`,
+    }),
+  )
 
   // ─── Crypto / Crypto tools ────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'rsactftool',
-    description: 'RsaCtfTool 公共 RSA 攻击(因子库 / Fermat / Wiener / ...)。',
-    binary: 'RsaCtfTool',
-    requiredBinaries: ['RsaCtfTool', 'openssl'],
-    domains: ['crypto'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const n = typeof input.n === 'string' ? input.n : ''
-      const e = typeof input.e === 'string' ? input.e : ''
-      const c = typeof input.c === 'string' ? input.c : ''
-      // Bash -c style: JSON.stringify the entire command string so LLM-controlled
-      // args can never inject `;`, `|`, redirection, etc. This mirrors the
-      // canonical pattern at binwalk:176 (every ${var} → JSON.stringify(var)).
-      return `RsaCtfTool -n ${JSON.stringify(n) ?? '""'} -e ${JSON.stringify(e) ?? '""'} --uncipherfile <(printf %s ${JSON.stringify(c) ?? '""'}) --attack all 2>&1 | head -n 60 || true`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'rsactftool',
+      description: 'RsaCtfTool 公共 RSA 攻击(因子库 / Fermat / Wiener / ...)。',
+      binary: 'RsaCtfTool',
+      requiredBinaries: ['RsaCtfTool', 'openssl'],
+      domains: ['crypto'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const n = typeof input.n === 'string' ? input.n : ''
+        const e = typeof input.e === 'string' ? input.e : ''
+        const c = typeof input.c === 'string' ? input.c : ''
+        // Bash -c style: JSON.stringify the entire command string so LLM-controlled
+        // args can never inject `;`, `|`, redirection, etc. This mirrors the
+        // canonical pattern at binwalk:176 (every ${var} → JSON.stringify(var)).
+        return `RsaCtfTool -n ${JSON.stringify(n) ?? '""'} -e ${JSON.stringify(e) ?? '""'} --uncipherfile <(printf %s ${JSON.stringify(c) ?? '""'}) --attack all 2>&1 | head -n 60 || true`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'yafu',
-    description: 'yafu 大整数分解 — RSA 因子基础工具。',
-    binary: 'yafu',
-    requiredBinaries: ['yafu'],
-    domains: ['crypto'],
-    buildCommand: (input) => {
-      const n = typeof input.n === 'string' ? input.n : ''
-      return `echo "factor(${JSON.stringify(n) ?? '""'})" | yafu 2>&1 | head -n 40 || true`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'yafu',
+      description: 'yafu 大整数分解 — RSA 因子基础工具。',
+      binary: 'yafu',
+      requiredBinaries: ['yafu'],
+      domains: ['crypto'],
+      buildCommand: (input) => {
+        const n = typeof input.n === 'string' ? input.n : ''
+        return `echo "factor(${JSON.stringify(n) ?? '""'})" | yafu 2>&1 | head -n 40 || true`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'openssl-rsa',
-    description: 'openssl RSA 解密/签验;若私钥可用,直接 decrypt。',
-    binary: 'openssl',
-    requiredBinaries: ['openssl'],
-    domains: ['crypto'],
-    buildCommand: (input) => {
-      const c = typeof input.c === 'string' ? input.c : ''
-      const keyPath = typeof input.privateKey === 'string' ? input.privateKey : ''
-      return `printf %s ${JSON.stringify(c) ?? '""'} | openssl rsautl -decrypt -inkey ${JSON.stringify(keyPath) ?? '""'} 2>&1 || true`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'openssl-rsa',
+      description: 'openssl RSA 解密/签验;若私钥可用,直接 decrypt。',
+      binary: 'openssl',
+      requiredBinaries: ['openssl'],
+      domains: ['crypto'],
+      buildCommand: (input) => {
+        const c = typeof input.c === 'string' ? input.c : ''
+        const keyPath = typeof input.privateKey === 'string' ? input.privateKey : ''
+        return `printf %s ${JSON.stringify(c) ?? '""'} | openssl rsautl -decrypt -inkey ${JSON.stringify(keyPath) ?? '""'} 2>&1 || true`
+      },
+    }),
+  )
 
   // ─── Network (Web) tools ──────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'nmap',
-    description: 'nmap 端口/服务扫描(可用 --top-ports / -sV 等)。建议入后台任务。',
-    binary: 'nmap',
-    requiredBinaries: ['nmap'],
-    domains: ['network', 'web'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.flags === 'string' ? input.flags : '-sV --top-ports 1000'
-      return `nmap ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'}`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'nmap',
+      description: 'nmap 端口/服务扫描(可用 --top-ports / -sV 等)。建议入后台任务。',
+      binary: 'nmap',
+      requiredBinaries: ['nmap'],
+      domains: ['network', 'web'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.flags === 'string' ? input.flags : '-sV --top-ports 1000'
+        return `nmap ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'}`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'nikto',
-    description: 'nikto Web 漏洞扫描。',
-    binary: 'nikto',
-    requiredBinaries: ['nikto', 'perl'],
-    domains: ['web'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `nikto -h ${JSON.stringify(target) ?? '""'} -Tuning 123bde 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'nikto',
+      description: 'nikto Web 漏洞扫描。',
+      binary: 'nikto',
+      requiredBinaries: ['nikto', 'perl'],
+      domains: ['web'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `nikto -h ${JSON.stringify(target) ?? '""'} -Tuning 123bde 2>&1 | head -n 200`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'sqlmap',
-    description: 'sqlmap SQL 注入扫描。',
-    binary: 'sqlmap',
-    requiredBinaries: ['sqlmap', 'python3'],
-    domains: ['web'],
-    riskLevel: 'high',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `sqlmap -u ${JSON.stringify(target) ?? '""'} --batch --level 2 --risk 1 2>&1 | head -n 100`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'sqlmap',
+      description: 'sqlmap SQL 注入扫描。',
+      binary: 'sqlmap',
+      requiredBinaries: ['sqlmap', 'python3'],
+      domains: ['web'],
+      riskLevel: 'high',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `sqlmap -u ${JSON.stringify(target) ?? '""'} --batch --level 2 --risk 1 2>&1 | head -n 100`
+      },
+    }),
+  )
 
   // ─── Reverse Engineering tools ─────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'gdb',
-    description: 'gdb 调试器 — 断点/寄存器/内存读写。建议 -batch -ex 模式。',
-    binary: 'gdb',
-    requiredBinaries: ['gdb'],
-    domains: ['reverse', 'pwn'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const script = typeof input.command === 'string' ? input.command : 'info functions'
-      return `gdb -batch -ex ${JSON.stringify(script) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'gdb',
+      description: 'gdb 调试器 — 断点/寄存器/内存读写。建议 -batch -ex 模式。',
+      binary: 'gdb',
+      requiredBinaries: ['gdb'],
+      domains: ['reverse', 'pwn'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const script = typeof input.command === 'string' ? input.command : 'info functions'
+        return `gdb -batch -ex ${JSON.stringify(script) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'objdump',
-    description: 'objdump 反汇编 — 用于静态分析函数入口/段表。',
-    binary: 'objdump',
-    requiredBinaries: ['objdump'],
-    domains: ['reverse'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '-d -M intel'
-      return `objdump ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 300`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'objdump',
+      description: 'objdump 反汇编 — 用于静态分析函数入口/段表。',
+      binary: 'objdump',
+      requiredBinaries: ['objdump'],
+      domains: ['reverse'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '-d -M intel'
+        return `objdump ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 300`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'strings',
-    description: 'strings 提取可读字符串 — CTF 速查。',
-    binary: 'strings',
-    requiredBinaries: ['strings'],
-    domains: ['reverse', 'forensics'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const minLen = typeof input.command === 'string' ? input.command : '-n 6'
-      return `strings ${JSON.stringify(minLen) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'strings',
+      description: 'strings 提取可读字符串 — CTF 速查。',
+      binary: 'strings',
+      requiredBinaries: ['strings'],
+      domains: ['reverse', 'forensics'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const minLen = typeof input.command === 'string' ? input.command : '-n 6'
+        return `strings ${JSON.stringify(minLen) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'file',
-    description: 'file 魔数识别 — CTF 第一步。',
-    binary: 'file',
-    requiredBinaries: ['file'],
-    domains: ['forensics', 'reverse'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `file ${JSON.stringify(target) ?? '""'}`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'file',
+      description: 'file 魔数识别 — CTF 第一步。',
+      binary: 'file',
+      requiredBinaries: ['file'],
+      domains: ['forensics', 'reverse'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `file ${JSON.stringify(target) ?? '""'}`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'nm',
-    description: 'nm 符号表 — 找关键函数/变量。',
-    binary: 'nm',
-    requiredBinaries: ['nm'],
-    domains: ['reverse'],
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '-C'
-      return `nm ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'nm',
+      description: 'nm 符号表 — 找关键函数/变量。',
+      binary: 'nm',
+      requiredBinaries: ['nm'],
+      domains: ['reverse'],
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '-C'
+        return `nm ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'radare2',
-    description: 'r2 反汇编 / 反编译 / 图分析。',
-    binary: 'r2',
-    requiredBinaries: ['r2'],
-    domains: ['reverse'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const script = typeof input.command === 'string' ? input.command : 'aaa;afl'
-      return `r2 -q -c ${JSON.stringify(script) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'radare2',
+      description: 'r2 反汇编 / 反编译 / 图分析。',
+      binary: 'r2',
+      requiredBinaries: ['r2'],
+      domains: ['reverse'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const script = typeof input.command === 'string' ? input.command : 'aaa;afl'
+        return `r2 -q -c ${JSON.stringify(script) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
+      },
+    }),
+  )
 
   // ─── Web tools (补充) ─────────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'curl',
-    description: 'curl HTTP 客户端 — 重定向/方法/头控制。',
-    binary: 'curl',
-    requiredBinaries: ['curl'],
-    domains: ['web'],
-    riskLevel: 'low',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '-i -L -s'
-      return `curl ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 100`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'curl',
+      description: 'curl HTTP 客户端 — 重定向/方法/头控制。',
+      binary: 'curl',
+      requiredBinaries: ['curl'],
+      domains: ['web'],
+      riskLevel: 'low',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '-i -L -s'
+        return `curl ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 100`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'gobuster',
-    description: 'gobuster 目录/子域暴力枚举。',
-    binary: 'gobuster',
-    requiredBinaries: ['gobuster'],
-    domains: ['web'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const wordlist = typeof input.command === 'string' ? input.command : '/usr/share/wordlists/dirb/common.txt'
-      return `gobuster dir -u ${JSON.stringify(target) ?? '""'} -w ${JSON.stringify(wordlist) ?? '""'} -t 30 -q 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'gobuster',
+      description: 'gobuster 目录/子域暴力枚举。',
+      binary: 'gobuster',
+      requiredBinaries: ['gobuster'],
+      domains: ['web'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const wordlist =
+          typeof input.command === 'string' ? input.command : '/usr/share/wordlists/dirb/common.txt'
+        return `gobuster dir -u ${JSON.stringify(target) ?? '""'} -w ${JSON.stringify(wordlist) ?? '""'} -t 30 -q 2>&1 | head -n 200`
+      },
+    }),
+  )
 
   // ─── Network Traffic tools ────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'tshark',
-    description: 'tshark 数据包分析 — 协议/过滤/导出。',
-    binary: 'tshark',
-    requiredBinaries: ['tshark'],
-    domains: ['network'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '-r'
-      return `tshark ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'tshark',
+      description: 'tshark 数据包分析 — 协议/过滤/导出。',
+      binary: 'tshark',
+      requiredBinaries: ['tshark'],
+      domains: ['network'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '-r'
+        return `tshark ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 200`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'tcpdump',
-    description: 'tcpdump 抓包/过滤 (需 root 能力)。',
-    binary: 'tcpdump',
-    requiredBinaries: ['tcpdump'],
-    domains: ['network'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const filter = typeof input.command === 'string' ? input.command : ''
-      return `tcpdump -nn -r ${JSON.stringify(target) ?? '""'} ${JSON.stringify(filter) ?? '""'} 2>&1 | head -n 200`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'tcpdump',
+      description: 'tcpdump 抓包/过滤 (需 root 能力)。',
+      binary: 'tcpdump',
+      requiredBinaries: ['tcpdump'],
+      domains: ['network'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const filter = typeof input.command === 'string' ? input.command : ''
+        return `tcpdump -nn -r ${JSON.stringify(target) ?? '""'} ${JSON.stringify(filter) ?? '""'} 2>&1 | head -n 200`
+      },
+    }),
+  )
 
   // ─── Crypto 补充工具 ───────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'hashcat',
-    description: 'hashcat 哈希破解 — 字典/规则/掩码。',
-    binary: 'hashcat',
-    requiredBinaries: ['hashcat'],
-    domains: ['crypto'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const hash = typeof input.target === 'string' ? input.target : ''
-      const mode = typeof input.command === 'string' ? input.command : '--help | head -n 30'
-      return `hashcat ${JSON.stringify(mode) ?? '""'} ${JSON.stringify(hash) ?? '""'} 2>&1 | head -n 60`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'hashcat',
+      description: 'hashcat 哈希破解 — 字典/规则/掩码。',
+      binary: 'hashcat',
+      requiredBinaries: ['hashcat'],
+      domains: ['crypto'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const hash = typeof input.target === 'string' ? input.target : ''
+        const mode = typeof input.command === 'string' ? input.command : '--help | head -n 30'
+        return `hashcat ${JSON.stringify(mode) ?? '""'} ${JSON.stringify(hash) ?? '""'} 2>&1 | head -n 60`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'john',
-    description: 'John the Ripper — 多算法哈希破解。',
-    binary: 'john',
-    requiredBinaries: ['john'],
-    domains: ['crypto'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const hash = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '--show'
-      return `john ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(hash) ?? '""'} 2>&1 | head -n 40`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'john',
+      description: 'John the Ripper — 多算法哈希破解。',
+      binary: 'john',
+      requiredBinaries: ['john'],
+      domains: ['crypto'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const hash = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '--show'
+        return `john ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(hash) ?? '""'} 2>&1 | head -n 40`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'sage',
-    description: 'SageMath 数学计算系统 — 用于密码学代数攻击。',
-    binary: 'sage',
-    requiredBinaries: ['sage'],
-    domains: ['crypto'],
-    riskLevel: 'low',
-    buildCommand: (input) => {
-      const expr = typeof input.command === 'string' ? input.command : 'print("sage ok")'
-      return `echo ${JSON.stringify(expr) ?? '""'} | sage 2>&1 | head -n 40 || echo "sage unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'sage',
+      description: 'SageMath 数学计算系统 — 用于密码学代数攻击。',
+      binary: 'sage',
+      requiredBinaries: ['sage'],
+      domains: ['crypto'],
+      riskLevel: 'low',
+      buildCommand: (input) => {
+        const expr = typeof input.command === 'string' ? input.command : 'print("sage ok")'
+        return `echo ${JSON.stringify(expr) ?? '""'} | sage 2>&1 | head -n 40 || echo "sage unavailable"`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'cyberchef',
-    description: 'CyberChef CLI 等价能力 — 多操作符链式编解码。',
-    binary: 'cyberchef',
-    requiredBinaries: ['node'],
-    domains: ['crypto'],
-    riskLevel: 'low',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const recipe = typeof input.command === 'string' ? input.command : 'From_Base64'
-      // CyberChef 通常通过 node 调用 CLI;若不可用,fallback 到 node 脚本
-      return `(which cyberchef && cyberchef -r ${JSON.stringify(recipe) ?? '""'} -i ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30) || (node -e 'const d=Buffer.from(process.argv[1],"base64");console.log(d.toString("utf8"));process.exit(0);' ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 5) || echo "cyberchef unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'cyberchef',
+      description: 'CyberChef CLI 等价能力 — 多操作符链式编解码。',
+      binary: 'cyberchef',
+      requiredBinaries: ['node'],
+      domains: ['crypto'],
+      riskLevel: 'low',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const recipe = typeof input.command === 'string' ? input.command : 'From_Base64'
+        // CyberChef 通常通过 node 调用 CLI;若不可用,fallback 到 node 脚本
+        return `(which cyberchef && cyberchef -r ${JSON.stringify(recipe) ?? '""'} -i ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30) || (node -e 'const d=Buffer.from(process.argv[1],"base64");console.log(d.toString("utf8"));process.exit(0);' ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 5) || echo "cyberchef unavailable"`
+      },
+    }),
+  )
 
   // ─── Image 补充工具 ───────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'qr_decode',
-    description: '二维码识别 (zbarimg)。ImageStego 默认在 png_stego_sweep 后调用。',
-    binary: 'zbarimg',
-    requiredBinaries: ['zbarimg'],
-    domains: ['image'],
-    riskLevel: 'low',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `zbarimg --quiet --raw ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 20 || echo "zbarimg unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'qr_decode',
+      description: '二维码识别 (zbarimg)。ImageStego 默认在 png_stego_sweep 后调用。',
+      binary: 'zbarimg',
+      requiredBinaries: ['zbarimg'],
+      domains: ['image'],
+      riskLevel: 'low',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `zbarimg --quiet --raw ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 20 || echo "zbarimg unavailable"`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'channel_analyze',
-    description: '色彩通道分析 (PIL / numpy)。拆 R/G/B/A 通道输出统计信息。',
-    binary: 'python3',
-    requiredBinaries: ['python3'],
-    domains: ['image'],
-    riskLevel: 'low',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `python3 -c "from PIL import Image;import sys;im=Image.open(sys.argv[1]);print('size',im.size,'mode',im.mode);[print(f'ch{i} mean',sum(c)/len(c)) for i,c in enumerate(im.split())]" ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 20 || echo "PIL not installed"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'channel_analyze',
+      description: '色彩通道分析 (PIL / numpy)。拆 R/G/B/A 通道输出统计信息。',
+      binary: 'python3',
+      requiredBinaries: ['python3'],
+      domains: ['image'],
+      riskLevel: 'low',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `python3 -c "from PIL import Image;import sys;im=Image.open(sys.argv[1]);print('size',im.size,'mode',im.mode);[print(f'ch{i} mean',sum(c)/len(c)) for i,c in enumerate(im.split())]" ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 20 || echo "PIL not installed"`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'jpeginfo',
-    description: 'jpeginfo JPEG 文件结构检查 / 压缩历史分析。',
-    binary: 'jpeginfo',
-    requiredBinaries: ['jpeginfo'],
-    domains: ['image'],
-    riskLevel: 'low',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '-c'
-      return `jpeginfo ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30 || echo "jpeginfo unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'jpeginfo',
+      description: 'jpeginfo JPEG 文件结构检查 / 压缩历史分析。',
+      binary: 'jpeginfo',
+      requiredBinaries: ['jpeginfo'],
+      domains: ['image'],
+      riskLevel: 'low',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '-c'
+        return `jpeginfo ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30 || echo "jpeginfo unavailable"`
+      },
+    }),
+  )
 
   // ─── Web 补充工具 ────────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'httpx',
-    description: 'httpx HTTP 探测 — 标题/状态码/技术栈指纹。',
-    binary: 'httpx',
-    requiredBinaries: ['httpx'],
-    domains: ['web'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '-status-code -title -tech-detect -silent'
-      return `echo ${JSON.stringify(target) ?? '""'} | httpx ${JSON.stringify(flags) ?? '""'} 2>&1 | head -n 30 || echo "httpx unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'httpx',
+      description: 'httpx HTTP 探测 — 标题/状态码/技术栈指纹。',
+      binary: 'httpx',
+      requiredBinaries: ['httpx'],
+      domains: ['web'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags =
+          typeof input.command === 'string'
+            ? input.command
+            : '-status-code -title -tech-detect -silent'
+        return `echo ${JSON.stringify(target) ?? '""'} | httpx ${JSON.stringify(flags) ?? '""'} 2>&1 | head -n 30 || echo "httpx unavailable"`
+      },
+    }),
+  )
 
-  tools.push(new BinaryTool({
-    name: 'fingerprint',
-    description: 'Web 指纹识别 (whatweb)。CMS / 框架 / 库。',
-    binary: 'whatweb',
-    requiredBinaries: ['whatweb'],
-    domains: ['web'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      const flags = typeof input.command === 'string' ? input.command : '--no-errors -a 3'
-      return `whatweb ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30 || echo "whatweb unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'fingerprint',
+      description: 'Web 指纹识别 (whatweb)。CMS / 框架 / 库。',
+      binary: 'whatweb',
+      requiredBinaries: ['whatweb'],
+      domains: ['web'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        const flags = typeof input.command === 'string' ? input.command : '--no-errors -a 3'
+        return `whatweb ${JSON.stringify(flags) ?? '""'} ${JSON.stringify(target) ?? '""'} 2>&1 | head -n 30 || echo "whatweb unavailable"`
+      },
+    }),
+  )
 
   // ─── Network 补充工具 ──────────────────────────────────────────────
 
-  tools.push(new BinaryTool({
-    name: 'tcpflow',
-    description: 'tcpflow TCP 流重组 — 直接抽出 HTTP body / 应用层 payload。',
-    binary: 'tcpflow',
-    requiredBinaries: ['tcpflow'],
-    domains: ['network'],
-    riskLevel: 'medium',
-    buildCommand: (input) => {
-      const target = typeof input.target === 'string' ? input.target : ''
-      return `tcpflow -r ${JSON.stringify(target) ?? '""'} -C -e http 2>&1 | head -n 100 || echo "tcpflow unavailable"`
-    },
-  }))
+  tools.push(
+    new BinaryTool({
+      name: 'tcpflow',
+      description: 'tcpflow TCP 流重组 — 直接抽出 HTTP body / 应用层 payload。',
+      binary: 'tcpflow',
+      requiredBinaries: ['tcpflow'],
+      domains: ['network'],
+      riskLevel: 'medium',
+      buildCommand: (input) => {
+        const target = typeof input.target === 'string' ? input.target : ''
+        return `tcpflow -r ${JSON.stringify(target) ?? '""'} -C -e http 2>&1 | head -n 100 || echo "tcpflow unavailable"`
+      },
+    }),
+  )
 
   return tools
 }

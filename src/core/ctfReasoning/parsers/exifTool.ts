@@ -8,7 +8,16 @@
 import type { ResultParser, ParserInput, MaterializedResult } from '../parserRegistry.js'
 import { redactSecrets } from '../redaction.js'
 
-const SUSPECT_KEYS = ['Comment', 'Description', 'UserComment', 'Software', 'Author', 'Creator', 'Artist', 'Copyright']
+const SUSPECT_KEYS = [
+  'Comment',
+  'Description',
+  'UserComment',
+  'Software',
+  'Author',
+  'Creator',
+  'Artist',
+  'Copyright',
+]
 const LONG_VALUE_THRESHOLD = 256
 
 const FIELD_RE = /^\s*([A-Za-z][A-Za-z0-9 _-]*?)\s*:\s+(.+?)\s*$/
@@ -16,11 +25,20 @@ const FIELD_RE = /^\s*([A-Za-z][A-Za-z0-9 _-]*?)\s*:\s+(.+?)\s*$/
 export const exifToolParser: ResultParser = {
   id: 'exiftool',
   supports(input) {
-    return input.toolId === 'exiftool' || input.manifestId === 'exiftool' || input.stepId === 'exiftool'
+    return (
+      input.toolId === 'exiftool' || input.manifestId === 'exiftool' || input.stepId === 'exiftool'
+    )
   },
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
-      return { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: ['exiftool: no content'], rawArtifactIds: input.artifactIds }
+      return {
+        observations: [],
+        evidence: [],
+        suggestedActions: [],
+        flagCandidateDrafts: [],
+        warnings: ['exiftool: no content'],
+        rawArtifactIds: input.artifactIds,
+      }
     }
     const observations: MaterializedResult['observations'] = []
     const evidence: MaterializedResult['evidence'] = []
@@ -37,16 +55,21 @@ export const exifToolParser: ResultParser = {
     if (suspect.length === 0) {
       return {
         observations: [],
-        evidence: [{
-          kind: 'negative_result',
-          claim: 'exiftool: no suspicious metadata fields',
-          polarity: 'neutral',
-          source: {
-            producer: { type: 'parser', id: 'exiftool' },
-            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-            confidence: 0.6, createdAt: Date.now(),
+        evidence: [
+          {
+            kind: 'negative_result',
+            claim: 'exiftool: no suspicious metadata fields',
+            polarity: 'neutral',
+            source: {
+              producer: { type: 'parser', id: 'exiftool' },
+              observationIds: [],
+              artifactIds: input.artifactIds,
+              attemptIds: [],
+              confidence: 0.6,
+              createdAt: Date.now(),
+            },
           },
-        }],
+        ],
         suggestedActions: [],
         flagCandidateDrafts: [],
         warnings: [],
@@ -70,8 +93,11 @@ export const exifToolParser: ResultParser = {
           polarity: 'supports',
           source: {
             producer: { type: 'parser', id: 'exiftool' },
-            observationIds: [], artifactIds: input.artifactIds, attemptIds: [],
-            confidence: 0.65, createdAt: Date.now(),
+            observationIds: [],
+            artifactIds: input.artifactIds,
+            attemptIds: [],
+            confidence: 0.65,
+            createdAt: Date.now(),
           },
         })
       }

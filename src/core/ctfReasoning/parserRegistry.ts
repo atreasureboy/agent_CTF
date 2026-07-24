@@ -22,7 +22,11 @@ import type { EvidenceDraft } from './evidence.js'
 import type { SuggestedAction } from './suggestedAction.js'
 import type { FlagCandidateDraft } from './flagCandidate.js'
 import { createResultMerger } from './resultMerger.js'
-import { resolveParserConflicts, parserFailureWarning, withPartialWarning } from './parserConflictResolver.js'
+import {
+  resolveParserConflicts,
+  parserFailureWarning,
+  withPartialWarning,
+} from './parserConflictResolver.js'
 
 export interface ParserSelectionInput {
   toolId?: string
@@ -75,9 +79,7 @@ export class ParserRegistry {
   }
 
   resolve(input: ParserSelectionInput): ResultParser[] {
-    return this.parsers
-      .filter((p) => p.supports(input))
-      .sort((a, b) => a.id.localeCompare(b.id))
+    return this.parsers.filter((p) => p.supports(input)).sort((a, b) => a.id.localeCompare(b.id))
   }
 
   async parse(

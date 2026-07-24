@@ -29,13 +29,11 @@ import type { MaterializedResult } from './resultMaterializer.js'
 import { planStrategy } from './strategyPlanner.js'
 import { createStrategyDecision } from './strategyDecision.js'
 import { createObservation, type Observation } from './observation.js'
-import {
-  createEvidence,
-  evidenceFingerprint as _ignore,
-  mergeEvidence,
-} from './evidence.js'
+import { createEvidence, evidenceFingerprint as _ignore, mergeEvidence } from './evidence.js'
 
-function ctxAttemptId(id: string): string { return id }
+function ctxAttemptId(id: string): string {
+  return id
+}
 void ctxAttemptId
 import type { Evidence } from './evidence.js'
 import { buildFlagCandidateId, type FlagCandidateDraft } from './flagCandidate.js'
@@ -50,14 +48,8 @@ import type { BudgetLimits } from '../../ctf/oneshot/types.js'
 import type { SuggestedAction } from './suggestedAction.js'
 import { createAttemptFingerprint } from './attemptFingerprint.js'
 import { randomBytes } from 'crypto'
-import type {
-  ActionExecutionResult,
-  ReasoningResult,
-} from './actionExecutionResult.js'
-import {
-  createCascadeContext,
-  type ReasoningCascadeContext,
-} from './reasoningCascade.js'
+import type { ActionExecutionResult, ReasoningResult } from './actionExecutionResult.js'
+import { createCascadeContext, type ReasoningCascadeContext } from './reasoningCascade.js'
 import {
   applyReasoningBudgetConsumption,
   consumeCycle,
@@ -69,10 +61,7 @@ import {
 } from './reasoningBudget.js'
 import type { StrategyActionExecutor } from './strategyActionExecutor.js'
 import type { MaterializationContext } from './materializationContext.js'
-import {
-  attachAttemptToDrafts,
-  createMaterializationContext,
-} from './materializationContext.js'
+import { attachAttemptToDrafts, createMaterializationContext } from './materializationContext.js'
 import { createHypothesisUpdater } from './hypothesisUpdater.js'
 import { createPendingActionStore, type PendingSuggestedAction } from './pendingActionStore.js'
 import { createAttemptDeduplicator } from './attemptDeduplicator.js'
@@ -80,10 +69,7 @@ import {
   DEFAULT_MAX_STRATEGY_CYCLES,
   DEFAULT_MAX_TOTAL_STRATEGY_ACTIONS_PER_TASK,
 } from './reasoningConstants.js'
-import {
-  DEFAULT_COMPLETION_POLICY,
-  type CompletionPolicy,
-} from './completionPolicy.js'
+import { DEFAULT_COMPLETION_POLICY, type CompletionPolicy } from './completionPolicy.js'
 
 export interface ReasoningCoordinatorOptions {
   taskId: string
@@ -201,7 +187,8 @@ async function runCycles(
   input: ProcessReasoningInputsInput,
 ): Promise<ReasoningResult> {
   const maxCycles = options.maxStrategyCycles ?? DEFAULT_MAX_STRATEGY_CYCLES
-  const maxTotalActions = options.maxTotalStrategyActionsPerTask ?? DEFAULT_MAX_TOTAL_STRATEGY_ACTIONS_PER_TASK
+  const maxTotalActions =
+    options.maxTotalStrategyActionsPerTask ?? DEFAULT_MAX_TOTAL_STRATEGY_ACTIONS_PER_TASK
   const store = options.store
   const inFlight: { fast: number; medium: number; heavy: number } = { fast: 0, medium: 0, heavy: 0 }
   let cycleCounter = 0
@@ -331,7 +318,11 @@ async function runCycles(
           heavyApproved: options.heavyApproved,
           taskTerminal: false,
         },
-        budget: { state: budget, limits: options.reasoningBudgetLimits ?? DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: options.heavyApproved },
+        budget: {
+          state: budget,
+          limits: options.reasoningBudgetLimits ?? DEFAULT_REASONING_BUDGET_LIMITS,
+          heavyApproved: options.heavyApproved,
+        },
       })
       store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision })
       strategyDecisionIds.push(decision.id)
@@ -359,7 +350,11 @@ async function runCycles(
         heavyApproved: options.heavyApproved,
         taskTerminal: false,
       },
-      budget: { state: budget, limits: options.reasoningBudgetLimits ?? DEFAULT_REASONING_BUDGET_LIMITS, heavyApproved: options.heavyApproved },
+      budget: {
+        state: budget,
+        limits: options.reasoningBudgetLimits ?? DEFAULT_REASONING_BUDGET_LIMITS,
+        heavyApproved: options.heavyApproved,
+      },
     })
     store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision })
     strategyDecisionIds.push(decision.id)
@@ -385,7 +380,9 @@ async function runCycles(
       // rejected at the post-planning stage.
       const deniedDecision = createStrategyDecision(options.taskId, {
         selectedAction: undefined,
-        rejectedActions: [{ action: selected, reason: 'budget_denied', detail: budgetCheck.detail }],
+        rejectedActions: [
+          { action: selected, reason: 'budget_denied', detail: budgetCheck.detail },
+        ],
         reason: `budget denied: ${budgetCheck.reason}`,
         basedOnObservationIds: input.newObservationIds,
         basedOnEvidenceIds: input.newEvidenceIds,
@@ -408,7 +405,12 @@ async function runCycles(
     // Update in-flight + budget BEFORE execution. The cycle counter
     // is consumed only when an action actually runs (not on stop / skip).
     consumeBudgetCycle()
-    const tier = selected.costTier === 'expensive' ? 'heavy' : selected.costTier === 'normal' ? 'medium' : 'fast'
+    const tier =
+      selected.costTier === 'expensive'
+        ? 'heavy'
+        : selected.costTier === 'normal'
+          ? 'medium'
+          : 'fast'
     inFlight[tier]++
     budget = applyReasoningBudgetConsumption(budget, selected)
     store.apply({ type: 'REASONING_BUDGET_CONSUMED', snapshot: budget })
@@ -519,9 +521,8 @@ async function runCycles(
         // batch, then upsert.
         const source = {
           ...draft.source,
-          observationIds: draft.source.observationIds.length > 0
-            ? draft.source.observationIds
-            : observationIds,
+          observationIds:
+            draft.source.observationIds.length > 0 ? draft.source.observationIds : observationIds,
           attemptIds: [...draft.source.attemptIds, ctxAttemptId(attempt.id)],
         }
         const ev = createEvidence(options.taskId, {
@@ -551,7 +552,11 @@ async function runCycles(
     }
 
     // Apply new Evidence to HypothesisUpdater.
-    applyHypothesisUpdates(options, { ...input, newEvidenceIds: evidenceIds, newObservationIds: observationIds })
+    applyHypothesisUpdates(options, {
+      ...input,
+      newEvidenceIds: evidenceIds,
+      newObservationIds: observationIds,
+    })
 
     store.apply({
       type: 'ATTEMPT_COMPLETED',
@@ -633,7 +638,9 @@ function buildAttempt(
   }
 }
 
-function actionToAttempt(action: SuggestedAction): Omit<CTFAttempt, 'id' | 'taskId' | 'createdAt' | 'fingerprint'> {
+function actionToAttempt(
+  action: SuggestedAction,
+): Omit<CTFAttempt, 'id' | 'taskId' | 'createdAt' | 'fingerprint'> {
   switch (action.type) {
     case 'run_workflow':
       return {
@@ -712,12 +719,18 @@ function actionToAttempt(action: SuggestedAction): Omit<CTFAttempt, 'id' | 'task
 
 function producerIdFor(action: SuggestedAction): string {
   switch (action.type) {
-    case 'run_workflow': return action.workflowId
-    case 'run_oneshot': return action.manifestId
-    case 'call_tool': return action.toolId
-    case 'request_handoff': return action.capability
-    case 'verify_flag': return action.candidateId
-    case 'stop': return 'stop'
+    case 'run_workflow':
+      return action.workflowId
+    case 'run_oneshot':
+      return action.manifestId
+    case 'call_tool':
+      return action.toolId
+    case 'request_handoff':
+      return action.capability
+    case 'verify_flag':
+      return action.candidateId
+    case 'stop':
+      return 'stop'
   }
 }
 
@@ -767,13 +780,19 @@ function pendingIdFor(
 }
 
 function sameAction(a: SuggestedAction, b: SuggestedAction): boolean {
-  return a.type === b.type
-    && a.priority === b.priority
-    && a.costTier === b.costTier
-    && a.reason === b.reason
+  return (
+    a.type === b.type &&
+    a.priority === b.priority &&
+    a.costTier === b.costTier &&
+    a.reason === b.reason
+  )
 }
 
-function flagCandidateFromDraft(taskId: string, draft: FlagCandidateDraft, attemptId: string): FlagCandidate {
+function flagCandidateFromDraft(
+  taskId: string,
+  draft: FlagCandidateDraft,
+  attemptId: string,
+): FlagCandidate {
   return {
     id: buildFlagCandidateId(),
     taskId,

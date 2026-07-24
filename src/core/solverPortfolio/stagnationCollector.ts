@@ -9,7 +9,10 @@ export class StagnationSignalCollector {
   }): StagnationSignals {
     const { state, solverRunId, startTime } = input
     const now = Date.now()
-    const runStart = startTime ?? (solverRunId ? state.solverRuns.find((r) => r.id === solverRunId)?.startedAt : undefined) ?? now
+    const runStart =
+      startTime ??
+      (solverRunId ? state.solverRuns.find((r) => r.id === solverRunId)?.startedAt : undefined) ??
+      now
 
     let latestEvidenceAt = runStart
     for (const ev of state.evidence) {
@@ -21,7 +24,9 @@ export class StagnationSignalCollector {
     const millisecondsWithoutNewEvidence = Math.max(0, now - latestEvidenceAt)
 
     const attemptsSinceStart = state.attempts.filter((a) => a.createdAt >= runStart)
-    const cyclesWithoutNewEvidence = attemptsSinceStart.filter((a) => (a.startedAt ?? a.createdAt) > latestEvidenceAt).length
+    const cyclesWithoutNewEvidence = attemptsSinceStart.filter(
+      (a) => (a.startedAt ?? a.createdAt) > latestEvidenceAt,
+    ).length
 
     const fingerprintCounts = new Map<string, number>()
     let maxRepeatedFingerprints = 0
@@ -43,7 +48,8 @@ export class StagnationSignalCollector {
 
     const budgetExceeded =
       state.reasoningBudget && state.reasoningBudgetLimits
-        ? state.reasoningBudget.estimatedCostUnitsUsed >= state.reasoningBudgetLimits.maxEstimatedCostUnits
+        ? state.reasoningBudget.estimatedCostUnitsUsed >=
+          state.reasoningBudgetLimits.maxEstimatedCostUnits
         : false
 
     return {

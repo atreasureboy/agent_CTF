@@ -149,7 +149,10 @@ export class ToolRegistry {
    * Cheap availability check used by the Workflow engine. Returns the list of
    * required binaries that are NOT on PATH. Empty array = tool is available.
    */
-  static checkAvailability(tool: RegisteredTool, pathEnv: string = process.env.PATH ?? ''): string[] {
+  static checkAvailability(
+    tool: RegisteredTool,
+    pathEnv: string = process.env.PATH ?? '',
+  ): string[] {
     if (!tool.requiredBinaries || tool.requiredBinaries.length === 0) return []
     const paths = pathEnv.split(/:+(?:win32[;:]|$)/i).filter(Boolean)
     return tool.requiredBinaries.filter((bin) => {

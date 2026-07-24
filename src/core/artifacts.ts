@@ -111,8 +111,14 @@ function summarize(buf: Buffer): string {
   if (buf.length <= SUMMARY_HEAD_BYTES * 2) {
     return buf.toString('utf8').replace(/[^\x20-\x7E -￿\n]/g, '.')
   }
-  const head = buf.subarray(0, SUMMARY_HEAD_BYTES).toString('utf8').replace(/[^\x20-\x7E -￿\n]/g, '.')
-  const tail = buf.subarray(buf.length - SUMMARY_TAIL_BYTES).toString('utf8').replace(/[^\x20-\x7E -￿\n]/g, '.')
+  const head = buf
+    .subarray(0, SUMMARY_HEAD_BYTES)
+    .toString('utf8')
+    .replace(/[^\x20-\x7E -￿\n]/g, '.')
+  const tail = buf
+    .subarray(buf.length - SUMMARY_TAIL_BYTES)
+    .toString('utf8')
+    .replace(/[^\x20-\x7E -￿\n]/g, '.')
   return `${head}\n\n[... ${buf.length - SUMMARY_HEAD_BYTES - SUMMARY_TAIL_BYTES} bytes ...]\n\n${tail}`
 }
 
@@ -240,12 +246,14 @@ export class ArtifactStore {
    * artifacts dir. The metadata (size, sha256) is computed via
    * fs.statSync + a streaming SHA-256, not by reading the buffer.
    */
-  writeStreamingSync(input: ArtifactInput & {
-    sourcePath: string
-    size: number
-    sha256: string
-    suggestedExt?: string
-  }): ArtifactMeta {
+  writeStreamingSync(
+    input: ArtifactInput & {
+      sourcePath: string
+      size: number
+      sha256: string
+      suggestedExt?: string
+    },
+  ): ArtifactMeta {
     const id = makeId('art')
     const ext = (input.suggestedExt ?? 'bin').replace(/[^a-zA-Z0-9._-]/g, '_')
     const relPath = `${ext}/${id}.${ext}`
@@ -264,7 +272,7 @@ export class ArtifactStore {
       mimeType: input.mimeType,
       size: input.size,
       sha256: input.sha256,
-      summary: '',  // streaming copy: caller may compute summary later if needed
+      summary: '', // streaming copy: caller may compute summary later if needed
       agentRunId: input.agentRunId,
       workflowRunId: input.workflowRunId,
       handoffId: input.handoffId,
@@ -272,7 +280,7 @@ export class ArtifactStore {
       path: relPath,
       source: input.source,
     }
-    mkdirSync(dirname(this.metaPath), {recursive: true})
+    mkdirSync(dirname(this.metaPath), { recursive: true })
     this.appendMeta(JSON.stringify(meta) + '\n')
     return meta
   }

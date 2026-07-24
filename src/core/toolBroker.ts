@@ -27,12 +27,8 @@ import type { EventLog } from './eventLog.js'
 import type { ArtifactMeta, ArtifactStore } from './artifacts.js'
 import type { FindingStore } from './findings.js'
 import type { HandoffStore } from './handoff.js'
-import type {
-  CapabilityProfile,
-} from './capabilityProfile.js'
-import {
-  profileToolDenialReason,
-} from './capabilityProfile.js'
+import type { CapabilityProfile } from './capabilityProfile.js'
+import { profileToolDenialReason } from './capabilityProfile.js'
 import { ScopeViolationError } from './contestScope.js'
 import type { ContestScopeChecker } from './contestScope.js'
 import { ToolRegistry } from './toolRegistry.js'
@@ -69,7 +65,10 @@ export interface ToolBrokerOptions {
     runPostToolCall(name: string, result: string, isError: boolean): void
   }
   permissionChecker?: {
-    check(input: { tool: string; input: Record<string, unknown> }): Promise<{ allowed: boolean; reason: string }>
+    check(input: {
+      tool: string
+      input: Record<string, unknown>
+    }): Promise<{ allowed: boolean; reason: string }>
   }
   toolFirstPolicy?: ToolFirstPolicy
   /** Default inline threshold (bytes) for inline mode (default 10 KB). */
@@ -182,13 +181,18 @@ export class ToolBroker {
     // ── Step 1: Profile gate ─────────────────────────────────
     const denyReason = profileToolDenialReason(profile, toolId)
     if (denyReason) {
-      this.opts.eventLog?.append('permission', 'broker', {
-        decision: 'deny',
-        tool: toolId,
-        reason: denyReason,
-        agent: ctx.agentId,
-        task: ctx.taskId,
-      }, ['broker', toolId, 'deny'])
+      this.opts.eventLog?.append(
+        'permission',
+        'broker',
+        {
+          decision: 'deny',
+          tool: toolId,
+          reason: denyReason,
+          agent: ctx.agentId,
+          task: ctx.taskId,
+        },
+        ['broker', toolId, 'deny'],
+      )
       return new BrokerExecutionResult({
         content: `Permission denied: ${denyReason}\nIf this tool is required for your task, return a HandoffRequest to an agent whose profile permits it.`,
         isError: true,
@@ -222,21 +226,33 @@ export class ToolBroker {
     if (this.opts.toolFirstPolicy) {
       policyVerdict = this.opts.toolFirstPolicy.advise(toolId, input, profile)
       if (policyVerdict.advice) {
-        this.opts.eventLog?.append('policy_advisory', 'broker', {
-          tool: toolId,
-          advice: policyVerdict.advice,
-          severity: policyVerdict.severity,
-          rule: policyVerdict.rule,
-          agent: ctx.agentId,
-        }, ['broker', toolId, 'policy'])
+        this.opts.eventLog?.append(
+          'policy_advisory',
+          'broker',
+          {
+            tool: toolId,
+            advice: policyVerdict.advice,
+            severity: policyVerdict.severity,
+            rule: policyVerdict.rule,
+            agent: ctx.agentId,
+          },
+          ['broker', toolId, 'policy'],
+        )
       }
     }
 
     // ── Step 3: Hook pre ─────────────────────────────────────
-    try { this.opts.hookRunner?.runPreToolCall(toolId, input) } catch { /* best-effort */ }
+    try {
+      this.opts.hookRunner?.runPreToolCall(toolId, input)
+    } catch {
+      /* best-effort */
+    }
 
     // ── Step 4: Decide execution mode ─────────────────────────
-    const wantsBackground = reg.executionMode !== 'foreground' && !this.opts.forceInline && Boolean(this.opts.jobManager && this.opts.jobRunner)
+    const wantsBackground =
+      reg.executionMode !== 'foreground' &&
+      !this.opts.forceInline &&
+      Boolean(this.opts.jobManager && this.opts.jobRunner)
     let jobId: string | undefined
     let artifactId: string | undefined
 
@@ -255,10 +271,15 @@ export class ToolBroker {
         })
         jobId = job.id
         artifactId = job.artifactId
-        return new BrokerExecutionResult({
-          content: this.formatSpawnResult(job),
-          isError: false,
-        }, jobId, artifactId, policyVerdict)
+        return new BrokerExecutionResult(
+          {
+            content: this.formatSpawnResult(job),
+            isError: false,
+          },
+          jobId,
+          artifactId,
+          policyVerdict,
+        )
       } catch (err) {
         if (err instanceof Error && err.name === 'ConcurrencyLimitError') {
           // Fall through to inline when the job queue is full.
@@ -272,13 +293,18 @@ export class ToolBroker {
     }
 
     // ── Step 5: Inline execution ──────────────────────────────
-    this.opts.eventLog?.append('tool_call', toolId, {
-      input,
-      agent: ctx.agentId,
-      task: ctx.taskId,
-      inline: true,
-      mode: reg.outputMode,
-    }, [toolId, 'call', 'inline'])
+    this.opts.eventLog?.append(
+      'tool_call',
+      toolId,
+      {
+        input,
+        agent: ctx.agentId,
+        task: ctx.taskId,
+        inline: true,
+        mode: reg.outputMode,
+      },
+      [toolId, 'call', 'inline'],
+    )
 
     let result: ToolResult
     try {
@@ -356,7 +382,8 @@ export class ToolBroker {
           'txt',
         )
         artifactId = meta.id
-        const summary = meta.summary.length > 800 ? meta.summary.slice(0, 800) + '...' : meta.summary
+        const summary =
+          meta.summary.length > 800 ? meta.summary.slice(0, 800) + '...' : meta.summary
         result = {
           content:
             `[output truncated to inline-cap, persisted as artifact ${meta.id} (${meta.size} bytes, sha256=${meta.sha256})]\n` +
@@ -378,16 +405,25 @@ export class ToolBroker {
       }
     }
 
-    this.opts.eventLog?.append('tool_result', toolId, {
-      success: !result.isError,
-      length: result.content.length,
-      agent: ctx.agentId,
-      task: ctx.taskId,
-      artifact: artifactId,
-      duration_ms: Date.now() - new Date(startedAt).getTime(),
-    }, [toolId, 'result'])
+    this.opts.eventLog?.append(
+      'tool_result',
+      toolId,
+      {
+        success: !result.isError,
+        length: result.content.length,
+        agent: ctx.agentId,
+        task: ctx.taskId,
+        artifact: artifactId,
+        duration_ms: Date.now() - new Date(startedAt).getTime(),
+      },
+      [toolId, 'result'],
+    )
 
-    try { this.opts.hookRunner?.runPostToolCall(toolId, result.content, result.isError) } catch { /* ignore */ }
+    try {
+      this.opts.hookRunner?.runPostToolCall(toolId, result.content, result.isError)
+    } catch {
+      /* ignore */
+    }
 
     return new BrokerExecutionResult(result, undefined, artifactId, policyVerdict)
   }
@@ -399,7 +435,9 @@ export class ToolBroker {
       `timeout: ${job.timeoutMs}ms`,
       `taskId: ${job.taskId} agentId: ${job.agentId}`,
     ]
-    lines.push('Use the query_background_job tool with this id to check status and collect the result.')
+    lines.push(
+      'Use the query_background_job tool with this id to check status and collect the result.',
+    )
     return lines.join('\n')
   }
 }

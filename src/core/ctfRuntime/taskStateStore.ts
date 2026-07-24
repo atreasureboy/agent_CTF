@@ -162,10 +162,7 @@ export class CTFTaskStateStore {
           // Default — log so the failure is visible in dev/test. Tests
           // can install their own onListenerError to assert.
           // eslint-disable-next-line no-console
-          console.warn(
-            `[CTFTaskStateStore] listener ${tagged.id} threw on ${event.type}:`,
-            err,
-          )
+          console.warn(`[CTFTaskStateStore] listener ${tagged.id} threw on ${event.type}:`, err)
         }
       }
     }
@@ -175,7 +172,11 @@ export class CTFTaskStateStore {
   /** §十三 — atomic Evidence upsert. Computes the fingerprint,
    *  applies EVIDENCE_UPSERTED, and returns the canonical
    *  evidenceId. */
-  upsertEvidence(evidence: Evidence): { state: Readonly<CTFTaskState>; evidenceId: string; created: boolean } {
+  upsertEvidence(evidence: Evidence): {
+    state: Readonly<CTFTaskState>
+    evidenceId: string
+    created: boolean
+  } {
     const stateBefore = this.state
     this.apply({ type: 'EVIDENCE_UPSERTED', evidence, created: false })
     const stateAfter = this.state
@@ -317,12 +318,7 @@ function assertHandoffTransition(h: HandoffRecord, type: CTFTaskEvent['type']): 
       'HANDOFF_FAILED',
       'SPECIALIST_FAILED',
     ],
-    approved: [
-      'HANDOFF_FAILED',
-      'SPECIALIST_STARTED',
-      'SPECIALIST_FAILED',
-      'SPECIALIST_CANCELLED',
-    ],
+    approved: ['HANDOFF_FAILED', 'SPECIALIST_STARTED', 'SPECIALIST_FAILED', 'SPECIALIST_CANCELLED'],
     rejected: [],
     running: ['SPECIALIST_COMPLETED', 'SPECIALIST_FAILED', 'SPECIALIST_CANCELLED'],
     completed: [],
@@ -364,15 +360,15 @@ function deepFreeze<T>(v: T, seen: WeakSet<object>): T {
   // RegExp, Map, Set, Promise, Buffer, etc.). Recursing into them can
   // break invariants like the AbortController's internal kAborted flag.
   if (
-    (typeof AbortSignal !== 'undefined' && v instanceof AbortSignal)
-    || v instanceof Date
-    || v instanceof RegExp
-    || v instanceof Map
-    || v instanceof Set
-    || v instanceof Promise
-    || v instanceof Error
-    || (typeof Buffer !== 'undefined' && v instanceof Buffer)
-    || v instanceof ArrayBuffer
+    (typeof AbortSignal !== 'undefined' && v instanceof AbortSignal) ||
+    v instanceof Date ||
+    v instanceof RegExp ||
+    v instanceof Map ||
+    v instanceof Set ||
+    v instanceof Promise ||
+    v instanceof Error ||
+    (typeof Buffer !== 'undefined' && v instanceof Buffer) ||
+    v instanceof ArrayBuffer
   ) {
     return v
   }
@@ -431,7 +427,6 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       }
     }
 
-
     case 'PHASE_CHANGED': {
       if (state.phase === event.to) return state
       if (!canTransitionPhase(state.phase, event.to)) {
@@ -477,8 +472,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
                     ? ('failed' as const)
                     : ('cancelled' as const),
               completedAt: Date.now(),
-              summary:
-                event.type === 'WORKFLOW_COMPLETED' ? event.summary : undefined,
+              summary: event.type === 'WORKFLOW_COMPLETED' ? event.summary : undefined,
               error:
                 event.type === 'WORKFLOW_FAILED'
                   ? event.error
@@ -579,8 +573,12 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         r.id === event.agentRunId
           ? {
               ...r,
-              producedFindingIds: [...new Set([...r.producedFindingIds, ...event.producedFindingIds])],
-              producedArtifactIds: [...new Set([...r.producedArtifactIds, ...event.producedArtifactIds])],
+              producedFindingIds: [
+                ...new Set([...r.producedFindingIds, ...event.producedFindingIds]),
+              ],
+              producedArtifactIds: [
+                ...new Set([...r.producedArtifactIds, ...event.producedArtifactIds]),
+              ],
             }
           : r,
       )
@@ -604,9 +602,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       // §九 — refuse duplicate IDs so the reducer is the single source of
       // truth. Each hypothesis is stored verbatim; update via HYPOTHESIS_UPDATED.
       if (state.hypotheses.some((h) => h.id === event.hypothesis.id)) {
-        throw new DuplicateHypothesisError(
-          `Hypothesis ${event.hypothesis.id} already exists`,
-        )
+        throw new DuplicateHypothesisError(`Hypothesis ${event.hypothesis.id} already exists`)
       }
       return { ...state, hypotheses: [...state.hypotheses, event.hypothesis] }
     }
@@ -614,9 +610,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'HYPOTHESIS_PROPOSED': {
       // §七 — wraps HYPOTHESIS_ADDED; refuses duplicates.
       if (state.hypotheses.some((h) => h.id === event.hypothesis.id)) {
-        throw new DuplicateHypothesisError(
-          `Hypothesis ${event.hypothesis.id} already exists`,
-        )
+        throw new DuplicateHypothesisError(`Hypothesis ${event.hypothesis.id} already exists`)
       }
       return { ...state, hypotheses: [...state.hypotheses, event.hypothesis] }
     }
@@ -624,7 +618,10 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'HYPOTHESIS_UPDATED': {
       // §H4 — `status` MUST be changed via HYPOTHESIS_STATUS_CHANGED
       // so the FSM is enforced. Strip it from the patch payload here.
-      const { status: _s, ...safePatch } = event.patch as { status?: unknown } & Record<string, unknown>
+      const { status: _s, ...safePatch } = event.patch as { status?: unknown } & Record<
+        string,
+        unknown
+      >
       const next = state.hypotheses.map((h) =>
         h.id === event.hypothesisId ? { ...h, ...safePatch, updatedAt: Date.now() } : h,
       )
@@ -641,7 +638,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         testing: ['supported', 'rejected', 'inconclusive'],
         inconclusive: ['testing'],
         supported: [], // terminal — new evidence creates a revision
-        rejected: [],  // terminal — new evidence creates a revision
+        rejected: [], // terminal — new evidence creates a revision
       }
       // §round-4 audit fix — also verify the current status matches
       // `event.from`. Stale or out-of-order events whose `from` field
@@ -667,9 +664,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       return {
         ...state,
         hypotheses: state.hypotheses.map((h) =>
-          h.id === event.hypothesisId
-            ? { ...h, status: event.to, updatedAt: Date.now() }
-            : h,
+          h.id === event.hypothesisId ? { ...h, status: event.to, updatedAt: Date.now() } : h,
         ),
       }
     }
@@ -677,9 +672,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'OBSERVATION_ADDED': {
       // §四 — no duplicate IDs; bounded dedup via fingerprint.
       if (state.observations.some((o) => o.id === event.observation.id)) {
-        throw new TaskStateStoreError(
-          `Observation ${event.observation.id} already exists`,
-        )
+        throw new TaskStateStoreError(`Observation ${event.observation.id} already exists`)
       }
       return { ...state, observations: [...state.observations, event.observation] }
     }
@@ -808,9 +801,14 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         if (a.id !== event.attemptId) return a
         // §五 — ATTEMPT_COMPLETED writes the produced ids once.
         // Re-completing a terminal attempt is rejected.
-        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled'
-          || a.status === 'skipped_duplicate' || a.status === 'skipped_policy'
-          || a.status === 'skipped_budget') {
+        if (
+          a.status === 'succeeded' ||
+          a.status === 'failed' ||
+          a.status === 'cancelled' ||
+          a.status === 'skipped_duplicate' ||
+          a.status === 'skipped_policy' ||
+          a.status === 'skipped_budget'
+        ) {
           throw new IllegalAttemptTransitionError(
             `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_COMPLETED.`,
           )
@@ -834,9 +832,14 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'ATTEMPT_FAILED': {
       const next = state.attempts.map((a) => {
         if (a.id !== event.attemptId) return a
-        if (a.status === 'succeeded' || a.status === 'failed' || a.status === 'cancelled'
-          || a.status === 'skipped_duplicate' || a.status === 'skipped_policy'
-          || a.status === 'skipped_budget') {
+        if (
+          a.status === 'succeeded' ||
+          a.status === 'failed' ||
+          a.status === 'cancelled' ||
+          a.status === 'skipped_duplicate' ||
+          a.status === 'skipped_policy' ||
+          a.status === 'skipped_budget'
+        ) {
           throw new IllegalAttemptTransitionError(
             `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_FAILED.`,
           )
@@ -885,11 +888,16 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
             `Attempt ${a.id} is already terminal (${a.status}); cannot apply ATTEMPT_SKIPPED.`,
           )
         }
-        const skipStatus = event.reason === 'duplicate'
-          ? 'skipped_duplicate' as const
-          : event.reason === 'policy' || event.reason === 'profile' || event.reason === 'scope' || event.reason === 'unavailable' || event.reason === 'approval'
-            ? 'skipped_policy' as const
-            : 'skipped_budget' as const
+        const skipStatus =
+          event.reason === 'duplicate'
+            ? ('skipped_duplicate' as const)
+            : event.reason === 'policy' ||
+                event.reason === 'profile' ||
+                event.reason === 'scope' ||
+                event.reason === 'unavailable' ||
+                event.reason === 'approval'
+              ? ('skipped_policy' as const)
+              : ('skipped_budget' as const)
         return { ...a, status: skipStatus, completedAt: event.completedAt }
       })
       if (next.every((a, i) => a === state.attempts[i])) {
@@ -922,9 +930,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
 
     case 'FLAG_CANDIDATE_DETECTED': {
       if (state.flagCandidates.some((c) => c.id === event.candidate.id)) {
-        throw new TaskStateStoreError(
-          `FlagCandidate ${event.candidate.id} already exists`,
-        )
+        throw new TaskStateStoreError(`FlagCandidate ${event.candidate.id} already exists`)
       }
       return { ...state, flagCandidates: [...state.flagCandidates, event.candidate] }
     }
@@ -984,18 +990,12 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       const prevTerminal =
         prev.status === 'success' || prev.status === 'failed' || prev.status === 'cancelled'
       const patchStatus = event.patch.status
-      if (
-        prevTerminal &&
-        patchStatus &&
-        (patchStatus === 'pending' || patchStatus === 'running')
-      ) {
+      if (prevTerminal && patchStatus && (patchStatus === 'pending' || patchStatus === 'running')) {
         throw new IllegalJobTransitionError(
           `Job ${prev.id} is ${prev.status}; cannot transition to ${patchStatus}`,
         )
       }
-      const jobs = state.jobs.map((j, i) =>
-        i === idx ? { ...j, ...event.patch } : j,
-      )
+      const jobs = state.jobs.map((j, i) => (i === idx ? { ...j, ...event.patch } : j))
       return {
         ...state,
         jobs,
@@ -1012,9 +1012,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         )
       }
       if (state.oneShotRuns.some((r) => r.id === event.run.id)) {
-        throw new DuplicateOneShotRunError(
-          `OneShot run ${event.run.id} already recorded`,
-        )
+        throw new DuplicateOneShotRunError(`OneShot run ${event.run.id} already recorded`)
       }
       // §十八 — shallow-clone so the caller's local copy remains
       // mutable; deepFreeze will lock down the store's copy only.
@@ -1033,7 +1031,14 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         )
       }
       const runs = state.oneShotRuns.map((r, i) =>
-        i === idx ? { ...r, status: 'running' as const, startedAt: event.startedAt, backgroundJobId: event.backgroundJobId } : r,
+        i === idx
+          ? {
+              ...r,
+              status: 'running' as const,
+              startedAt: event.startedAt,
+              backgroundJobId: event.backgroundJobId,
+            }
+          : r,
       )
       return { ...state, oneShotRuns: runs }
     }
@@ -1054,11 +1059,15 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         )
       }
       const nextStatus =
-        event.type === 'ONESHOT_RUN_COMPLETED' ? ('completed' as const)
-          : event.type === 'ONESHOT_RUN_PARTIAL' ? ('partial' as const)
-          : event.type === 'ONESHOT_RUN_FAILED' ? ('failed' as const)
-          : event.type === 'ONESHOT_RUN_TIMEOUT' ? ('timeout' as const)
-          : ('cancelled' as const)
+        event.type === 'ONESHOT_RUN_COMPLETED'
+          ? ('completed' as const)
+          : event.type === 'ONESHOT_RUN_PARTIAL'
+            ? ('partial' as const)
+            : event.type === 'ONESHOT_RUN_FAILED'
+              ? ('failed' as const)
+              : event.type === 'ONESHOT_RUN_TIMEOUT'
+                ? ('timeout' as const)
+                : ('cancelled' as const)
       const runs = state.oneShotRuns.map((r, i) => {
         if (i !== idx) return r
         const patch: Partial<typeof r> = {
@@ -1099,9 +1108,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
           `OneShot run ${prev.id} is ${prev.status}; cannot transition to ${event.patch.status}`,
         )
       }
-      const runs = state.oneShotRuns.map((r, i) =>
-        i === idx ? { ...r, ...event.patch } : r,
-      )
+      const runs = state.oneShotRuns.map((r, i) => (i === idx ? { ...r, ...event.patch } : r))
       return { ...state, oneShotRuns: runs }
     }
 
@@ -1111,7 +1118,9 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       return {
         ...state,
         solverRuns,
-        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+        activeSolverRunIds: solverRuns
+          .filter((r) => r.status === 'running' || r.status === 'stagnating')
+          .map((r) => r.id),
       }
     }
 
@@ -1122,7 +1131,9 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       return {
         ...state,
         solverRuns,
-        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+        activeSolverRunIds: solverRuns
+          .filter((r) => r.status === 'running' || r.status === 'stagnating')
+          .map((r) => r.id),
       }
     }
 
@@ -1137,12 +1148,16 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
 
     case 'SOLVER_RUN_STAGNATING': {
       const solverRuns = state.solverRuns.map((r) =>
-        r.id === event.runId && r.status === 'running' ? { ...r, status: 'stagnating' as const, summary: event.reason } : r,
+        r.id === event.runId && r.status === 'running'
+          ? { ...r, status: 'stagnating' as const, summary: event.reason }
+          : r,
       )
       return {
         ...state,
         solverRuns,
-        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+        activeSolverRunIds: solverRuns
+          .filter((r) => r.status === 'running' || r.status === 'stagnating')
+          .map((r) => r.id),
       }
     }
 
@@ -1155,7 +1170,9 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       return {
         ...state,
         solverRuns,
-        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+        activeSolverRunIds: solverRuns
+          .filter((r) => r.status === 'running' || r.status === 'stagnating')
+          .map((r) => r.id),
       }
     }
 
@@ -1165,11 +1182,15 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'SOLVER_RUN_CANCELLED':
     case 'SOLVER_RUN_FAILED': {
       const nextStatus =
-        event.type === 'SOLVER_RUN_COMPLETED' ? ('completed' as const)
-          : event.type === 'SOLVER_RUN_CANDIDATE_FOUND' ? ('candidate_found' as const)
-          : event.type === 'SOLVER_RUN_GAVE_UP' ? ('gave_up' as const)
-          : event.type === 'SOLVER_RUN_CANCELLED' ? ('cancelled' as const)
-          : ('failed' as const)
+        event.type === 'SOLVER_RUN_COMPLETED'
+          ? ('completed' as const)
+          : event.type === 'SOLVER_RUN_CANDIDATE_FOUND'
+            ? ('candidate_found' as const)
+            : event.type === 'SOLVER_RUN_GAVE_UP'
+              ? ('gave_up' as const)
+              : event.type === 'SOLVER_RUN_CANCELLED'
+                ? ('cancelled' as const)
+                : ('failed' as const)
 
       const solverRuns = state.solverRuns.map((r) => {
         if (r.id !== event.runId) return r
@@ -1182,14 +1203,18 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         else if (event.type === 'SOLVER_RUN_CANCELLED') patch.error = event.reason
         else if (event.type === 'SOLVER_RUN_FAILED') patch.error = event.error
         else if (event.type === 'SOLVER_RUN_CANDIDATE_FOUND') {
-          patch.producedCandidateIds = [...new Set([...(r.producedCandidateIds ?? []), event.candidateId])]
+          patch.producedCandidateIds = [
+            ...new Set([...(r.producedCandidateIds ?? []), event.candidateId]),
+          ]
         }
         return { ...r, ...patch }
       })
       return {
         ...state,
         solverRuns,
-        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+        activeSolverRunIds: solverRuns
+          .filter((r) => r.status === 'running' || r.status === 'stagnating')
+          .map((r) => r.id),
       }
     }
 
@@ -1198,8 +1223,12 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         r.id === event.runId
           ? {
               ...r,
-              producedCandidateIds: [...new Set([...(r.producedCandidateIds ?? []), ...event.candidateIds])],
-              producedEvidenceIds: [...new Set([...(r.producedEvidenceIds ?? []), ...event.evidenceIds])],
+              producedCandidateIds: [
+                ...new Set([...(r.producedCandidateIds ?? []), ...event.candidateIds]),
+              ],
+              producedEvidenceIds: [
+                ...new Set([...(r.producedEvidenceIds ?? []), ...event.evidenceIds]),
+              ],
             }
           : r,
       )

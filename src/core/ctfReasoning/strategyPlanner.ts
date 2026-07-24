@@ -53,11 +53,16 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
   if (taskTerminal) {
     return createStrategyDecision(input.state.taskId, {
       selectedAction: undefined,
-      rejectedActions: input.suggestedActions.map((a) => ({ action: a, reason: 'task_terminal' as const })),
+      rejectedActions: input.suggestedActions.map((a) => ({
+        action: a,
+        reason: 'task_terminal' as const,
+      })),
       reason: 'task is in a terminal phase',
       basedOnObservationIds: input.newObservationIds,
       basedOnEvidenceIds: input.newEvidenceIds,
-      basedOnHypothesisIds: input.state.hypotheses.filter((h) => h.status !== 'rejected').map((h) => h.id),
+      basedOnHypothesisIds: input.state.hypotheses
+        .filter((h) => h.status !== 'rejected')
+        .map((h) => h.id),
     })
   }
   const dedup = createAttemptDeduplicator()
@@ -100,14 +105,29 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
       if (!cand) reasons.push('missing_input')
     }
 
-    if (action.type === 'run_oneshot' || action.type === 'run_workflow' || action.type === 'call_tool') {
-      const kind = action.type === 'run_oneshot' ? 'oneshot' : action.type === 'run_workflow' ? 'workflow' : 'tool'
-      const targetId = action.type === 'run_oneshot' ? action.manifestId : action.type === 'run_workflow' ? action.workflowId : action.toolId
-      const parameters = action.type === 'run_oneshot'
-        ? { options: action.options ?? {} }
-        : action.type === 'run_workflow'
-          ? { inputs: action.inputs }
-          : { input: action.input }
+    if (
+      action.type === 'run_oneshot' ||
+      action.type === 'run_workflow' ||
+      action.type === 'call_tool'
+    ) {
+      const kind =
+        action.type === 'run_oneshot'
+          ? 'oneshot'
+          : action.type === 'run_workflow'
+            ? 'workflow'
+            : 'tool'
+      const targetId =
+        action.type === 'run_oneshot'
+          ? action.manifestId
+          : action.type === 'run_workflow'
+            ? action.workflowId
+            : action.toolId
+      const parameters =
+        action.type === 'run_oneshot'
+          ? { options: action.options ?? {} }
+          : action.type === 'run_workflow'
+            ? { inputs: action.inputs }
+            : { input: action.input }
       const inputArtifactIds = action.type === 'run_oneshot' ? action.inputArtifactIds : undefined
       const fingerprint = createAttemptFingerprint({ kind, targetId, parameters, inputArtifactIds })
       const decision = dedup.check(
@@ -132,12 +152,16 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
       }
       const toolDecision: ToolSelectionDecision = shouldRunTool(action, input.state, ranked)
       if (!toolDecision.allowed && toolDecision.reason) {
-        reasons.push(toolDecision.reason === 'already_completed' ? 'duplicate_attempt' : 'lower_value_alternative')
+        reasons.push(
+          toolDecision.reason === 'already_completed'
+            ? 'duplicate_attempt'
+            : 'lower_value_alternative',
+        )
       }
       // Reject if the action targets a rejected hypothesis.
       if (action.hypothesisIds && action.hypothesisIds.length > 0) {
-        const allRejected = action.hypothesisIds.every((id) =>
-          input.state.hypotheses.find((h) => h.id === id)?.status === 'rejected',
+        const allRejected = action.hypothesisIds.every(
+          (id) => input.state.hypotheses.find((h) => h.id === id)?.status === 'rejected',
         )
         if (allRejected) reasons.push('hypothesis_rejected')
       }
@@ -172,13 +196,21 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
   })
 }
 
-function scoreAction(action: SuggestedAction, state: Readonly<CTFTaskState>, newObservationIds: string[]): number {
+function scoreAction(
+  action: SuggestedAction,
+  state: Readonly<CTFTaskState>,
+  newObservationIds: string[],
+): number {
   // base priority
   let score = action.priority
 
   // hypothesis weight
-  const linked = (action.hypothesisIds ?? []).map((id) => state.hypotheses.find((h) => h.id === id)).filter(Boolean) as CTFHypothesis[]
-  const unresolved = linked.filter((h) => h.status !== 'rejected' && h.status !== 'supported').length
+  const linked = (action.hypothesisIds ?? [])
+    .map((id) => state.hypotheses.find((h) => h.id === id))
+    .filter(Boolean) as CTFHypothesis[]
+  const unresolved = linked.filter(
+    (h) => h.status !== 'rejected' && h.status !== 'supported',
+  ).length
   score += Math.min(3, unresolved)
 
   // information gain — count how many open hypotheses the action
@@ -200,9 +232,23 @@ function scoreAction(action: SuggestedAction, state: Readonly<CTFTaskState>, new
 }
 
 function duplicatePenalty(action: SuggestedAction, state: Readonly<CTFTaskState>): number {
-  if (action.type === 'run_workflow' || action.type === 'run_oneshot' || action.type === 'call_tool') {
-    const kind = action.type === 'run_oneshot' ? 'oneshot' : action.type === 'run_workflow' ? 'workflow' : 'tool'
-    const targetId = action.type === 'run_oneshot' ? action.manifestId : action.type === 'run_workflow' ? action.workflowId : action.toolId
+  if (
+    action.type === 'run_workflow' ||
+    action.type === 'run_oneshot' ||
+    action.type === 'call_tool'
+  ) {
+    const kind =
+      action.type === 'run_oneshot'
+        ? 'oneshot'
+        : action.type === 'run_workflow'
+          ? 'workflow'
+          : 'tool'
+    const targetId =
+      action.type === 'run_oneshot'
+        ? action.manifestId
+        : action.type === 'run_workflow'
+          ? action.workflowId
+          : action.toolId
     const existing = state.attempts.filter((a) => a.kind === kind && a.targetId === targetId)
     return existing.length
   }
@@ -210,9 +256,23 @@ function duplicatePenalty(action: SuggestedAction, state: Readonly<CTFTaskState>
 }
 
 function failurePenalty(action: SuggestedAction, state: Readonly<CTFTaskState>): number {
-  if (action.type === 'run_workflow' || action.type === 'run_oneshot' || action.type === 'call_tool') {
-    const kind = action.type === 'run_oneshot' ? 'oneshot' : action.type === 'run_workflow' ? 'workflow' : 'tool'
-    const targetId = action.type === 'run_oneshot' ? action.manifestId : action.type === 'run_workflow' ? action.workflowId : action.toolId
+  if (
+    action.type === 'run_workflow' ||
+    action.type === 'run_oneshot' ||
+    action.type === 'call_tool'
+  ) {
+    const kind =
+      action.type === 'run_oneshot'
+        ? 'oneshot'
+        : action.type === 'run_workflow'
+          ? 'workflow'
+          : 'tool'
+    const targetId =
+      action.type === 'run_oneshot'
+        ? action.manifestId
+        : action.type === 'run_workflow'
+          ? action.workflowId
+          : action.toolId
     const failures = state.attempts.filter(
       (a): a is CTFAttempt => a.kind === kind && a.targetId === targetId && a.status === 'failed',
     )

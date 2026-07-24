@@ -1,6 +1,11 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import type { TrajectoryEvent, TrajectoryEventType } from './trajectoryTypes.js'
+import { createHash } from 'crypto'
+import type {
+  TrajectoryEvent,
+  TrajectoryEventEnvelope,
+  TrajectoryEventType,
+} from './trajectoryTypes.js'
 
 const SENSITIVE_KEYWORDS = [
   'apikey',
@@ -15,17 +20,33 @@ const SENSITIVE_KEYWORDS = [
   'private_key',
 ]
 
+export interface TrajectoryRecorderLimits {
+  maxBufferedEvents: number
+  maxWriteQueueBytes: number
+  maxPayloadBytes: number
+}
+
 export class TrajectoryRecorder {
   private logPath: string
-  private events: TrajectoryEvent[] = []
+  private ringBuffer: TrajectoryEventEnvelope[] = []
   private writeQueue: string[] = []
   private isWriting = false
   private disposed = false
   private getStateRevision?: () => number
+  private limits: TrajectoryRecorderLimits
 
-  constructor(logPath: string, getStateRevision?: () => number) {
+  constructor(
+    logPath: string,
+    getStateRevision?: () => number,
+    limits: Partial<TrajectoryRecorderLimits> = {},
+  ) {
     this.logPath = logPath
     this.getStateRevision = getStateRevision
+    this.limits = {
+      maxBufferedEvents: limits.maxBufferedEvents ?? 200,
+      maxWriteQueueBytes: limits.maxWriteQueueBytes ?? 5_000_000,
+      maxPayloadBytes: limits.maxPayloadBytes ?? 500_000,
+    }
     const dir = path.dirname(logPath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
@@ -38,27 +59,54 @@ export class TrajectoryRecorder {
     payload: Record<string, any>,
     stateRevision?: number,
     solverRunId?: string,
+    agentRunId?: string,
+    attemptId?: string,
   ): void {
     if (this.disposed) return
 
     const rev = stateRevision ?? (this.getStateRevision ? this.getStateRevision() : 1)
     const sanitized = this.recursiveSanitize(payload)
-    const evt: TrajectoryEvent = {
+    const payloadJson = JSON.stringify(sanitized)
+    const payloadHash = createHash('sha256').update(payloadJson).digest('hex')
+
+    const envelope: TrajectoryEventEnvelope = {
+      schemaVersion: '1.0',
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       timestamp: Date.now(),
       taskId,
+      stateRevision: rev,
       solverRunId,
+      agentRunId,
+      attemptId,
       eventType,
       payload: sanitized,
-      stateRevision: rev,
+      payloadHash,
     }
 
-    this.events.push(evt)
-    this.writeQueue.push(JSON.stringify(evt) + '\n')
+    // Push to bounded ring buffer
+    if (this.ringBuffer.length >= this.limits.maxBufferedEvents) {
+      this.ringBuffer.shift()
+    }
+    this.ringBuffer.push(envelope)
+
+    const line = JSON.stringify(envelope) + '\n'
+    this.writeQueue.push(line)
     this.triggerAsyncWrite()
   }
 
   public getEvents(): TrajectoryEvent[] {
-    return [...this.events]
+    return this.ringBuffer.map((env) => ({
+      timestamp: env.timestamp,
+      taskId: env.taskId,
+      solverRunId: env.solverRunId,
+      eventType: env.eventType,
+      payload: env.payload as Record<string, any>,
+      stateRevision: env.stateRevision,
+    }))
+  }
+
+  public getEnvelopes(): TrajectoryEventEnvelope[] {
+    return [...this.ringBuffer]
   }
 
   public async flush(): Promise<void> {

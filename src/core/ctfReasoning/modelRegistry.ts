@@ -40,7 +40,11 @@ export class ModelRegistry {
   private readonly activeBackends: Map<string, BackendId> = new Map()
   private readonly defaultBackend: BackendId
 
-  constructor(opts: { defaultBackend: BackendId; roles?: RoleModels } = { defaultBackend: backendId('claude-3-5-sonnet') }) {
+  constructor(
+    opts: { defaultBackend: BackendId; roles?: RoleModels } = {
+      defaultBackend: backendId('claude-3-5-sonnet'),
+    },
+  ) {
     this.defaultBackend = opts.defaultBackend
     if (opts.roles) {
       for (const [role, cfg] of Object.entries(opts.roles)) {

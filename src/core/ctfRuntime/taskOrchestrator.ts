@@ -40,7 +40,7 @@ import type OpenAI from 'openai'
 
 import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { CTFTaskStateStore, TaskAlreadyCompletedError } from './taskStateStore.js'
-import type { CTFProfileStore} from './profileStore.js';
+import type { CTFProfileStore } from './profileStore.js'
 import { type ProfileStore, resolveProfileById } from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
@@ -95,7 +95,10 @@ export class CTFTaskOrchestrator {
 
   /** In-flight Workflow runs by workflowRunId. */
   private readonly inFlightWorkflows = new Map<string, Promise<WorkflowRunResult>>()
-  private readonly locks = new Map<string, { promise: Promise<unknown>; abort: AbortController; generation: number }>()
+  private readonly locks = new Map<
+    string,
+    { promise: Promise<unknown>; abort: AbortController; generation: number }
+  >()
   // Audit round 1 — per-key generation counter so finally cleanup can
   // detect that the current Map entry is still ours (vs a newer holder
   // that took over the slot while we were async).
@@ -103,7 +106,8 @@ export class CTFTaskOrchestrator {
   /** Phase 1.7 §八 — track Main Agent runs too so dispose/cancel can await them. */
   private readonly inFlightAgentRuns = new Map<string, Promise<AgentRunResult>>()
   /** Phase 1.7 §八.1 — proper state machine: active | cancelling | cancelled | disposing | disposed. */
-  private lifecycleState: 'active' | 'cancelling' | 'cancelled' | 'disposing' | 'disposed' = 'active'
+  private lifecycleState: 'active' | 'cancelling' | 'cancelled' | 'disposing' | 'disposed' =
+    'active'
 
   private constructor(
     store: CTFTaskStateStore,
@@ -130,7 +134,9 @@ export class CTFTaskOrchestrator {
       parentToolRegistry: harness.registry,
       parentArtifactStore: harness.artifactStore,
       parentFindingStore: harness.findingStore,
-      cwd: harness.context.metadata?.['projectRoot'] as string | undefined ?? harness.context.workspaceDir,
+      cwd:
+        (harness.context.metadata?.['projectRoot'] as string | undefined) ??
+        harness.context.workspaceDir,
       sessionsRoot: harness.context.metadata?.['sessionsRoot'] as string | undefined,
       parentTaskId: harness.context.taskId,
       abort,
@@ -212,7 +218,17 @@ export class CTFTaskOrchestrator {
     // should use `createCTFTaskRuntime` directly.
     const { createCTFTaskRuntime } = await import('./createCTFTaskRuntime.js')
     const { Renderer } = await import('../../ui/renderer.js')
-    const client = input.client ?? ({ chat: { completions: { create: () => { throw new Error('test: no LLM') } } } } as unknown as import('openai').default)
+    const client =
+      input.client ??
+      ({
+        chat: {
+          completions: {
+            create: () => {
+              throw new Error('test: no LLM')
+            },
+          },
+        },
+      } as unknown as import('openai').default)
     // Phase 1.7 — keep the legacy "no renderer → runMainAgent fails" contract.
     // If the caller did not supply a renderer, we synthesise one BUT
     // remember it is a default-fake so runMainAgent can short-circuit.
@@ -365,9 +381,12 @@ export class CTFTaskOrchestrator {
    * Main Agent / Workflow / OneShot / Specialist into the structured
    * reasoning loop. Returns the ReasoningResult.
    */
-  async processReasoningInput(input: import('../ctfReasoning/reasoningCoordinator.js').ProcessReasoningInputsInput): Promise<import('../ctfReasoning/actionExecutionResult.js').ReasoningResult> {
+  async processReasoningInput(
+    input: import('../ctfReasoning/reasoningCoordinator.js').ProcessReasoningInputsInput,
+  ): Promise<import('../ctfReasoning/actionExecutionResult.js').ReasoningResult> {
     const { processNewReasoningInputs } = await import('../ctfReasoning/reasoningCoordinator.js')
-    const { createRuntimeStrategyActionExecutor } = await import('../ctfReasoning/runtimeStrategyActionExecutor.js')
+    const { createRuntimeStrategyActionExecutor } =
+      await import('../ctfReasoning/runtimeStrategyActionExecutor.js')
     const budgetLimits = this.dependencies.budgetLimits ?? {
       fastConcurrency: 4,
       mediumConcurrency: 2,
@@ -384,10 +403,14 @@ export class CTFTaskOrchestrator {
         const r = await this.runWorkflow(workflowId, inputs)
         return {
           workflowId,
-          status: r.status === 'failed' ? 'failed'
-            : r.status === 'cancelled' ? 'cancelled'
-              : r.status === 'partial' ? 'partial'
-                : 'completed',
+          status:
+            r.status === 'failed'
+              ? 'failed'
+              : r.status === 'cancelled'
+                ? 'cancelled'
+                : r.status === 'partial'
+                  ? 'partial'
+                  : 'completed',
           emittedArtifactIds: [],
           warnings: [],
         }
@@ -396,7 +419,14 @@ export class CTFTaskOrchestrator {
         // The dispatcher's real signature is `runOne(manifestId, inputs)`;
         // we surface a shim through the runtime surface. Tests can inject
         // their own dispatcher when they want to drive execution.
-        const surfaceDispatcher = (this as unknown as { runOneShot?: (id: string, opts: { inputArtifactIds: string[]; options?: Record<string, unknown> }) => Promise<{ runId: string; summary?: string; artifactIds: string[] }> }).runOneShot
+        const surfaceDispatcher = (
+          this as unknown as {
+            runOneShot?: (
+              id: string,
+              opts: { inputArtifactIds: string[]; options?: Record<string, unknown> },
+            ) => Promise<{ runId: string; summary?: string; artifactIds: string[] }>
+          }
+        ).runOneShot
         if (surfaceDispatcher) {
           const r = await surfaceDispatcher(manifestId, { inputArtifactIds, options })
           return { runId: r.runId, artifactIds: r.artifactIds }
@@ -417,7 +447,14 @@ export class CTFTaskOrchestrator {
           artifactId: r.artifactId,
         }
       },
-      requestHandoff: async ({ objective, targetCapability, reason, artifactIds, evidenceIds, hypothesisIds }) => {
+      requestHandoff: async ({
+        objective,
+        targetCapability,
+        reason,
+        artifactIds,
+        evidenceIds,
+        hypothesisIds,
+      }) => {
         const h = this.requestHandoff({
           fromAgentRunId: hypothesisIds[0] ?? 'unknown',
           targetCapability,
@@ -465,14 +502,14 @@ export class CTFTaskOrchestrator {
   ): Promise<WorkflowRunResult> {
     return this.withLock(`workflow:${workflowId}`, async () => {
       // Audit rounds 6-10 — enforce profile.allowedWorkflows /
-// deniedWorkflows. Previously the orchestrator ignored the
-// profile-level workflow allow-list, so e.g. `triage` could
-// run `encoding_sweep` even though it should not.
-//
-// Convention: an UNSET or empty `allowedWorkflows` means "no
-// workflow allow-list constraint" (the profile runs no workflows
-// anyway). A populated list is a strict whitelist. `deniedWorkflows`
-// always wins over allowedWorkflows.
+      // deniedWorkflows. Previously the orchestrator ignored the
+      // profile-level workflow allow-list, so e.g. `triage` could
+      // run `encoding_sweep` even though it should not.
+      //
+      // Convention: an UNSET or empty `allowedWorkflows` means "no
+      // workflow allow-list constraint" (the profile runs no workflows
+      // anyway). A populated list is a strict whitelist. `deniedWorkflows`
+      // always wins over allowedWorkflows.
       const profile = this.profileStore.getCurrent()
       if (profile.deniedWorkflows && profile.deniedWorkflows.includes(workflowId)) {
         throw new Error(
@@ -539,7 +576,14 @@ export class CTFTaskOrchestrator {
             newObservationIds: [],
             newEvidenceIds: [],
             suggestedActions: [
-              { type: 'run_workflow', workflowId, inputs: inputs ?? {}, reason: 'workflow finished; reschedule', priority: 1, costTier: 'cheap' },
+              {
+                type: 'run_workflow',
+                workflowId,
+                inputs: inputs ?? {},
+                reason: 'workflow finished; reschedule',
+                priority: 1,
+                costTier: 'cheap',
+              },
             ],
           }).catch((err: unknown) => {
             this.safeApply({
@@ -620,10 +664,7 @@ export class CTFTaskOrchestrator {
   }
 
   // ── Main Agent ───────────────────────────────────────────────────────
-  async runMainAgent(
-    userMessage: string,
-    history: OpenAIMessage[] = [],
-  ): Promise<AgentRunResult> {
+  async runMainAgent(userMessage: string, history: OpenAIMessage[] = []): Promise<AgentRunResult> {
     // Phase 1.7 §七 — workflow-only mode refuses LLM calls explicitly.
     // The renderer dependency check is delegated to the harness; here we
     // short-circuit when the harness cannot satisfy the requirement so the
@@ -644,7 +685,8 @@ export class CTFTaskOrchestrator {
         producedArtifactIds: [],
       }
       this.safeApply({ type: 'AGENT_RUN_STARTED', agentRun })
-      const msg = 'runMainAgent requires a renderer + OpenAI client; workflow-only mode cannot run LLM tasks'
+      const msg =
+        'runMainAgent requires a renderer + OpenAI client; workflow-only mode cannot run LLM tasks'
       this.safeApply({ type: 'AGENT_RUN_FAILED', agentRunId, error: msg })
       return {
         agentRunId,
@@ -933,7 +975,6 @@ export class CTFTaskOrchestrator {
     }
   }
 
-
   // ── Subscribe shortcut ───────────────────────────────────────────────
   subscribe(listener: TaskStateListener): () => void {
     return this.store.subscribe(listener)
@@ -942,7 +983,9 @@ export class CTFTaskOrchestrator {
   // ── Helpers ──────────────────────────────────────────────────────────
   private wrapError(userSummary: string, cause: unknown): Error {
     const msg = cause instanceof Error ? cause.message : String(cause)
-    return new Error(`${userSummary}: ${msg}`, { cause: cause instanceof Error ? cause : new Error(msg) })
+    return new Error(`${userSummary}: ${msg}`, {
+      cause: cause instanceof Error ? cause : new Error(msg),
+    })
   }
 
   /**

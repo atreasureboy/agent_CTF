@@ -16,20 +16,12 @@
  * (e.g. during a one-off test), they degrade gracefully.
  */
 
-import type {
-  Tool,
-  ToolContext,
-  ToolDefinition,
-  ToolResult,
-} from '../core/types.js'
+import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../core/types.js'
 import type { ArtifactStore } from '../core/artifacts.js'
 import type { FindingStore } from '../core/findings.js'
 import type { HandoffStore } from '../core/handoff.js'
 import type { BackgroundJobManager } from '../core/backgroundJobs.js'
-import type {
-  FindingCategory,
-  FindingConfidence,
-} from '../core/findings.js'
+import type { FindingCategory, FindingConfidence } from '../core/findings.js'
 import { formatFindingForPrompt } from '../core/findings.js'
 import type { ArtifactMeta } from '../core/artifacts.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
@@ -74,7 +66,10 @@ function makeMetaTool(
   name: string,
   description: string,
   parameters: unknown,
-  handler: (input: Record<string, unknown>, services: CTFMetaServices) => Promise<ToolResult> | ToolResult,
+  handler: (
+    input: Record<string, unknown>,
+    services: CTFMetaServices,
+  ) => Promise<ToolResult> | ToolResult,
   metadata: CTFToolMetadata,
 ): Tool {
   return {
@@ -97,16 +92,36 @@ export function makeEmitFindingTool(): Tool {
     {
       type: 'object',
       properties: {
-        category: { type: 'string', enum: ['triage','forensics','image','crypto','web','reverse','pwn','network','workflow','obfuscation','handoff','verifier'] },
+        category: {
+          type: 'string',
+          enum: [
+            'triage',
+            'forensics',
+            'image',
+            'crypto',
+            'web',
+            'reverse',
+            'pwn',
+            'network',
+            'workflow',
+            'obfuscation',
+            'handoff',
+            'verifier',
+          ],
+        },
         title: { type: 'string', description: '一句话标题' },
         summary: { type: 'string', description: '完整描述' },
-        confidence: { type: 'string', enum: ['low','medium','high'], default: 'medium' },
-        evidence: { type: 'array', items: { type: 'string' }, description: '证据条目(命令、文件路径、行号等)' },
+        confidence: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' },
+        evidence: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '证据条目(命令、文件路径、行号等)',
+        },
         artifactIds: { type: 'array', items: { type: 'string' } },
         recommendedNextActions: { type: 'array', items: { type: 'string' } },
         suggestedAgent: { type: 'string' },
       },
-      required: ['category','title','summary'],
+      required: ['category', 'title', 'summary'],
     },
     (input, svc) => {
       if (!svc.findingStore) return missingService('findingStore')
@@ -117,9 +132,15 @@ export function makeEmitFindingTool(): Tool {
         title: String(input.title ?? ''),
         summary: String(input.summary ?? ''),
         confidence: (input.confidence ?? 'medium') as FindingConfidence,
-        evidence: Array.isArray(input.evidence) ? input.evidence.filter((v): v is string => typeof v === 'string') : [],
-        artifactIds: Array.isArray(input.artifactIds) ? input.artifactIds.filter((v): v is string => typeof v === 'string') : [],
-        recommendedNextActions: Array.isArray(input.recommendedNextActions) ? input.recommendedNextActions.filter((v): v is string => typeof v === 'string') : undefined,
+        evidence: Array.isArray(input.evidence)
+          ? input.evidence.filter((v): v is string => typeof v === 'string')
+          : [],
+        artifactIds: Array.isArray(input.artifactIds)
+          ? input.artifactIds.filter((v): v is string => typeof v === 'string')
+          : [],
+        recommendedNextActions: Array.isArray(input.recommendedNextActions)
+          ? input.recommendedNextActions.filter((v): v is string => typeof v === 'string')
+          : undefined,
         suggestedAgent: typeof input.suggestedAgent === 'string' ? input.suggestedAgent : undefined,
         // §十三.3 — propagate run-id so the parent projector can filter
         // by agentRunId / handoffId instead of relying on snapshot diffs.
@@ -133,7 +154,7 @@ export function makeEmitFindingTool(): Tool {
       }
     },
     {
-      domains: ['meta','workflow','forensics'],
+      domains: ['meta', 'workflow', 'forensics'],
       executionMode: 'foreground',
       costClass: 'cheap',
       outputMode: 'inline',
@@ -144,7 +165,7 @@ export function makeEmitFindingTool(): Tool {
 }
 
 TOOL_METADATA['emit_finding'] = {
-  domains: ['meta','workflow','forensics'],
+  domains: ['meta', 'workflow', 'forensics'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -160,7 +181,10 @@ export function makeRequestHandoffTool(): Tool {
     {
       type: 'object',
       properties: {
-        suggestedAgent: { type: 'string', description: '接班 Agent profile id(例如 file-forensics / crypto / image-stego / web)' },
+        suggestedAgent: {
+          type: 'string',
+          description: '接班 Agent profile id(例如 file-forensics / crypto / image-stego / web)',
+        },
         reason: { type: 'string', description: '为什么需要接力' },
         objective: { type: 'string', description: '接班 Agent 的明确目标' },
         artifactIds: { type: 'array', items: { type: 'string' } },
@@ -168,7 +192,7 @@ export function makeRequestHandoffTool(): Tool {
         constraints: { type: 'array', items: { type: 'string' } },
         priority: { type: 'number' },
       },
-      required: ['suggestedAgent','reason','objective'],
+      required: ['suggestedAgent', 'reason', 'objective'],
     },
     (input, svc) => {
       if (!svc.handoffStore) return missingService('handoffStore')
@@ -178,9 +202,15 @@ export function makeRequestHandoffTool(): Tool {
         suggestedAgent: String(input.suggestedAgent ?? ''),
         reason: String(input.reason ?? ''),
         objective: String(input.objective ?? ''),
-        artifactIds: Array.isArray(input.artifactIds) ? input.artifactIds.filter((v): v is string => typeof v === 'string') : undefined,
-        findingIds: Array.isArray(input.findingIds) ? input.findingIds.filter((v): v is string => typeof v === 'string') : undefined,
-        constraints: Array.isArray(input.constraints) ? input.constraints.filter((v): v is string => typeof v === 'string') : undefined,
+        artifactIds: Array.isArray(input.artifactIds)
+          ? input.artifactIds.filter((v): v is string => typeof v === 'string')
+          : undefined,
+        findingIds: Array.isArray(input.findingIds)
+          ? input.findingIds.filter((v): v is string => typeof v === 'string')
+          : undefined,
+        constraints: Array.isArray(input.constraints)
+          ? input.constraints.filter((v): v is string => typeof v === 'string')
+          : undefined,
         priority: typeof input.priority === 'number' ? input.priority : undefined,
       })
       return {
@@ -189,7 +219,7 @@ export function makeRequestHandoffTool(): Tool {
       }
     },
     {
-      domains: ['meta','workflow','forensics'],
+      domains: ['meta', 'workflow', 'forensics'],
       executionMode: 'foreground',
       costClass: 'cheap',
       outputMode: 'inline',
@@ -200,7 +230,7 @@ export function makeRequestHandoffTool(): Tool {
 }
 
 TOOL_METADATA['request_handoff'] = {
-  domains: ['meta','workflow','forensics'],
+  domains: ['meta', 'workflow', 'forensics'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -228,15 +258,24 @@ function listArtifactsTool(): Tool {
       const limit = typeof input.limit === 'number' ? input.limit : all.length
       all = all.slice(0, limit)
       if (all.length === 0) return { isError: false, content: 'No artifacts.' }
-      const lines = all.map((a) => `- ${a.id}  type=${a.type}  size=${a.size}B  path=${a.path}\n  ${a.summary.slice(0, 200)}`)
+      const lines = all.map(
+        (a) =>
+          `- ${a.id}  type=${a.type}  size=${a.size}B  path=${a.path}\n  ${a.summary.slice(0, 200)}`,
+      )
       return { isError: false, content: lines.join('\n') }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['list_artifacts'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -251,7 +290,7 @@ function listFindingsTool(): Tool {
       type: 'object',
       properties: {
         category: { type: 'string' },
-        confidence: { type: 'string', enum: ['low','medium','high'] },
+        confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
         limit: { type: 'number' },
       },
     },
@@ -259,18 +298,25 @@ function listFindingsTool(): Tool {
       if (!svc.findingStore) return missingService('findingStore')
       let all = svc.findingStore.list()
       if (typeof input.category === 'string') all = all.filter((f) => f.category === input.category)
-      if (typeof input.confidence === 'string') all = all.filter((f) => f.confidence === input.confidence)
+      if (typeof input.confidence === 'string')
+        all = all.filter((f) => f.confidence === input.confidence)
       const limit = typeof input.limit === 'number' ? input.limit : all.length
       all = all.slice(0, limit)
       if (all.length === 0) return { isError: false, content: 'No findings.' }
       return { isError: false, content: all.map(formatFindingForPrompt).join('\n\n---\n\n') }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['list_findings'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -288,17 +334,24 @@ function listJobsTool(): Tool {
         typeof input.status !== 'string' || j.status === input.status
       const all = svc.jobManager.list(filter)
       if (all.length === 0) return { isError: false, content: 'No jobs.' }
-      const lines = all.map((j) =>
-        `- ${j.id}  ${j.toolId}  ${j.status}  agent=${j.agentId}  elapsed=${j.endedAt ? Date.parse(j.endedAt) - Date.parse(j.startedAt) : '∞'}ms`,
+      const lines = all.map(
+        (j) =>
+          `- ${j.id}  ${j.toolId}  ${j.status}  agent=${j.agentId}  elapsed=${j.endedAt ? Date.parse(j.endedAt) - Date.parse(j.startedAt) : '∞'}ms`,
       )
       return { isError: false, content: lines.join('\n') }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['list_jobs'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -323,12 +376,18 @@ function queryBackgroundJobTool(): Tool {
       if (!job) return { isError: true, content: `Job not found: ${jobId}` }
       return { isError: false, content: JSON.stringify(job, null, 2) }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['query_background_job'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -362,12 +421,18 @@ function collectBackgroundResultTool(): Tool {
           (job.cancelReason ? `cancelReason: ${job.cancelReason}\n` : ''),
       }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['collect_background_result'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -392,16 +457,21 @@ function inspectArtifactSummaryTool(): Tool {
       if (!meta) return { isError: true, content: `Artifact not found: ${id}` }
       return {
         isError: false,
-        content:
-          `Artifact ${meta.id}\ntype=${meta.type}  size=${meta.size}B  sha256=${meta.sha256}\npath=${meta.path}\n---\n${meta.summary}`,
+        content: `Artifact ${meta.id}\ntype=${meta.type}  size=${meta.size}B  sha256=${meta.sha256}\npath=${meta.path}\n---\n${meta.summary}`,
       }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['inspect_artifact_summary'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -424,12 +494,18 @@ function inspectFindingTool(): Tool {
       if (all.length === 0) return { isError: true, content: `Finding not found: ${id}` }
       return { isError: false, content: formatFindingForPrompt(all[0]) }
     },
-    { domains: ['meta','workflow'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['inspect_finding'] = {
-  domains: ['meta','workflow'],
+  domains: ['meta', 'workflow'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
@@ -449,7 +525,7 @@ function extractArtifactTool(): Tool {
         path: { type: 'string', description: '提取出来的文件绝对路径' },
         mimeType: { type: 'string' },
       },
-      required: ['type','path'],
+      required: ['type', 'path'],
     },
     async (input, svc) => {
       if (!svc.artifactStore) return missingService('artifactStore')
@@ -466,7 +542,9 @@ function extractArtifactTool(): Tool {
               source: { toolId: 'extract_artifact', inputSummary: String(input.path) },
             },
             buf,
-            String(input.type).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 32) || 'bin',
+            String(input.type)
+              .replace(/[^a-zA-Z0-9._-]/g, '_')
+              .slice(0, 32) || 'bin',
           )
         } catch (err) {
           return null
@@ -478,12 +556,18 @@ function extractArtifactTool(): Tool {
         content: `Artifact ${meta.id} (${meta.size}B, sha256=${meta.sha256}) recorded at ${meta.path}.`,
       }
     },
-    { domains: ['meta','workflow','forensics'], executionMode: 'foreground', costClass: 'cheap', outputMode: 'inline', riskLevel: 'low' },
+    {
+      domains: ['meta', 'workflow', 'forensics'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
   )
 }
 
 TOOL_METADATA['extract_artifact'] = {
-  domains: ['meta','workflow','forensics'],
+  domains: ['meta', 'workflow', 'forensics'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',

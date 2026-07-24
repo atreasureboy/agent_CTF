@@ -22,10 +22,7 @@
  * `handoffId` so the lineage is reconstructable.
  */
 
-import {
-  appendFileSync,
-  statSync,
-} from 'fs'
+import { appendFileSync, statSync } from 'fs'
 import { join } from 'path'
 
 import type { ArtifactMeta } from '../artifacts.js'
@@ -46,12 +43,7 @@ import type { JobRecord } from './taskState.js'
 export class ProjectionError extends Error {
   constructor(
     message: string,
-    readonly stage:
-      | 'snapshot'
-      | 'finding'
-      | 'artifact-copy'
-      | 'artifact-store'
-      | 'state',
+    readonly stage: 'snapshot' | 'finding' | 'artifact-copy' | 'artifact-store' | 'state',
     readonly cause?: unknown,
   ) {
     super(message)
@@ -159,24 +151,21 @@ export class TaskStateProjector {
    * child id and handoff id are preserved on the parent's meta via
    * `source`.
    */
-  projectDiff(
-    before: TaskOutputSnapshot,
-    metadata: ProjectionMetadata = {},
-  ): ProjectionResult {
+  projectDiff(before: TaskOutputSnapshot, metadata: ProjectionMetadata = {}): ProjectionResult {
     const events: CTFTaskEvent[] = []
     const newFindingIds: string[] = []
     const newArtifactIds: string[] = []
 
     // Phase 1.7 §十二 — when the Specialist uses an independent store,
     // we read from the CHILD store and copy into the parent.
-    const readingFindingStore =
-      this.storages.childFindingStore ?? this.storages.findingStore
-    const readingArtifactStore =
-      this.storages.childArtifactStore ?? this.storages.artifactStore
+    const readingFindingStore = this.storages.childFindingStore ?? this.storages.findingStore
+    const readingArtifactStore = this.storages.childArtifactStore ?? this.storages.artifactStore
 
     // §十三.3 — when a run-id is supplied, prefer filtering by it.
     // Items lacking run-id metadata still pass (legacy snapshot diff).
-    const matchesRun = <T extends { agentRunId?: string; workflowRunId?: string; handoffId?: string }>(
+    const matchesRun = <
+      T extends { agentRunId?: string; workflowRunId?: string; handoffId?: string },
+    >(
       item: T,
       md: ProjectionMetadata,
     ): boolean => {
@@ -343,7 +332,11 @@ export class TaskStateProjector {
     const startedAt = existing?.startedAt ?? Date.parse(event.job.startedAt)
     const endedAt = event.job.endedAt ? Date.parse(event.job.endedAt) : undefined
     const status: JobRecord['status'] =
-      event.job.status === 'pending' || event.job.status === 'running' || event.job.status === 'success' || event.job.status === 'failed' || event.job.status === 'cancelled'
+      event.job.status === 'pending' ||
+      event.job.status === 'running' ||
+      event.job.status === 'success' ||
+      event.job.status === 'failed' ||
+      event.job.status === 'cancelled'
         ? event.job.status
         : 'running'
     const job: JobRecord = {
@@ -378,4 +371,3 @@ export class TaskStateProjector {
     return { result, projection }
   }
 }
-

@@ -46,7 +46,9 @@ builtInParsers['passthrough'] = (_m, files) => {
   const MAX_LINES = 50
   const preview = lines.slice(0, MAX_LINES)
   if (lines.length > MAX_LINES) {
-    warnings.push(`passthrough truncated: ${lines.length - MAX_LINES} additional line(s) not surfaced`)
+    warnings.push(
+      `passthrough truncated: ${lines.length - MAX_LINES} additional line(s) not surfaced`,
+    )
   }
   findings.push({
     category: 'raw',
@@ -268,7 +270,7 @@ builtInParsers['jsonl'] = (_m, files, runId) => {
   for (const [i, line] of content.split('\n').filter(Boolean).entries()) {
     try {
       const obj = JSON.parse(line) as Record<string, unknown>
-      const flag = (obj['flag'] ?? obj['candidate'])
+      const flag = obj['flag'] ?? obj['candidate']
       if (typeof flag === 'string') {
         candidates.push({
           value: flag,

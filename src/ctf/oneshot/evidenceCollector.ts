@@ -77,7 +77,8 @@ function detectMime(srcPath: string, sample: Buffer): string {
   if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg'
   if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif'
   if (b[0] === 0x50 && b[1] === 0x44 && b[2] === 0x46) return 'application/pdf'
-  if (b[0] === 0xd4 && b[1] === 0xc3 && b[2] === 0xb2 && b[3] === 0xa1) return 'application/vnd.tcpdump.pcap'
+  if (b[0] === 0xd4 && b[1] === 0xc3 && b[2] === 0xb2 && b[3] === 0xa1)
+    return 'application/vnd.tcpdump.pcap'
   if (b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0) return 'application/x-cfb'
   if (b.length >= 6 && b.slice(0, 6).toString('ascii') === 'GIF89a') return 'image/gif'
   return 'application/octet-stream'

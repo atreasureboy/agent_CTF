@@ -33,7 +33,8 @@ export const RUN_ONE_SHOT_DEFINITION: ToolDefinition = {
         inputArtifactIds: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Artifact IDs from the parent task (resolved by the framework to filesystem paths).',
+          description:
+            'Artifact IDs from the parent task (resolved by the framework to filesystem paths).',
         },
         options: {
           type: 'object',
@@ -69,10 +70,7 @@ export function makeRunOneShotTool(deps: RunOneShotToolDeps): Tool {
     name: 'run_one_shot',
     definition: RUN_ONE_SHOT_DEFINITION,
     concurrencySafe: true,
-    async execute(
-      input: Record<string, unknown>,
-      _context: ToolContext,
-    ): Promise<ToolResult> {
+    async execute(input: Record<string, unknown>, _context: ToolContext): Promise<ToolResult> {
       const { manifestId, inputArtifactIds, options, reason } = input as {
         manifestId: string
         inputArtifactIds?: string[]

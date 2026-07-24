@@ -2,7 +2,12 @@ import { spawn } from 'node:child_process'
 import { existsSync, accessSync, constants } from 'node:fs'
 import type { OperatorMessage } from './operatorMessage.js'
 import type { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
-import type { ExternalSolverResult, SolverChallengeInput, SolverHealth, SolverRunRecord } from './solverTypes.js'
+import type {
+  ExternalSolverResult,
+  SolverChallengeInput,
+  SolverHealth,
+  SolverRunRecord,
+} from './solverTypes.js'
 
 export interface GenericProcessSolverOptions {
   executablePath: string
@@ -91,10 +96,14 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
       }, timeoutMs)
 
       if (input.signal) {
-        input.signal.addEventListener('abort', () => {
-          isCancelled = true
-          child.kill('SIGTERM')
-        }, { once: true })
+        input.signal.addEventListener(
+          'abort',
+          () => {
+            isCancelled = true
+            child.kill('SIGTERM')
+          },
+          { once: true },
+        )
       }
 
       const startPacket = JSON.stringify({

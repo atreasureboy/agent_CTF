@@ -29,7 +29,14 @@ export function buildActionTool(toolDefs: ReadonlyArray<ToolDefinition>): {
         properties: {
           type: {
             type: 'string',
-            enum: ['run_workflow', 'run_oneshot', 'call_tool', 'request_handoff', 'verify_flag', 'stop'],
+            enum: [
+              'run_workflow',
+              'run_oneshot',
+              'call_tool',
+              'request_handoff',
+              'verify_flag',
+              'stop',
+            ],
           },
           // run_workflow
           workflowId: { type: 'string' },

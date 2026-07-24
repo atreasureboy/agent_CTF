@@ -19,7 +19,9 @@ export interface MaterializationContext {
   handoffId?: string
 }
 
-export function createMaterializationContext(init: Omit<MaterializationContext, 'producerId'> & { producerId?: string }): MaterializationContext {
+export function createMaterializationContext(
+  init: Omit<MaterializationContext, 'producerId'> & { producerId?: string },
+): MaterializationContext {
   return {
     taskId: init.taskId,
     attemptId: init.attemptId,

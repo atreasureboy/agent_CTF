@@ -47,9 +47,7 @@ export const capabilityProfileSchema = z
     // precedence over allow-list at runtime. Schema-level enforcement would
     // actually weaken the deny precedence semantic.
     if (profile.allowedWorkflows && profile.deniedWorkflows) {
-      const overlap = profile.allowedWorkflows.filter((w) =>
-        profile.deniedWorkflows!.includes(w),
-      )
+      const overlap = profile.allowedWorkflows.filter((w) => profile.deniedWorkflows!.includes(w))
       if (overlap.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -59,9 +57,7 @@ export const capabilityProfileSchema = z
       }
     }
     if (profile.allowedCommands && profile.deniedCommands) {
-      const overlap = profile.allowedCommands.filter((c) =>
-        profile.deniedCommands!.includes(c),
-      )
+      const overlap = profile.allowedCommands.filter((c) => profile.deniedCommands!.includes(c))
       if (overlap.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -77,9 +73,7 @@ export const capabilityProfileSchema = z
     // operator sees a clear error and is forced to pick one side. Pattern
     // mirrors commandPolicy.ts:49-72.
     if (profile.allowedTools && profile.deniedTools) {
-      const overlap = profile.allowedTools.filter((t) =>
-        profile.deniedTools!.includes(t),
-      )
+      const overlap = profile.allowedTools.filter((t) => profile.deniedTools!.includes(t))
       if (overlap.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -118,10 +112,7 @@ export function profileAllowsTool(profile: CapabilityProfile, toolId: string): b
 }
 
 /** Same logic, applied to workflow ids. */
-export function profileAllowsWorkflow(
-  profile: CapabilityProfile,
-  workflowId: string,
-): boolean {
+export function profileAllowsWorkflow(profile: CapabilityProfile, workflowId: string): boolean {
   if (profile.deniedWorkflows?.includes(workflowId)) return false
   if (profile.allowedWorkflows && !profile.allowedWorkflows.includes(workflowId)) return false
   return true
@@ -129,10 +120,7 @@ export function profileAllowsWorkflow(
 
 /** Return the denyAllows / reason pair for a refused tool, so the Broker can
  * surface a structured message to the model. */
-export function profileToolDenialReason(
-  profile: CapabilityProfile,
-  toolId: string,
-): string | null {
+export function profileToolDenialReason(profile: CapabilityProfile, toolId: string): string | null {
   if (profile.deniedTools?.includes(toolId)) {
     return `Tool "${toolId}" is denied by profile "${profile.id}" (deniedTools).`
   }

@@ -42,7 +42,10 @@ export class ToolVisibilityPolicy {
   private rules = new Map<string, ToolVisibilityRule>()
   private defaultPolicy: VisibilityDefault
 
-  constructor(initialRules: ToolVisibilityRule[] = [], defaultPolicy: VisibilityDefault = 'profile_allowed') {
+  constructor(
+    initialRules: ToolVisibilityRule[] = [],
+    defaultPolicy: VisibilityDefault = 'profile_allowed',
+  ) {
     this.defaultPolicy = defaultPolicy
     for (const r of initialRules) {
       this.rules.set(r.toolId, r)
@@ -102,9 +105,7 @@ export class ToolVisibilityPolicy {
     return false
   }
 
-  public resolveVisibleTools<T extends { name: string }>(
-    input: ResolveVisibleToolsInput<T>,
-  ): T[] {
+  public resolveVisibleTools<T extends { name: string }>(input: ResolveVisibleToolsInput<T>): T[] {
     const context = {
       role: input.identity.modelRole,
       modelId: input.identity.modelId,
@@ -115,15 +116,14 @@ export class ToolVisibilityPolicy {
       isOneShot: input.identity.isOneShot,
     }
 
-    let candidateTools = input.tools.filter((t) =>
-      this.isToolVisible(t.name, context),
-    )
+    let candidateTools = input.tools.filter((t) => this.isToolVisible(t.name, context))
 
     if (input.profile) {
       const p = input.profile
       candidateTools = candidateTools.filter((t) => {
         if (p.deniedTools?.includes(t.name)) return false
-        if (p.allowedTools && p.allowedTools.length > 0 && !p.allowedTools.includes(t.name)) return false
+        if (p.allowedTools && p.allowedTools.length > 0 && !p.allowedTools.includes(t.name))
+          return false
         return true
       })
     }
@@ -137,7 +137,9 @@ export class ToolVisibilityPolicy {
     // Smart ranking & prioritization if maxVisibleTools is specified
     const cap = input.maxVisibleTools
     if (cap && candidateTools.length > cap) {
-      const activeHypothesis = input.taskState?.hypotheses.find((h) => h.status === 'testing' || h.status === 'proposed')
+      const activeHypothesis = input.taskState?.hypotheses.find(
+        (h) => h.status === 'testing' || h.status === 'proposed',
+      )
       const category = input.taskState?.challenge.category
 
       candidateTools.sort((a, b) => {
@@ -147,8 +149,16 @@ export class ToolVisibilityPolicy {
         if (category && a.name.toLowerCase().includes(category.toLowerCase())) scoreA += 10
         if (category && b.name.toLowerCase().includes(category.toLowerCase())) scoreB += 10
 
-        if (activeHypothesis && activeHypothesis.statement.toLowerCase().includes(a.name.toLowerCase())) scoreA += 5
-        if (activeHypothesis && activeHypothesis.statement.toLowerCase().includes(b.name.toLowerCase())) scoreB += 5
+        if (
+          activeHypothesis &&
+          activeHypothesis.statement.toLowerCase().includes(a.name.toLowerCase())
+        )
+          scoreA += 5
+        if (
+          activeHypothesis &&
+          activeHypothesis.statement.toLowerCase().includes(b.name.toLowerCase())
+        )
+          scoreB += 5
 
         if (scoreA !== scoreB) return scoreB - scoreA
         return a.name.localeCompare(b.name)

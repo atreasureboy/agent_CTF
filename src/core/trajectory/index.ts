@@ -1,3 +1,5 @@
 export * from './trajectoryMetrics.js'
 export * from './trajectoryRecorder.js'
+export * from './trajectoryReplay.js'
 export * from './trajectoryTypes.js'
+export * from './trajectoryValidator.js'

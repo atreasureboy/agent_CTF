@@ -16,11 +16,7 @@ import type { CapabilityProfile } from '../core/capabilityProfile.js'
 import type { ContestScopeChecker } from '../core/contestScope.js'
 import type { EventLog } from '../core/eventLog.js'
 import type { ToolContext } from '../core/types.js'
-import {
-  allExecutablesShellSafe,
-  firstExecutableSafe,
-  parseShellCommand,
-} from './shellParser.js'
+import { allExecutablesShellSafe, firstExecutableSafe, parseShellCommand } from './shellParser.js'
 
 export interface BashPolicyCheck {
   firstExecutable: string
@@ -40,14 +36,66 @@ export interface BashPolicyCheck {
  * `wget` was a no-op. Audit P0 fix.
  */
 const SHELL_BUILTINS: ReadonlySet<string> = new Set([
-  '.', ':', '[', 'alias', 'bg', 'bind', 'break', 'builtin', 'caller', 'cd',
-  'command', 'compgen', 'complete', 'compopt', 'continue', 'declare', 'dirs',
-  'disown', 'echo', 'enable', 'eval', 'exec', 'exit', 'export', 'false',
-  'fc', 'fg', 'getopts', 'hash', 'help', 'history', 'jobs', 'kill', 'let',
-  'local', 'logout', 'mapfile', 'popd', 'printf', 'pushd', 'pwd', 'read',
-  'readarray', 'return', 'set', 'shift', 'shopt', 'source', 'suspend',
-  'test', 'times', 'trap', 'true', 'type', 'typeset', 'ulimit', 'umask',
-  'unalias', 'unset', 'wait',
+  '.',
+  ':',
+  '[',
+  'alias',
+  'bg',
+  'bind',
+  'break',
+  'builtin',
+  'caller',
+  'cd',
+  'command',
+  'compgen',
+  'complete',
+  'compopt',
+  'continue',
+  'declare',
+  'dirs',
+  'disown',
+  'echo',
+  'enable',
+  'eval',
+  'exec',
+  'exit',
+  'export',
+  'false',
+  'fc',
+  'fg',
+  'getopts',
+  'hash',
+  'help',
+  'history',
+  'jobs',
+  'kill',
+  'let',
+  'local',
+  'logout',
+  'mapfile',
+  'popd',
+  'printf',
+  'pushd',
+  'pwd',
+  'read',
+  'readarray',
+  'return',
+  'set',
+  'shift',
+  'shopt',
+  'source',
+  'suspend',
+  'test',
+  'times',
+  'trap',
+  'true',
+  'type',
+  'typeset',
+  'ulimit',
+  'umask',
+  'unalias',
+  'unset',
+  'wait',
 ])
 
 /**
@@ -109,7 +157,17 @@ function stripSubshells(s: string): string {
  */
 export function extractNetworkTargets(command: string): string[] {
   const out: string[] = []
-  const NETWORK_VERBS = new Set(['curl', 'wget', 'nc', 'netcat', 'nmap', 'httpx', 'httpie', 'sqlmap', 'nikto'])
+  const NETWORK_VERBS = new Set([
+    'curl',
+    'wget',
+    'nc',
+    'netcat',
+    'nmap',
+    'httpx',
+    'httpie',
+    'sqlmap',
+    'nikto',
+  ])
   const tokens = command.split(/\s+/).filter(Boolean)
   for (let i = 0; i < tokens.length; i++) {
     const verb = tokens[i].replace(/[^a-zA-Z]/g, '')
@@ -119,7 +177,9 @@ export function extractNetworkTargets(command: string): string[] {
       // Long-form flag like --max-time 30 → skip the value too.
       if (arg.startsWith('--')) {
         const eq = arg.indexOf('=')
-        if (eq === -1) { j++ }  // next token is the flag's value
+        if (eq === -1) {
+          j++
+        } // next token is the flag's value
         continue
       }
       // Short flag with attached value like -m30 or standalone flag -v.
@@ -174,11 +234,16 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
   // state fails closed (unknown=true) instead of being silently allowed.
   const parse = parseShellCommand(cmd)
   if (parse.unknown) {
-    input.eventLog?.append('permission', 'bash-policy', {
-      decision: 'deny',
-      reason: 'unparseable shell — fail-closed',
-      profile: input.profile.id,
-    }, ['bash-policy', 'parse-error', 'deny'])
+    input.eventLog?.append(
+      'permission',
+      'bash-policy',
+      {
+        decision: 'deny',
+        reason: 'unparseable shell — fail-closed',
+        profile: input.profile.id,
+      },
+      ['bash-policy', 'parse-error', 'deny'],
+    )
     return {
       allowed: false,
       reason: 'shell parser failed closed (complex/unparseable command)',
@@ -197,8 +262,10 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
   // (e.g. `echo ok; nmap`) we must still scan every segment — the legacy
   // short-circuit was the source of the §十二 bypass.
   const denyOne = (exe: string): string | null => {
-    if (denied && denied.includes(exe)) return `"${exe}" is denied by profile "${input.profile.id}" (deniedCommands)`
-    if (deniedTools && deniedTools.includes(exe)) return `"${exe}" is denied by profile "${input.profile.id}" (deniedTools)`
+    if (denied && denied.includes(exe))
+      return `"${exe}" is denied by profile "${input.profile.id}" (deniedCommands)`
+    if (deniedTools && deniedTools.includes(exe))
+      return `"${exe}" is denied by profile "${input.profile.id}" (deniedTools)`
     if (allowed && allowed.length > 0 && !allowed.includes(exe) && !SHELL_BUILTINS.has(exe)) {
       return `"${exe}" is not in profile "${input.profile.id}" allowedCommands`
     }
@@ -214,12 +281,17 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
     if (SHELL_BUILTINS.has(exe)) continue
     const reason = denyOne(exe)
     if (reason) {
-      input.eventLog?.append('permission', 'bash-policy', {
-        decision: 'deny',
-        command: exe,
-        reason,
-        profile: input.profile.id,
-      }, ['bash-policy', 'deny', 'composite-bypass'])
+      input.eventLog?.append(
+        'permission',
+        'bash-policy',
+        {
+          decision: 'deny',
+          command: exe,
+          reason,
+          profile: input.profile.id,
+        },
+        ['bash-policy', 'deny', 'composite-bypass'],
+      )
       return { allowed: false, reason, firstExecutable: exe }
     }
   }
@@ -241,32 +313,47 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
     if (exec === first) continue // already checked above
     if (denied && denied.includes(exec)) {
       const reason = `command "${exec}" is denied by profile "${input.profile.id}" (deniedCommands, via composite).`
-      input.eventLog?.append('permission', 'bash-policy', {
-        decision: 'deny',
-        command: exec,
-        reason,
-        profile: input.profile.id,
-      }, ['bash-policy', 'deny', 'composite-bypass'])
+      input.eventLog?.append(
+        'permission',
+        'bash-policy',
+        {
+          decision: 'deny',
+          command: exec,
+          reason,
+          profile: input.profile.id,
+        },
+        ['bash-policy', 'deny', 'composite-bypass'],
+      )
       return { allowed: false, reason, firstExecutable: exec }
     }
     if (input.profile.deniedTools && input.profile.deniedTools.includes(exec)) {
       const reason = `command "${exec}" is denied by profile "${input.profile.id}" (deniedTools, via composite).`
-      input.eventLog?.append('permission', 'bash-policy', {
-        decision: 'deny',
-        command: exec,
-        reason,
-        profile: input.profile.id,
-      }, ['bash-policy', 'deny', 'composite-bypass'])
+      input.eventLog?.append(
+        'permission',
+        'bash-policy',
+        {
+          decision: 'deny',
+          command: exec,
+          reason,
+          profile: input.profile.id,
+        },
+        ['bash-policy', 'deny', 'composite-bypass'],
+      )
       return { allowed: false, reason, firstExecutable: exec }
     }
     if (allowed && allowed.length > 0 && !allowed.includes(exec)) {
       const reason = `command "${exec}" is not in profile "${input.profile.id}" allowedCommands (composite).`
-      input.eventLog?.append('permission', 'bash-policy', {
-        decision: 'deny',
-        command: exec,
-        reason,
-        profile: input.profile.id,
-      }, ['bash-policy', 'deny', 'composite-bypass'])
+      input.eventLog?.append(
+        'permission',
+        'bash-policy',
+        {
+          decision: 'deny',
+          command: exec,
+          reason,
+          profile: input.profile.id,
+        },
+        ['bash-policy', 'deny', 'composite-bypass'],
+      )
       return { allowed: false, reason, firstExecutable: exec }
     }
   }
@@ -280,12 +367,17 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
         input.contestScope.assertNetwork(hostPort)
       } catch (err) {
         const reason = `command targets "${hostPort}" which is outside contest network scope: ${(err as Error).message}`
-        input.eventLog?.append('permission', 'bash-policy', {
-          decision: 'deny',
-          command: first,
-          reason,
-          target: hostPort,
-        }, ['bash-policy', 'network', 'deny'])
+        input.eventLog?.append(
+          'permission',
+          'bash-policy',
+          {
+            decision: 'deny',
+            command: first,
+            reason,
+            target: hostPort,
+          },
+          ['bash-policy', 'network', 'deny'],
+        )
         return { allowed: false, reason, firstExecutable: first }
       }
     }

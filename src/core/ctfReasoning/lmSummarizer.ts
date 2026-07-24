@@ -58,9 +58,7 @@ export class LMSummarizer {
 }
 
 function buildPrompt(input: SummaryInput): string {
-  const obs = input.observations
-    .map((o) => `- [${o.kind}] ${o.summary}`)
-    .join('\n')
+  const obs = input.observations.map((o) => `- [${o.kind}] ${o.summary}`).join('\n')
   return `Summarize the following CTF observations for task ${input.taskId} in at most ${input.maxLength} characters.
 Return a structured summary with:
 - text: a single paragraph
@@ -73,7 +71,10 @@ ${obs}
 `
 }
 
-function parseSummary(text: string, observations: ReadonlyArray<CTFTaskState['observations'][number]>): Summary {
+function parseSummary(
+  text: string,
+  observations: ReadonlyArray<CTFTaskState['observations'][number]>,
+): Summary {
   // Heuristic: extract lines starting with `-` as bullet items.
   const lines = text.split('\n')
   const claims: string[] = []
@@ -81,11 +82,20 @@ function parseSummary(text: string, observations: ReadonlyArray<CTFTaskState['ob
   const openQuestions: string[] = []
   for (const l of lines) {
     const m1 = /^-\s*claim:\s*(.+)$/.exec(l)
-    if (m1) { claims.push(m1[1]!.trim()); continue }
+    if (m1) {
+      claims.push(m1[1]!.trim())
+      continue
+    }
     const m2 = /^-\s*category:\s*(.+)$/.exec(l)
-    if (m2) { categories.push(m2[1]!.trim()); continue }
+    if (m2) {
+      categories.push(m2[1]!.trim())
+      continue
+    }
     const m3 = /^-\s*question:\s*(.+)$/.exec(l)
-    if (m3) { openQuestions.push(m3[1]!.trim()); continue }
+    if (m3) {
+      openQuestions.push(m3[1]!.trim())
+      continue
+    }
   }
   if (claims.length === 0) claims.push(...observations.slice(0, 3).map((o) => o.summary))
   if (categories.length === 0) {

@@ -51,16 +51,21 @@ export async function compactToFile(
   await mkdir(dir, { recursive: true })
   const filename = `obs-${new Date(at).toISOString().replace(/[:.]/g, '-')}.jsonl`
   const archivePath = join(dir, filename)
-  const lines = observationsToArchive.map((o) => JSON.stringify({
-    id: o.id,
-    taskId: o.taskId,
-    kind: o.kind,
-    source: o.source,
-    summary: o.summary,
-    attributes: o.attributes,
-    confidence: o.confidence,
-    createdAt: o.createdAt,
-  })).join('\n') + '\n'
+  const lines =
+    observationsToArchive
+      .map((o) =>
+        JSON.stringify({
+          id: o.id,
+          taskId: o.taskId,
+          kind: o.kind,
+          source: o.source,
+          summary: o.summary,
+          attributes: o.attributes,
+          confidence: o.confidence,
+          createdAt: o.createdAt,
+        }),
+      )
+      .join('\n') + '\n'
   await writeFile(archivePath, lines, 'utf-8')
   const archiveSize = (await stat(archivePath)).size
   const summary = `compactor-archives/${filename}: ${observationsToArchive.length} observations, ${archiveSize} bytes (task=${state.taskId} at=${at})`

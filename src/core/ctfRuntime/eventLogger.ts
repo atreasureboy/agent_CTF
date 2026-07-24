@@ -33,10 +33,7 @@ export interface TaskEventLogger {
 }
 
 export const TaskEventLogger = {
-  async attach(
-    store: CTFTaskStateStore,
-    outDir: string,
-  ): Promise<TaskEventLogger> {
+  async attach(store: CTFTaskStateStore, outDir: string): Promise<TaskEventLogger> {
     const path = `${outDir.replace(/\/$/, '')}/events.ndjson`
     await mkdir(dirname(path), { recursive: true })
     let written = 0
@@ -49,11 +46,14 @@ export const TaskEventLogger = {
     const unsubscribe: Unsubscribe = store.subscribe((event) => {
       if (closed) return
       const line = JSON.stringify(event) + '\n'
-      pending = pending.then(() => appendFile(path, line, 'utf-8')).then(() => {
-        written += 1
-      }).catch(() => {
-        // Log swallow: a logger failure must not break the runtime.
-      })
+      pending = pending
+        .then(() => appendFile(path, line, 'utf-8'))
+        .then(() => {
+          written += 1
+        })
+        .catch(() => {
+          // Log swallow: a logger failure must not break the runtime.
+        })
     })
     return {
       path,

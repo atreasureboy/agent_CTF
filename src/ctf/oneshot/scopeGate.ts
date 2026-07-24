@@ -22,7 +22,11 @@ export interface ScopeGateOptions {
 }
 
 export class ScopeDeniedError extends Error {
-  constructor(message: string, readonly target: string, readonly reason: string) {
+  constructor(
+    message: string,
+    readonly target: string,
+    readonly reason: string,
+  ) {
     super(message)
     this.name = 'ScopeDeniedError'
   }
@@ -40,31 +44,133 @@ export interface ParsedTarget {
 // 100.64.0.0/10, benchmark 198.18.0.0/15, 0.0.0.0/8, multicast
 // 224.0.0.0/4, and IPv6 ULA / link-local / mapped.
 const PRIVATE_IPV4_PREFIXES = [
-  '10.', '192.168.', '172.16.', '172.17.', '172.18.', '172.19.',
-  '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.',
-  '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.',
-  '127.', '169.254.', '100.64.', '100.65.', '100.66.', '100.67.',
-  '100.68.', '100.69.', '100.70.', '100.71.', '100.72.', '100.73.',
-  '100.74.', '100.75.', '100.76.', '100.77.', '100.78.', '100.79.',
-  '100.80.', '100.81.', '100.82.', '100.83.', '100.84.', '100.85.',
-  '100.86.', '100.87.', '100.88.', '100.89.', '100.90.', '100.91.',
-  '100.92.', '100.93.', '100.94.', '100.95.', '100.96.', '100.97.',
-  '100.98.', '100.99.', '100.100.', '100.101.', '100.102.', '100.103.',
-  '100.104.', '100.105.', '100.106.', '100.107.', '100.108.', '100.109.',
-  '100.110.', '100.111.', '100.112.', '100.113.', '100.114.', '100.115.',
-  '100.116.', '100.117.', '100.118.', '100.119.', '100.120.', '100.121.',
-  '100.122.', '100.123.', '100.124.', '100.125.', '100.126.', '100.127.',
-  '198.18.', '198.19.', '0.', '224.', '225.', '226.', '227.',
-  '228.', '229.', '230.', '231.', '232.', '233.', '234.', '235.',
-  '236.', '237.', '238.', '239.', '240.', '241.', '242.', '243.',
-  '244.', '245.', '246.', '247.', '248.', '249.', '250.', '251.',
-  '252.', '253.', '254.', '255.',
+  '10.',
+  '192.168.',
+  '172.16.',
+  '172.17.',
+  '172.18.',
+  '172.19.',
+  '172.20.',
+  '172.21.',
+  '172.22.',
+  '172.23.',
+  '172.24.',
+  '172.25.',
+  '172.26.',
+  '172.27.',
+  '172.28.',
+  '172.29.',
+  '172.30.',
+  '172.31.',
+  '127.',
+  '169.254.',
+  '100.64.',
+  '100.65.',
+  '100.66.',
+  '100.67.',
+  '100.68.',
+  '100.69.',
+  '100.70.',
+  '100.71.',
+  '100.72.',
+  '100.73.',
+  '100.74.',
+  '100.75.',
+  '100.76.',
+  '100.77.',
+  '100.78.',
+  '100.79.',
+  '100.80.',
+  '100.81.',
+  '100.82.',
+  '100.83.',
+  '100.84.',
+  '100.85.',
+  '100.86.',
+  '100.87.',
+  '100.88.',
+  '100.89.',
+  '100.90.',
+  '100.91.',
+  '100.92.',
+  '100.93.',
+  '100.94.',
+  '100.95.',
+  '100.96.',
+  '100.97.',
+  '100.98.',
+  '100.99.',
+  '100.100.',
+  '100.101.',
+  '100.102.',
+  '100.103.',
+  '100.104.',
+  '100.105.',
+  '100.106.',
+  '100.107.',
+  '100.108.',
+  '100.109.',
+  '100.110.',
+  '100.111.',
+  '100.112.',
+  '100.113.',
+  '100.114.',
+  '100.115.',
+  '100.116.',
+  '100.117.',
+  '100.118.',
+  '100.119.',
+  '100.120.',
+  '100.121.',
+  '100.122.',
+  '100.123.',
+  '100.124.',
+  '100.125.',
+  '100.126.',
+  '100.127.',
+  '198.18.',
+  '198.19.',
+  '0.',
+  '224.',
+  '225.',
+  '226.',
+  '227.',
+  '228.',
+  '229.',
+  '230.',
+  '231.',
+  '232.',
+  '233.',
+  '234.',
+  '235.',
+  '236.',
+  '237.',
+  '238.',
+  '239.',
+  '240.',
+  '241.',
+  '242.',
+  '243.',
+  '244.',
+  '245.',
+  '246.',
+  '247.',
+  '248.',
+  '249.',
+  '250.',
+  '251.',
+  '252.',
+  '253.',
+  '254.',
+  '255.',
 ]
 const PRIVATE_HOSTS = new Set([
   'localhost',
   'metadata.google.internal',
   // Full link-local — the previous set only covered .169.254.
-  '169.254.169.254', '169.254.169.253', '169.254.169.252',
+  '169.254.169.254',
+  '169.254.169.253',
+  '169.254.169.252',
 ])
 
 function isPrivateIPv4(ip: string): boolean {
@@ -79,8 +185,13 @@ function isPrivateIPv6(ip: string): boolean {
   // ::1 (loopback)
   if (lower === '::1') return true
   // fe80::/10 (link-local)
-  if (lower.startsWith('fe8') || lower.startsWith('fe9') ||
-      lower.startsWith('fea') || lower.startsWith('feb')) return true
+  if (
+    lower.startsWith('fe8') ||
+    lower.startsWith('fe9') ||
+    lower.startsWith('fea') ||
+    lower.startsWith('feb')
+  )
+    return true
   // fc00::/7 (ULA)
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true
   // ::ffff:0:0/96 (IPv4-mapped — re-check IPv4 portion)
@@ -140,14 +251,15 @@ function matchesCidr(ip: string, cidr: string): boolean {
   if (!Number.isFinite(bits)) return false
   const ipToInt = (s: string): number | null => {
     const parts = s.split('.').map((p) => Number.parseInt(p, 10))
-    if (parts.length !== 4 || parts.some((p) => !Number.isFinite(p) || p < 0 || p > 255)) return null
+    if (parts.length !== 4 || parts.some((p) => !Number.isFinite(p) || p < 0 || p > 255))
+      return null
     return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0
   }
   const a = ipToInt(ip)
   const b = ipToInt(base)
   if (a === null || b === null) return false
   if (bits === 0) return true
-  const mask = bits >= 32 ? 0xffffffff : (~((1 << (32 - bits)) - 1)) >>> 0
+  const mask = bits >= 32 ? 0xffffffff : ~((1 << (32 - bits)) - 1) >>> 0
   return (a & mask) === (b & mask)
 }
 
@@ -158,7 +270,10 @@ function portAllowed(rule: ScopeRule, port: number): boolean {
 
 function hostAllowed(rule: ScopeRule, target: ParsedTarget): boolean {
   if (target.host && rule.hosts.includes(target.host)) return true
-  if (target.domain && rule.domains.some((d) => target.domain === d || target.domain!.endsWith(`.${d}`))) {
+  if (
+    target.domain &&
+    rule.domains.some((d) => target.domain === d || target.domain!.endsWith(`.${d}`))
+  ) {
     return true
   }
   if (target.ip && rule.cidrs.some((c) => matchesCidr(target.ip!, c))) return true
@@ -181,7 +296,11 @@ export class ScopeGate {
     // Always deny well-known private surfaces (loopback / cloud metadata).
     // These are NOT overridable by the rule — they're hard SSRF guards.
     if (parsed.host && PRIVATE_HOSTS.has(parsed.host)) {
-      throw new ScopeDeniedError(`target "${target}" is a private/internal address`, target, 'private')
+      throw new ScopeDeniedError(
+        `target "${target}" is a private/internal address`,
+        target,
+        'private',
+      )
     }
 
     // Explicit allow-list entry wins over the private-IP block: the operator

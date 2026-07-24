@@ -1,30 +1,86 @@
-import { ModelRole } from './modelCapability.js'
+import type { ModelCapabilityProfile, ModelRole, ModelTrustLevel } from './modelCapability.js'
 
 export interface BannedActionCheckResult {
   allowed: boolean
   reason?: string
 }
 
+export interface ModelRoleResolverInput {
+  capabilityProfileId: string
+  agentKind:
+    'orchestrator' | 'main-agent' | 'specialist' | 'solver' | 'summarizer' | 'flag-discriminator'
+
+  workflowId?: string
+  specialistId?: string
+}
+
+export interface ModelRoleResolver {
+  resolve(input: ModelRoleResolverInput): ModelRole
+}
+
+export class DefaultModelRoleResolver implements ModelRoleResolver {
+  public resolve(input: ModelRoleResolverInput): ModelRole {
+    switch (input.agentKind) {
+      case 'orchestrator':
+        return 'task_planner'
+      case 'main-agent':
+        return 'deep_solver'
+      case 'solver':
+        return 'solver_scout'
+      case 'summarizer':
+        return 'progress_summarizer'
+      case 'specialist':
+        return 'specialist'
+      case 'flag-discriminator':
+        return 'flag_discriminator'
+      default:
+        return 'deep_solver'
+    }
+  }
+}
+
 export class ModelRolePolicy {
   /**
-   * Enforces non-bypassable code checks for auxiliary/low-cost models like M3.
+   * Enforces non-bypassable code checks based on trust level or profile capability.
    */
   public static validateRolePermission(
-    modelId: string,
+    modelOrTrust: string | ModelCapabilityProfile | ModelTrustLevel,
     role: ModelRole,
     actionType: string,
   ): BannedActionCheckResult {
-    const isAuxiliaryModel =
-      modelId.includes('m3') ||
-      modelId.includes('mini') ||
-      modelId.includes('small') ||
-      modelId.includes('scout')
+    let trustLevel: ModelTrustLevel = 'standard'
+    let modelId = 'model'
+
+    if (typeof modelOrTrust === 'string') {
+      modelId = modelOrTrust
+      if (
+        modelOrTrust === 'auxiliary' ||
+        modelOrTrust === 'standard' ||
+        modelOrTrust === 'privileged'
+      ) {
+        trustLevel = modelOrTrust
+      } else if (
+        modelOrTrust.toLowerCase().includes('m3') ||
+        modelOrTrust.toLowerCase().includes('mini') ||
+        modelOrTrust.toLowerCase().includes('small') ||
+        modelOrTrust.toLowerCase().includes('scout')
+      ) {
+        trustLevel = 'auxiliary'
+      } else {
+        trustLevel = 'standard'
+      }
+    } else if (modelOrTrust && typeof modelOrTrust === 'object') {
+      modelId = modelOrTrust.id
+      trustLevel = modelOrTrust.trustLevel || modelOrTrust.reliabilityClass || 'standard'
+    }
+
+    const isAuxiliaryModel = trustLevel === 'auxiliary'
 
     if (!isAuxiliaryModel) {
       return { allowed: true }
     }
 
-    // Strict forbidden action types for auxiliary / M3 models
+    // Strict forbidden action types for auxiliary models
     const BANNED_ACTION_TYPES = [
       'expand_scope',
       'modify_security_policy',

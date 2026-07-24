@@ -30,12 +30,9 @@ export class ChallengeSwarm {
   private policy: ChallengeSwarmPolicy
   private adapters = new Map<string, ExternalSolverAdapter>()
   private activeHandles = new Map<string, SolverRunHandle>()
-  private evidenceBus: CrossSolverEvidenceBus
+  private evidenceBus?: CrossSolverEvidenceBus
 
-  constructor(
-    evidenceBus: CrossSolverEvidenceBus,
-    policy: Partial<ChallengeSwarmPolicy> = {},
-  ) {
+  constructor(evidenceBus?: CrossSolverEvidenceBus, policy: Partial<ChallengeSwarmPolicy> = {}) {
     this.evidenceBus = evidenceBus
     this.policy = { ...DEFAULT_SWARM_POLICY, ...policy }
   }
@@ -50,14 +47,21 @@ export class ChallengeSwarm {
   ): Promise<{ winnerResult?: ExternalSolverResult; allResults: ExternalSolverResult[] }> {
     const allResults: ExternalSolverResult[] = []
     const pendingSolverIds = [...this.policy.initialSolverIds]
-    const activePromises = new Map<string, Promise<{ handle: SolverRunHandle; result: ExternalSolverResult }>>()
+    const activePromises = new Map<
+      string,
+      Promise<{ handle: SolverRunHandle; result: ExternalSolverResult }>
+    >()
     let totalStarted = 0
     let winnerResult: ExternalSolverResult | undefined
 
     if (input.signal) {
-      input.signal.addEventListener('abort', () => {
-        void this.cancelAllActive('Task abort signal fired')
-      }, { once: true })
+      input.signal.addEventListener(
+        'abort',
+        () => {
+          void this.cancelAllActive('Task abort signal fired')
+        },
+        { once: true },
+      )
     }
 
     const launchSolver = async (sId: string) => {
@@ -66,6 +70,32 @@ export class ChallengeSwarm {
       const handle = await adapter.start(input)
       this.activeHandles.set(handle.runId, handle)
       totalStarted++
+
+      // Start consuming live events if available
+      if (handle.events) {
+        ;(async () => {
+          try {
+            for await (const event of handle.events!()) {
+              if (event.type === 'tool_call_completed' && event.evidenceIds?.length) {
+                this.evidenceBus?.publish({
+                  id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                  taskId: input.taskId,
+                  sourceSolverRunId: handle.runId,
+                  evidenceIds: event.evidenceIds,
+                  observationIds: event.observationIds || [],
+                  artifactIds: event.artifactIds || [],
+                  summary: `Live event from ${handle.solverId}`,
+                  priority: 'normal',
+                  createdAt: Date.now(),
+                })
+              }
+            }
+          } catch {
+            // ignore stream consumption errors
+          }
+        })()
+      }
+
       const resPromise = handle.wait().then((result) => {
         this.activeHandles.delete(handle.runId)
         return { handle, result }
@@ -74,8 +104,11 @@ export class ChallengeSwarm {
       return handle.runId
     }
 
-    // Launch initial batch up to maxConcurrentSolvers in parallel
-    while (pendingSolverIds.length > 0 && activePromises.size < this.policy.maxConcurrentSolvers && totalStarted < this.policy.maxTotalSolvers) {
+    while (
+      pendingSolverIds.length > 0 &&
+      activePromises.size < this.policy.maxConcurrentSolvers &&
+      totalStarted < this.policy.maxTotalSolvers
+    ) {
       const nextId = pendingSolverIds.shift()!
       await launchSolver(nextId)
     }
@@ -85,14 +118,15 @@ export class ChallengeSwarm {
       activePromises.delete(finished.handle.runId)
       allResults.push(finished.result)
 
-      // Publish evidence/observations to evidence bus
+      // Publish Grounded evidence with formal IDs
       for (const obs of finished.result.observations) {
-        this.evidenceBus.publish({
+        const formalObsId = `obs_${finished.handle.runId}_${Date.now()}`
+        this.evidenceBus?.publish({
           id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           taskId: input.taskId,
           sourceSolverRunId: finished.handle.runId,
           evidenceIds: [],
-          observationIds: [],
+          observationIds: [formalObsId],
           artifactIds: [],
           summary: obs.summary,
           priority: 'normal',
@@ -100,12 +134,18 @@ export class ChallengeSwarm {
         })
       }
 
-      // Check flag candidates
+      // Check flag candidates using FlagDiscriminator
       if (finished.result.flagCandidates && finished.result.flagCandidates.length > 0) {
         for (const cand of finished.result.flagCandidates) {
-          const disc = FlagDiscriminator.discriminate({ candidateValue: cand.value })
-          // ONLY locally_validated or platform_accepted cancels other solvers
-          if (disc.status === 'locally_validated' || disc.status === 'platform_accepted') {
+          const disc = FlagDiscriminator.discriminate({
+            taskId: input.taskId,
+            candidateValue: cand.value,
+          })
+          if (
+            disc.canCancelOtherSolvers ||
+            disc.status === 'locally_validated' ||
+            disc.status === 'platform_accepted'
+          ) {
             winnerResult = finished.result
             if (this.policy.cancelLosersOnValidatedCandidate) {
               await this.cancelAllActive('Validated flag candidate found by winner solver.')
@@ -115,7 +155,6 @@ export class ChallengeSwarm {
         }
       }
 
-      // Check for stagnation escalation
       if (
         this.policy.stagnationEscalation &&
         taskState &&
@@ -136,8 +175,11 @@ export class ChallengeSwarm {
         }
       }
 
-      // Backfill pending solvers if concurrency permits
-      while (pendingSolverIds.length > 0 && activePromises.size < this.policy.maxConcurrentSolvers && totalStarted < this.policy.maxTotalSolvers) {
+      while (
+        pendingSolverIds.length > 0 &&
+        activePromises.size < this.policy.maxConcurrentSolvers &&
+        totalStarted < this.policy.maxTotalSolvers
+      ) {
         const nextId = pendingSolverIds.shift()!
         await launchSolver(nextId)
       }

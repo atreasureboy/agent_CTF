@@ -58,11 +58,7 @@ export interface DockerRunResult {
 
 /** Wait for a TCP port to be reachable. Resolves when connected,
  *  rejects when timeout exceeded. */
-export async function waitForTcp(
-  host: string,
-  port: number,
-  timeoutMs: number,
-): Promise<void> {
+export async function waitForTcp(host: string, port: number, timeoutMs: number): Promise<void> {
   const net = await import('net')
   const started = Date.now()
   return new Promise<void>((resolve, reject) => {
@@ -100,7 +96,10 @@ export interface DockerRunOptions {
 export async function runDockerChallenge(
   challenge: DockerBenchChallenge,
   opts: DockerRunOptions,
-  runtimeCheck: (host: string, port: number) => Promise<{ detectedFlag: string | null; stdout: string; stderr: string }>,
+  runtimeCheck: (
+    host: string,
+    port: number,
+  ) => Promise<{ detectedFlag: string | null; stdout: string; stderr: string }>,
 ): Promise<DockerRunResult> {
   const projectName = `bench-${opts.projectSuffix}-${challenge.id}`.toLowerCase()
   const host = opts.host ?? '127.0.0.1'
@@ -110,14 +109,26 @@ export async function runDockerChallenge(
   let detectedFlag: string | null = null
   let stdout = ''
   let stderr = ''
-  const child = spawn('docker', [
-    'compose',
-    '-p', projectName,
-    '-f', challenge.dockerComposePath,
-    'up', '-d', '--remove-orphans',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] })
-  child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8') })
-  child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf-8') })
+  const child = spawn(
+    'docker',
+    [
+      'compose',
+      '-p',
+      projectName,
+      '-f',
+      challenge.dockerComposePath,
+      'up',
+      '-d',
+      '--remove-orphans',
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString('utf-8')
+  })
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString('utf-8')
+  })
   await new Promise<void>((resolve, reject) => {
     child.once('error', reject)
     child.once('exit', (code) => {
@@ -135,7 +146,9 @@ export async function runDockerChallenge(
   } finally {
     // Tear down: docker compose down (best-effort).
     try {
-      await execAsync(`docker compose -p ${projectName} -f ${challenge.dockerComposePath} down --remove-orphans`)
+      await execAsync(
+        `docker compose -p ${projectName} -f ${challenge.dockerComposePath} down --remove-orphans`,
+      )
     } catch {
       /* ignore */
     }

@@ -32,7 +32,9 @@ export class CompilerValidator {
     }
 
     if (ctx.estimatedTokens > maxTokenBudget) {
-      errors.push(`Estimated tokens (${ctx.estimatedTokens}) exceed max budget (${maxTokenBudget}).`)
+      errors.push(
+        `Estimated tokens (${ctx.estimatedTokens}) exceed max budget (${maxTokenBudget}).`,
+      )
     }
 
     if (!ctx.completionContract || ctx.completionContract.length === 0) {
@@ -47,7 +49,9 @@ export class CompilerValidator {
       }
 
       if (expectedSnapshotHash && ctx.stateSnapshotHash !== expectedSnapshotHash) {
-        errors.push(`Snapshot hash mismatch: context '${ctx.stateSnapshotHash}', expected '${expectedSnapshotHash}'.`)
+        errors.push(
+          `Snapshot hash mismatch: context '${ctx.stateSnapshotHash}', expected '${expectedSnapshotHash}'.`,
+        )
       }
 
       for (const ev of ctx.confirmedEvidence) {
@@ -62,7 +66,9 @@ export class CompilerValidator {
         if (!found) {
           errors.push(`Hypothesis '${hyp.id}' does not exist in authoritative TaskState.`)
         } else if (found.status !== hyp.status) {
-          errors.push(`Hypothesis '${hyp.id}' status mismatch: '${hyp.status}' vs state '${found.status}'.`)
+          errors.push(
+            `Hypothesis '${hyp.id}' status mismatch: '${hyp.status}' vs state '${found.status}'.`,
+          )
         }
       }
 
@@ -102,7 +108,9 @@ export class CompilerValidator {
     ]
 
     for (const ev of ctx.confirmedEvidence) {
-      lines.push(`- [E:${ev.id}] (${(ev.confidence * 100).toFixed(0)}%) ${ev.title}: ${ev.factSummary}`)
+      lines.push(
+        `- [E:${ev.id}] (${(ev.confidence * 100).toFixed(0)}%) ${ev.title}: ${ev.factSummary}`,
+      )
     }
 
     lines.push('', '=== ACTIVE HYPOTHESES ===')

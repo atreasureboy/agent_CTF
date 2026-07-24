@@ -70,13 +70,24 @@ export function decideCompaction(
       summaryObservation: '',
     }
   }
-  const drop = <T,>(arr: T[]): T[] => arr.slice(0, Math.max(0, arr.length - policy.maxObservations))
-  const removedObservations = state.observations.slice(0, Math.max(0, state.observations.length - policy.maxObservations))
+  const drop = <T>(arr: T[]): T[] => arr.slice(0, Math.max(0, arr.length - policy.maxObservations))
+  const removedObservations = state.observations.slice(
+    0,
+    Math.max(0, state.observations.length - policy.maxObservations),
+  )
   const removedObservationsIds = removedObservations.map((o) => o.id)
-  const removedEvidence = state.evidence.slice(0, Math.max(0, state.evidence.length - policy.maxEvidence))
+  const removedEvidence = state.evidence.slice(
+    0,
+    Math.max(0, state.evidence.length - policy.maxEvidence),
+  )
   const removedEvidenceIds = removedEvidence.map((e) => e.id)
-  const removedFindingIds = state.findings.slice(0, Math.max(0, state.findings.length - policy.maxFindings)).map((f) => f.id)
-  const removedArtifactIds = state.artifactIds.slice(0, Math.max(0, state.artifactIds.length - policy.maxArtifacts))
+  const removedFindingIds = state.findings
+    .slice(0, Math.max(0, state.findings.length - policy.maxFindings))
+    .map((f) => f.id)
+  const removedArtifactIds = state.artifactIds.slice(
+    0,
+    Math.max(0, state.artifactIds.length - policy.maxArtifacts),
+  )
   const summaryObservation = buildSummary(state, {
     removedObservations,
     removedEvidence,
@@ -110,10 +121,20 @@ function buildSummary(
   const parts: string[] = []
   parts.push(`compaction token ${randomBytes(4).toString('hex')} for task ${state.taskId}`)
   if (removed.removedObservations.length > 0) {
-    parts.push(`compacted ${removed.removedObservations.length} observation(s): ${removed.removedObservations.slice(0, 5).map((o) => `${o.kind}:${o.summary.slice(0, 40)}`).join('; ')}`)
+    parts.push(
+      `compacted ${removed.removedObservations.length} observation(s): ${removed.removedObservations
+        .slice(0, 5)
+        .map((o) => `${o.kind}:${o.summary.slice(0, 40)}`)
+        .join('; ')}`,
+    )
   }
   if (removed.removedEvidence.length > 0) {
-    parts.push(`compacted ${removed.removedEvidence.length} evidence(s): ${removed.removedEvidence.slice(0, 5).map((e) => `${e.kind}:${e.claim.slice(0, 40)}`).join('; ')}`)
+    parts.push(
+      `compacted ${removed.removedEvidence.length} evidence(s): ${removed.removedEvidence
+        .slice(0, 5)
+        .map((e) => `${e.kind}:${e.claim.slice(0, 40)}`)
+        .join('; ')}`,
+    )
   }
   if (removed.removedFindingIds.length > 0) {
     parts.push(`compacted ${removed.removedFindingIds.length} finding(s)`)

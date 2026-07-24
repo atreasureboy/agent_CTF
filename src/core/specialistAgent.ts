@@ -85,15 +85,19 @@ export function composeSystemPrompt(input: ComposeSystemPromptInput): string {
 
   // Inherited findings
   if (input.inheritedFindings && input.inheritedFindings.length > 0) {
-    sections.push(`## Inherited Findings\n\n${input.inheritedFindings
-      .map((f) => `- [${f.confidence.toUpperCase()}] (${f.id}) ${f.summary}`)
-      .join('\n')}`)
+    sections.push(
+      `## Inherited Findings\n\n${input.inheritedFindings
+        .map((f) => `- [${f.confidence.toUpperCase()}] (${f.id}) ${f.summary}`)
+        .join('\n')}`,
+    )
   }
 
   if (input.inheritedArtifacts && input.inheritedArtifacts.length > 0) {
-    sections.push(`## Inherited Artifacts\n\n${input.inheritedArtifacts
-      .map((a) => `- ${a.id} (${a.type}): ${a.summary}`)
-      .join('\n')}`)
+    sections.push(
+      `## Inherited Artifacts\n\n${input.inheritedArtifacts
+        .map((a) => `- ${a.id} (${a.type}): ${a.summary}`)
+        .join('\n')}`,
+    )
   }
 
   if (input.basePrompt) sections.push(input.basePrompt)
