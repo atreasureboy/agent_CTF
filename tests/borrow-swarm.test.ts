@@ -84,9 +84,11 @@ describe('SolverSwarm (B)', () => {
     })
     const r = await swarm.execute(makeCtx(FLAG_ACTION))
     expect(r.status).toBe('executed')
-    expect(r.materializedResult.warnings.some((w) => w.startsWith('swarm: winner='))).toBe(true)
-    // a wins (smallest delay), so its flag is in the candidates
-    expect(r.materializedResult.flagCandidateDrafts.some((c) => c.value === 'flag{a}')).toBe(true)
+    if (r.status === 'executed') {
+      expect(r.materializedResult.warnings.some((w) => w.startsWith('swarm: winner='))).toBe(true)
+      // a wins (smallest delay), so its flag is in the candidates
+      expect(r.materializedResult.flagCandidateDrafts.some((c) => c.value === 'flag{a}')).toBe(true)
+    }
   })
 
   it('merges observations from slower members that did not win', async () => {
@@ -100,8 +102,10 @@ describe('SolverSwarm (B)', () => {
     })
     const r = await swarm.execute(makeCtx(FLAG_ACTION))
     expect(r.status).toBe('executed')
-    expect(r.materializedResult.flagCandidateDrafts.length).toBe(1)
-    expect(r.materializedResult.observations.length).toBe(2)
+    if (r.status === 'executed') {
+      expect(r.materializedResult.flagCandidateDrafts.length).toBe(1)
+      expect(r.materializedResult.observations.length).toBe(2)
+    }
   })
 
   it('returns failed when all members fail', async () => {
@@ -123,7 +127,9 @@ describe('SolverSwarm (B)', () => {
     const swarm = createSolverSwarmExecutor({ members: [], isFlagCheck: () => true })
     const r = await swarm.execute(makeCtx(FLAG_ACTION))
     expect(r.status).toBe('executed')
-    expect(r.materializedResult.observations.length).toBe(0)
+    if (r.status === 'executed') {
+      expect(r.materializedResult.observations.length).toBe(0)
+    }
   })
 
   it('treats non-flag actions as ordinary racing', async () => {

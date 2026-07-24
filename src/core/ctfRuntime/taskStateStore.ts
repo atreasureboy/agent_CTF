@@ -387,6 +387,11 @@ function deepFreeze<T>(v: T, seen: WeakSet<object>): T {
 }
 
 function reduce(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
+  return reduceInternal(state, event)
+}
+
+/** Public reducer for the replayer. */
+export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTaskState {
   switch (event.type) {
     case 'TASK_CREATED':
       return event.initial

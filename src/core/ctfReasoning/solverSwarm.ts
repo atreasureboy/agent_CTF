@@ -63,8 +63,11 @@ export function createSolverSwarmExecutor(options: SolverSwarmOptions): Strategy
       const ac = new AbortController()
       const timer = setTimeout(() => ac.abort(new Error('swarm_winner_timeout')), options.winnerTimeoutMs ?? 60_000)
       try {
-        const tasks = members.map((m) =>
-          runMember(m, ctx, ac.signal, isFlagCheck).then((res) => ({ memberId: m.id, res })),
+        type SwarmTaskResult = { memberId: string; res: ActionExecutionResult; index: number }
+        const tasks: Array<Promise<SwarmTaskResult>> = members.map((m, i) =>
+          runMember(m, ctx, ac.signal, isFlagCheck).then(
+            (res): SwarmTaskResult => ({ memberId: m.id, res, index: i }),
+          ),
         )
         // First resolve that has at least one flag-candidate draft wins.
         const winnerP = waitForWinner(tasks, ac)
@@ -73,9 +76,9 @@ export function createSolverSwarmExecutor(options: SolverSwarmOptions): Strategy
         const settled = await Promise.allSettled(tasks)
         const partials: MaterializedResult[] = settled
           .filter((s) => s.status === 'fulfilled')
-          .map((s) => (s as PromiseFulfilledResult<{ memberId: string; res: ActionExecutionResult }>).value.res)
-          .filter((r) => r.status === 'executed')
-          .map((r) => r.materializedResult)
+          .map((s) => (s as PromiseFulfilledResult<SwarmTaskResult>).value)
+          .filter((w): w is SwarmTaskResult & { res: Extract<ActionExecutionResult, { status: 'executed' }> } => w.res.status === 'executed')
+          .map((w) => w.res.materializedResult)
         return mergeResult(winner.res, partials, winner.memberId, ctx.attempt.id, winner.index)
       } finally {
         clearTimeout(timer)
@@ -110,15 +113,10 @@ async function runMember(
 }
 
 async function waitForWinner(
-  tasks: Promise<{ memberId: string; res: ActionExecutionResult }>[],
+  tasks: Array<Promise<{ memberId: string; res: ActionExecutionResult; index: number }>>,
   ac: AbortController,
-): Promise<{ memberId: string; res: ActionExecutionResult }> {
-  // Use Promise.race against the first winning result. If none of the
-  // first N resolve with a flag candidate, fall back to the first
-  // executed result.
-  const wrapped = tasks.map((t, i) =>
-    t.then((r) => ({ index: i, ...r })),
-  )
+): Promise<{ memberId: string; res: ActionExecutionResult; index: number }> {
+  const wrapped = tasks.map((t) => t)
   return new Promise((resolve, reject) => {
     let resolved = false
     const onAbort = (): void => {
@@ -130,7 +128,7 @@ async function waitForWinner(
     ac.signal.addEventListener('abort', onAbort, { once: true })
     // Sequential race: first to resolve with a flag candidate wins.
     void consumeFirst(wrapped, 0, (result) => {
-      if (resolved) return
+      if (resolved) return false
       if (result.res.status !== 'executed') return false
       if (result.res.materializedResult.flagCandidateDrafts.length > 0) {
         resolved = true
@@ -144,10 +142,10 @@ async function waitForWinner(
 }
 
 async function consumeFirst<T extends { res: ActionExecutionResult }>(
-  items: Promise<T>[],
+  items: Promise<{ res: ActionExecutionResult } & T>[],
   index: number,
-  accept: (r: T) => boolean | Promise<boolean>,
-  resolve: (r: T) => void,
+  accept: (r: { res: ActionExecutionResult } & T) => boolean | Promise<boolean>,
+  resolve: (r: { res: ActionExecutionResult } & T) => void,
   reject: (err: unknown) => void,
 ): Promise<void> {
   if (index >= items.length) {
