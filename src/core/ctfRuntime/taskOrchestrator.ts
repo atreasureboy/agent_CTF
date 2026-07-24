@@ -449,6 +449,26 @@ export class CTFTaskOrchestrator {
             workflowRunId: id,
           })
           for (const ev of projection.events) this.safeApply(ev)
+          // §七 — Workflow completion feeds the reasoning loop. The
+          // workflow's step outcomes + projections are surfaced as
+          // Observations / Evidence / SuggestedActions via the parser
+          // pipeline that the projector already mirrors into the
+          // state. Forward to the coordinator so it can plan the
+          // task-level next action.
+          try {
+            await this.processReasoningInput({
+              source: 'workflow',
+              runContext: { workflowRunId: id },
+              newObservationIds: [],
+              newEvidenceIds: [],
+              suggestedActions: [
+                { type: 'run_workflow', workflowId, inputs: inputs ?? {}, reason: 'workflow finished; reschedule', priority: 1, costTier: 'cheap' },
+              ],
+            })
+          } catch {
+            // Reasoning failure does not propagate to the caller — the
+            // workflow itself succeeded.
+          }
           if (r.status === 'cancelled') {
             // §九 — cancel path emits WORKFLOW_CANCELLED so the run record
             // reflects the actual outcome (not 'completed').
@@ -604,6 +624,18 @@ export class CTFTaskOrchestrator {
         })
         const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
         this.safeApply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
+        // §七 — Main Agent completion feeds the reasoning loop.
+        try {
+          await this.processReasoningInput({
+            source: 'main-agent',
+            runContext: { agentRunId },
+            newObservationIds: [],
+            newEvidenceIds: [],
+            suggestedActions: [],
+          })
+        } catch {
+          // Reasoning failure does not break the main agent result.
+        }
         return {
           agentRunId,
           profileId,

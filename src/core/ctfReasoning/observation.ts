@@ -64,6 +64,8 @@ export interface Observation {
   attributes: Record<string, unknown>
   rawExcerpt?: string
   confidence: number
+  /** §六 — the Attempt id that produced this Observation. */
+  attemptId?: string
   createdAt: number
 }
 
@@ -74,6 +76,8 @@ export interface ObservationDraft {
   attributes?: Record<string, unknown>
   rawExcerpt?: string
   confidence: number
+  /** §六 — populated by MaterializationContext before createObservation. */
+  attemptId?: string
 }
 
 /** Build a fully-formed Observation from a draft. Throws on invariant
@@ -102,6 +106,7 @@ export function createObservation(taskId: string, draft: ObservationDraft): Obse
     attributes: draft.attributes ?? {},
     rawExcerpt,
     confidence: draft.confidence,
+    attemptId: draft.attemptId,
     createdAt: Date.now(),
   }
 }

@@ -44,6 +44,14 @@ export interface ArtifactMeta {
   agentRunId?: string
   workflowRunId?: string
   handoffId?: string
+  /** §六 — Attempt that produced this Artifact. */
+  attemptId?: string
+  /** §十三 — provenance predicates for `artifact_exists` Conditions. */
+  producedByStepId?: string
+  /** §十三 — extension used by `artifact_exists`. */
+  extension?: string
+  /** §十三 — parent artifact for nested extracts. */
+  parentArtifactId?: string
   /** Relative path under artifacts root, e.g. 'bin/abc123.bin'. */
   path: string
   /** Optional source reference (the tool+input that produced this). */

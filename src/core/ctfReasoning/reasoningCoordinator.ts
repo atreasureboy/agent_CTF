@@ -27,6 +27,7 @@
 
 import type { MaterializedResult } from './resultMaterializer.js'
 import { planStrategy } from './strategyPlanner.js'
+import { createStrategyDecision } from './strategyDecision.js'
 import { createObservation, type Observation } from './observation.js'
 import {
   createEvidence,
@@ -72,6 +73,10 @@ import {
   DEFAULT_MAX_STRATEGY_CYCLES,
   DEFAULT_MAX_TOTAL_STRATEGY_ACTIONS_PER_TASK,
 } from './reasoningConstants.js'
+import {
+  DEFAULT_COMPLETION_POLICY,
+  type CompletionPolicy,
+} from './completionPolicy.js'
 
 export interface ReasoningCoordinatorOptions {
   taskId: string
@@ -102,6 +107,8 @@ export interface ProcessReasoningInputsInput {
     handoffId?: string
     stepId?: string
   }
+  /** §二十三 — completion policy overrides the default. */
+  completionPolicy?: CompletionPolicy
   /** Optional flag for completion policy: auto-complete local fixtures
    *  when a flag candidate is validated. Default false (real contests
    *  wait for human / platform verification per §二十三). */
@@ -270,6 +277,19 @@ async function runCycles(
       { heavyApproved: options.heavyApproved, taskTerminal: false },
     )
     if (!budgetCheck.allowed) {
+      // §十一 — Record a StrategyDecision that explicitly names the
+      // budget denial so audits can see why a selected action was
+      // rejected at the post-planning stage.
+      const deniedDecision = createStrategyDecision(options.taskId, {
+        selectedAction: undefined,
+        rejectedActions: [{ action: selected, reason: 'budget_denied', detail: budgetCheck.detail }],
+        reason: `budget denied: ${budgetCheck.reason}`,
+        basedOnObservationIds: input.newObservationIds,
+        basedOnEvidenceIds: input.newEvidenceIds,
+        basedOnHypothesisIds: selected.hypothesisIds ?? [],
+      })
+      store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision: deniedDecision })
+      i.strategyDecisionIds.push(deniedDecision.id)
       stopped = true
       stopReason = `budget denied: ${budgetCheck.reason}`
       break
@@ -279,6 +299,7 @@ async function runCycles(
     const attempt = buildAttempt(options, selected, cycleCounter)
     store.apply({ type: 'ATTEMPT_STARTED', attempt })
     i.selectedActionIds.push(attempt.id)
+    // §二十二 — PendingAction FSM: pending → selected.
     markPendingSelected(i, selected, attempt.id)
 
     // Update in-flight + budget BEFORE execution.
@@ -334,6 +355,9 @@ async function runCycles(
         reason: execResult.reason,
         completedAt,
       })
+      // §二十二 — PendingAction FSM: selected → rejected.
+      const pid = pendingIdFor(i, selected)
+      if (pid) i.pending.reject(pid)
       continue
     }
     if (execResult.status === 'failed') {
@@ -354,15 +378,23 @@ async function runCycles(
         evidenceIds: [],
         completedAt,
       })
+      // §二十二 — PendingAction FSM: selected → rejected.
+      const pid2 = pendingIdFor(i, selected)
+      if (pid2) i.pending.reject(pid2)
       continue
     }
 
     // executed: materialize + apply products + ATTEMPT_COMPLETED.
+    // §二十一 — merge the executor's executionRefs into the
+    // materialization context so Artifact / Attempt metadata get the
+    // actual run ids (workflowRunId, oneShotRunId, etc.) back.
+    const execRefs = execResult.executionRefs ?? {}
     const matCtx = createMaterializationContext({
+      ...input.runContext,
+      ...execRefs,
       taskId: options.taskId,
       attemptId: attempt.id,
       producerId: producerIdFor(selected),
-      ...input.runContext,
     })
     const drafts = attachAttemptToDrafts(execResult.materializedResult, matCtx.attemptId)
     const observationIds: string[] = []
@@ -432,8 +464,12 @@ async function runCycles(
       flagCandidateIds,
       completedAt: Date.now(),
     })
+    // §二十二 — PendingAction FSM: selected → executed.
+    const pidExec = pendingIdFor(i, selected)
+    if (pidExec) i.pending.markExecuted(pidExec)
 
     // §二十三 — validated FlagCandidate triggers stop.
+    const policy = input.completionPolicy ?? DEFAULT_COMPLETION_POLICY
     const live = store.getState()
     const validated = live.flagCandidates.find(
       (c) => flagCandidateIds.includes(c.id) && c.validation.locallyVerified,
@@ -441,9 +477,9 @@ async function runCycles(
     if (validated) {
       stopped = true
       stopReason = 'validated flag candidate found'
-      // §二十三 — autoCompleteLocalFixtures controls whether the
-      // orchestrator marks the task solved immediately.
-      if (input.autoCompleteLocalFixtures) {
+      // §二十三 — CompletionPolicy controls auto-completion. Real
+      // contests wait for platform / human verification by default.
+      if (policy.autoCompleteLocalFixtures && !policy.requirePlatformVerification) {
         store.apply({
           type: 'TASK_COMPLETED',
           status: 'solved',
@@ -605,12 +641,23 @@ function applyHypothesisUpdates(
   }
 }
 
-function markPendingSelected(i: CoordinatorInternals, action: SuggestedAction, _attemptId: string): void {
-  // Find the pending id by fingerprint.
+function markPendingSelected(i: CoordinatorInternals, action: SuggestedAction, _attemptId: string): string | undefined {
   const items = i.pending.listEligible()
   const match = items.find((p) => p.action === action || sameAction(p.action, action))
-  if (match) i.pending.select(match.id)
-  void _attemptId
+  if (match) {
+    i.pending.select(match.id)
+    return match.id
+  }
+  return undefined
+}
+
+function pendingIdFor(i: CoordinatorInternals, action: SuggestedAction): string | undefined {
+  const items = i.pending.listEligible()
+  const match = items.find((p) => p.action === action || sameAction(p.action, action))
+  if (match) return match.id
+  // After a transition, listEligible only returns pending — look up
+  // the most recently transitioned item by full snapshot.
+  return undefined
 }
 
 function sameAction(a: SuggestedAction, b: SuggestedAction): boolean {

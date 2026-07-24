@@ -197,6 +197,12 @@ export interface WorkflowConditionContext {
   stepOutcomes: ReadonlyMap<string, { status: 'succeeded' | 'failed' | 'cancelled' | 'skipped' }>
 }
 
+/** §十三 — read-only dependency injected into the Workflow Condition
+ *  evaluator when TaskState does not carry artifact metadata. */
+export interface WorkflowConditionDependencies {
+  resolveArtifact(id: string): ArtifactMetadataView | undefined
+}
+
 /** Default scope: only items produced by the current WorkflowRun. */
 export function defaultWorkflowScope(currentWorkflowRunId?: string): ConditionScope {
   return currentWorkflowRunId !== undefined
@@ -261,6 +267,7 @@ function matchesScope(
 export function evaluateWorkflowCondition(
   condition: WorkflowCondition,
   ctx: WorkflowConditionContext,
+  deps?: WorkflowConditionDependencies,
 ): boolean {
   switch (condition.type) {
     case 'step_succeeded':
@@ -315,11 +322,15 @@ export function evaluateWorkflowCondition(
 
     case 'artifact_exists': {
       // §十三 — real metadata predicates, not just `length > 0`.
+      // Reads metadata from ctx.state.artifacts (TaskState) first, then
+      // falls back to the injected resolver for callers that don't keep
+      // metadata in TaskState.
       const scope = resolveScope(condition.scope, ctx)
       const ids = ctx.state.artifactIds
-      const meta = ctx.state.artifacts
+      const map = ctx.state.artifacts
       for (const id of ids) {
-        const m = meta?.get(id)
+        let m = map?.get(id)
+        if (!m && deps) m = deps.resolveArtifact(id)
         const createdAt = m?.createdAt
         const producedByWorkflowRunId = m?.producedByWorkflowRunId
         const producedByStepId = m?.producedByStepId
