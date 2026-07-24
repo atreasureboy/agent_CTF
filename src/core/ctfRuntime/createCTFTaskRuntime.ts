@@ -96,6 +96,16 @@ export interface CTFTaskRuntime {
   /** Phase 2.0 §六 — exposed so tests + integrations can register additional
    *  tool prefixes that route through BackgroundJobManager. */
   oneShotRunnerRegistry: import('../../ctf/oneshot/dispatcher.js').BackgroundJobRunnerRegistry
+  /** Phase 3.0 — Model Reliability Gateway, Solver Portfolio, and Tool Visibility */
+  modelReliability?: {
+    registry: import('../modelReliability/modelRegistry.js').ModelCapabilityRegistry
+    healthStore: import('../modelReliability/modelHealth.js').ModelHealthStore
+    circuitBreaker: import('../modelReliability/modelCircuitBreaker.js').ModelCircuitBreaker
+    router: import('../modelReliability/modelRouter.js').ModelRouter
+    gateway: import('../modelReliability/structuredModelGateway.js').StructuredModelGateway
+  }
+  solverPortfolio?: import('../solverPortfolio/solverPortfolio.js').SolverPortfolio
+  toolVisibilityPolicy?: import('../toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
   getState(): Readonly<CTFTaskState>
   cancel(reason: string): Promise<void>
   dispose(): Promise<void>
@@ -291,6 +301,23 @@ export async function createCTFTaskRuntime(
     } as unknown as { summary?: string; error?: string }
   })
 
+  // ── Phase 3.0 — Instantiate Model Reliability, Portfolio, & Tool Visibility
+  const { ModelCapabilityRegistry } = await import('../modelReliability/modelRegistry.js')
+  const { ModelHealthStore } = await import('../modelReliability/modelHealth.js')
+  const { ModelCircuitBreaker } = await import('../modelReliability/modelCircuitBreaker.js')
+  const { ModelRouter } = await import('../modelReliability/modelRouter.js')
+  const { StructuredModelGateway } = await import('../modelReliability/structuredModelGateway.js')
+  const { SolverPortfolio } = await import('../solverPortfolio/solverPortfolio.js')
+  const { ToolVisibilityPolicy } = await import('../toolVisibility/toolVisibilityPolicy.js')
+
+  const registry = new ModelCapabilityRegistry()
+  const healthStore = new ModelHealthStore()
+  const circuitBreaker = new ModelCircuitBreaker(healthStore)
+  const router = new ModelRouter(registry, healthStore, circuitBreaker)
+  const gateway = new StructuredModelGateway(router, healthStore, circuitBreaker)
+  const portfolio = new SolverPortfolio()
+  const toolVisibilityPolicy = new ToolVisibilityPolicy()
+
   return {
     orchestrator,
     dependencies,
@@ -298,6 +325,15 @@ export async function createCTFTaskRuntime(
     mainHarness: harness,
     mode,
     oneShotRunnerRegistry: runnerRegistry,
+    modelReliability: {
+      registry,
+      healthStore,
+      circuitBreaker,
+      router,
+      gateway,
+    },
+    solverPortfolio: portfolio,
+    toolVisibilityPolicy,
     getState: () => orchestrator.getState(),
     async cancel(reason: string): Promise<void> {
       await orchestrator.cancel(reason)
