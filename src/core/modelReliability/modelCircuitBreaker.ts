@@ -1,4 +1,5 @@
-import { ModelHealthRecord, ModelHealthStore } from './modelHealth.js'
+import type { ModelHealthRecord } from './modelHealth.js'
+import { ModelHealthStore } from './modelHealth.js'
 
 export interface ModelCircuitBreakerPolicy {
   maxConsecutiveSchemaFailures: number
@@ -34,27 +35,36 @@ export class ModelCircuitBreaker {
         rec.circuitOpenedAt &&
         Date.now() - rec.circuitOpenedAt > this.policy.cooldownMs
       ) {
-        // Cooldown passed, allow probe (half-open)
-        rec.status = 'degraded'
-        return false
+        // Cooldown passed: attempt transition to half_open if no probe in flight
+        if (!rec.halfOpenProbeInFlight) {
+          this.healthStore.setStatus(rec.modelId, 'half_open', undefined, rec.taskId)
+          return false
+        }
+        // A probe is already in flight, block concurrent requests
+        return true
       }
       return true
     }
 
-    if (rec.schemaFailures >= this.policy.maxConsecutiveSchemaFailures) {
-      this.trip(rec, `Consecutive schema failures (${rec.schemaFailures}) exceeded threshold`)
+    if (rec.status === 'half_open') {
+      // If probe is currently in flight for half_open, reject additional concurrent requests
+      return false
+    }
+
+    if (rec.consecutiveSchemaFailures >= this.policy.maxConsecutiveSchemaFailures) {
+      this.trip(rec, `Consecutive schema failures (${rec.consecutiveSchemaFailures}) exceeded threshold`)
       return true
     }
-    if (rec.toolArgumentFailures >= this.policy.maxConsecutiveToolArgumentFailures) {
-      this.trip(rec, `Consecutive tool argument failures (${rec.toolArgumentFailures}) exceeded threshold`)
+    if (rec.consecutiveToolArgumentFailures >= this.policy.maxConsecutiveToolArgumentFailures) {
+      this.trip(rec, `Consecutive tool argument failures (${rec.consecutiveToolArgumentFailures}) exceeded threshold`)
       return true
     }
-    if (rec.timeouts >= this.policy.maxTimeoutsPerWindow) {
-      this.trip(rec, `Timeouts count (${rec.timeouts}) exceeded threshold`)
+    if (rec.timeoutTimestamps.length >= this.policy.maxTimeoutsPerWindow) {
+      this.trip(rec, `Timeouts window count (${rec.timeoutTimestamps.length}) exceeded threshold`)
       return true
     }
-    if (rec.repeatedActionLoops >= this.policy.maxRepeatedLoops) {
-      this.trip(rec, `Repeated action loops (${rec.repeatedActionLoops}) exceeded threshold`)
+    if (rec.loopTimestamps.length >= this.policy.maxRepeatedLoops) {
+      this.trip(rec, `Repeated action loops window count (${rec.loopTimestamps.length}) exceeded threshold`)
       return true
     }
 
@@ -66,13 +76,6 @@ export class ModelCircuitBreaker {
   }
 
   public reset(modelId: string, taskId?: string): void {
-    const rec = this.healthStore.getRecord(modelId, taskId)
-    rec.status = 'healthy'
-    rec.schemaFailures = 0
-    rec.toolArgumentFailures = 0
-    rec.timeouts = 0
-    rec.repeatedActionLoops = 0
-    rec.emptyResponses = 0
-    rec.providerErrors = 0
+    this.healthStore.recordSuccess(modelId, taskId)
   }
 }

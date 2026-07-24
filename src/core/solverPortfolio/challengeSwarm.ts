@@ -1,8 +1,10 @@
-import { CrossSolverEvidenceBus } from './crossSolverEvidenceBus.js'
+import type { CrossSolverEvidenceBus } from './crossSolverEvidenceBus.js'
 import { FlagDiscriminator } from './flagDiscriminator.js'
-import { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
-import { ExternalSolverResult, SolverChallengeInput, SolverRunRecord } from './solverTypes.js'
+import type { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
+import type { ExternalSolverResult, SolverChallengeInput } from './solverTypes.js'
 import { StagnationDetector } from './stagnationDetector.js'
+import { StagnationSignalCollector } from './stagnationCollector.js'
+import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface ChallengeSwarmPolicy {
   maxConcurrentSolvers: number
@@ -44,26 +46,51 @@ export class ChallengeSwarm {
 
   public async runSwarm(
     input: SolverChallengeInput,
+    taskState?: Readonly<CTFTaskState>,
   ): Promise<{ winnerResult?: ExternalSolverResult; allResults: ExternalSolverResult[] }> {
-    const results: ExternalSolverResult[] = []
+    const allResults: ExternalSolverResult[] = []
+    const pendingSolverIds = [...this.policy.initialSolverIds]
+    const activePromises = new Map<string, Promise<{ handle: SolverRunHandle; result: ExternalSolverResult }>>()
+    let totalStarted = 0
+    let winnerResult: ExternalSolverResult | undefined
 
-    // Phase 1: Start initial scout / native solver
-    for (const sId of this.policy.initialSolverIds) {
+    if (input.signal) {
+      input.signal.addEventListener('abort', () => {
+        void this.cancelAllActive('Task abort signal fired')
+      }, { once: true })
+    }
+
+    const launchSolver = async (sId: string) => {
       const adapter = this.adapters.get(sId)
-      if (!adapter) continue
-
+      if (!adapter) return null
       const handle = await adapter.start(input)
       this.activeHandles.set(handle.runId, handle)
+      totalStarted++
+      const resPromise = handle.wait().then((result) => {
+        this.activeHandles.delete(handle.runId)
+        return { handle, result }
+      })
+      activePromises.set(handle.runId, resPromise)
+      return handle.runId
+    }
 
-      const res = await handle.wait()
-      results.push(res)
+    // Launch initial batch up to maxConcurrentSolvers in parallel
+    while (pendingSolverIds.length > 0 && activePromises.size < this.policy.maxConcurrentSolvers && totalStarted < this.policy.maxTotalSolvers) {
+      const nextId = pendingSolverIds.shift()!
+      await launchSolver(nextId)
+    }
 
-      // Publish any new evidence/observations to bus
-      for (const obs of res.observations) {
+    while (activePromises.size > 0) {
+      const finished = await Promise.race(Array.from(activePromises.values()))
+      activePromises.delete(finished.handle.runId)
+      allResults.push(finished.result)
+
+      // Publish evidence/observations to evidence bus
+      for (const obs of finished.result.observations) {
         this.evidenceBus.publish({
           id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           taskId: input.taskId,
-          sourceSolverRunId: handle.runId,
+          sourceSolverRunId: finished.handle.runId,
           evidenceIds: [],
           observationIds: [],
           artifactIds: [],
@@ -73,51 +100,61 @@ export class ChallengeSwarm {
         })
       }
 
-      // Check candidate validation
-      if (res.flagCandidates.length > 0) {
-        for (const cand of res.flagCandidates) {
+      // Check flag candidates
+      if (finished.result.flagCandidates && finished.result.flagCandidates.length > 0) {
+        for (const cand of finished.result.flagCandidates) {
           const disc = FlagDiscriminator.discriminate({ candidateValue: cand.value })
-          if (disc.valid) {
+          // ONLY locally_validated or platform_accepted cancels other solvers
+          if (disc.status === 'locally_validated' || disc.status === 'platform_accepted') {
+            winnerResult = finished.result
             if (this.policy.cancelLosersOnValidatedCandidate) {
               await this.cancelAllActive('Validated flag candidate found by winner solver.')
             }
-            return { winnerResult: res, allResults: results }
+            return { winnerResult, allResults }
           }
         }
       }
 
       // Check for stagnation escalation
-      if (this.policy.stagnationEscalation && res.status === 'completed' && res.observations.length === 0) {
-        const stagDecision = StagnationDetector.evaluate({
-          cyclesWithoutNewEvidence: 4,
-          millisecondsWithoutNewEvidence: 10000,
-          repeatedAttemptFingerprints: 0,
-          repeatedActionFamilies: 0,
-          consecutiveToolFailures: 0,
-          contextCompactions: 0,
-          hypothesisProgressDelta: 0,
+      if (
+        this.policy.stagnationEscalation &&
+        taskState &&
+        totalStarted < this.policy.maxTotalSolvers
+      ) {
+        const signals = StagnationSignalCollector.collect({
+          state: taskState,
+          solverRunId: finished.handle.runId,
         })
+        const decision = StagnationDetector.evaluate(signals)
 
-        if (stagDecision.action === 'switch_model' || stagDecision.action === 'spawn_branch') {
-          // Escalate to next stage solver in policy
+        if (decision.action === 'switch_model' || decision.action === 'spawn_branch') {
           for (const escId of this.policy.escalationSolverIds) {
-            const escAdapter = this.adapters.get(escId)
-            if (!escAdapter) continue
-            const escHandle = await escAdapter.start(input)
-            const escRes = await escHandle.wait()
-            results.push(escRes)
+            if (totalStarted < this.policy.maxTotalSolvers && !activePromises.has(escId)) {
+              await launchSolver(escId)
+            }
           }
         }
       }
+
+      // Backfill pending solvers if concurrency permits
+      while (pendingSolverIds.length > 0 && activePromises.size < this.policy.maxConcurrentSolvers && totalStarted < this.policy.maxTotalSolvers) {
+        const nextId = pendingSolverIds.shift()!
+        await launchSolver(nextId)
+      }
     }
 
-    return { allResults: results }
+    return { winnerResult, allResults }
   }
 
   public async cancelAllActive(reason: string): Promise<void> {
-    for (const [runId, handle] of this.activeHandles.entries()) {
-      await handle.cancel(reason)
-    }
+    const handles = Array.from(this.activeHandles.values())
     this.activeHandles.clear()
+    for (const handle of handles) {
+      try {
+        await handle.cancel(reason)
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 }

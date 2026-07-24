@@ -36,6 +36,7 @@ import {
 } from '../src/core/ctfRuntime/taskStateStore.js'
 import { parseContestScope } from '../src/core/contestScope.js'
 import { createDefaultContestConfig } from '../src/core/contestConfig.js'
+import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import type OpenAI from 'openai'
 import type { Renderer } from '../src/ui/renderer.js'
 
@@ -251,30 +252,7 @@ describe('§八 — Handoff unique execution path', () => {
 // ────────────────────────────────────────────────────────────────────────
 describe('§九 — TaskEvent reducer applies state changes', () => {
   function freshState(): CTFTaskState {
-    const now = Date.now()
-    return {
-      taskId: 't', phase: 'intake',
-      context: {
-        taskId: 't',
-        workspaceDir: root,
-        sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'orchestrator',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    }
+    return createTestTaskState({ taskId: 't', phase: 'intake' })
   }
 
   it('HYPOTHESIS_ADDED appends to the hypotheses array', () => {
@@ -586,9 +564,9 @@ describe('§九 — Historical-record naming', () => {
 // ────────────────────────────────────────────────────────────────────────
 describe('§十四 — Terminal-phase guard', () => {
   function freshState(): CTFTaskState {
-    const now = Date.now()
-    return {
-      taskId: 't', phase: 'intake',
+    return createTestTaskState({
+      taskId: 't',
+      phase: 'intake',
       context: {
         taskId: 't',
         workspaceDir: root,
@@ -599,17 +577,7 @@ describe('§十四 — Terminal-phase guard', () => {
         contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
         contestConfig: createDefaultContestConfig({ cwd: root }),
       },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    }
+    })
   }
 
   it('TASK_COMPLETED is immutable', () => {

@@ -322,6 +322,33 @@ export interface AgentRunResult {
   producedArtifactIds: string[]
 }
 
+export type SolverRunStatus =
+  | 'queued'
+  | 'running'
+  | 'stagnating'
+  | 'paused'
+  | 'completed'
+  | 'candidate_found'
+  | 'gave_up'
+  | 'cancelled'
+  | 'failed'
+
+export interface SolverRunRecord {
+  id: string
+  taskId: string
+  solverId: string
+  solverType: 'native' | 'process' | 'workflow'
+  status: SolverRunStatus
+  queuedAt: number
+  startedAt?: number
+  completedAt?: number
+  summary?: string
+  error?: string
+  guidanceMessages?: string[]
+  producedCandidateIds?: string[]
+  producedEvidenceIds?: string[]
+}
+
 export interface CTFTaskState {
   taskId: string
   phase: CTFTaskPhase
@@ -348,6 +375,7 @@ export interface CTFTaskState {
   agentRuns: AgentRunRecord[]
   workflowRuns: WorkflowRunRecord[]
   jobs: JobRecord[]
+  solverRuns: SolverRunRecord[]
   /** Phase 2.0 §三 — OneShot runs as first-class task entities. Filter by
    *  status for "active" subsets. */
   oneShotRuns: OneShotRunRecord[]
@@ -372,6 +400,7 @@ export interface CTFTaskState {
   activeAgentRunIds: string[]
   activeWorkflowRunIds: string[]
   activeJobIds: string[]
+  activeSolverRunIds: string[]
 
   flagCandidates: FlagCandidate[]
 

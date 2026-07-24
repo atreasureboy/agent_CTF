@@ -12,7 +12,7 @@ export interface StagnationSignals {
 export type StagnationDecision =
   | { action: 'continue' }
   | { action: 'nudge'; reason: string }
-  | { action: 'switch_model'; targetModelId: string; reason: string }
+  | { action: 'switch_model'; targetModelId?: string; reason: string }
   | { action: 'spawn_branch'; reason: string }
   | { action: 'pause'; reason: string }
 
@@ -28,14 +28,14 @@ export class StagnationDetector {
     if (signals.repeatedAttemptFingerprints >= 5 || signals.repeatedActionFamilies >= 5) {
       return {
         action: 'spawn_branch',
-        reason: 'Attempt fingerprint repeated 5 times. Halting loop and spawning new branch hypothesis.',
+        reason: `Attempt fingerprint repeated ${signals.repeatedAttemptFingerprints} times. Halting loop and spawning new branch hypothesis.`,
       }
     }
 
     if (signals.repeatedAttemptFingerprints >= 3 || signals.repeatedActionFamilies >= 3) {
       return {
         action: 'nudge',
-        reason: 'Attempt fingerprint repeated 3 times. Nudging solver with do_not_repeat guidance.',
+        reason: `Attempt fingerprint repeated ${signals.repeatedAttemptFingerprints} times. Nudging solver with do_not_repeat guidance.`,
       }
     }
 
@@ -43,7 +43,7 @@ export class StagnationDetector {
       return {
         action: 'switch_model',
         targetModelId: 'high-tier-model',
-        reason: 'Solver stagnated for 4 cycles without new evidence. Escalating to high-tier model.',
+        reason: `Solver stagnated for ${signals.cyclesWithoutNewEvidence} cycles without new evidence. Escalating model.`,
       }
     }
 

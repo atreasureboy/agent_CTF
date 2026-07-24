@@ -1,11 +1,32 @@
 import { z } from 'zod'
+import type OpenAI from 'openai'
 
 import { ModelRole } from './modelCapability.js'
 import { ModelCircuitBreaker } from './modelCircuitBreaker.js'
-
 import { ModelHealthStore } from './modelHealth.js'
 import { ModelRolePolicy } from './modelRolePolicy.js'
 import { ModelRouter, ModelRoutingDecision } from './modelRouter.js'
+import { ModelProvider } from './providers/modelProvider.js'
+import { MissingModelProviderError } from './errors.js'
+import { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
+
+export interface AgentTurnModelRequest {
+  taskId: string
+  agentRunId?: string
+
+  role: ModelRole
+  preferredModelId?: string
+
+  messages: OpenAI.Chat.ChatCompletionMessageParam[]
+  tools?: OpenAI.Chat.ChatCompletionTool[]
+
+  temperature?: number
+  maxOutputTokens?: number
+
+  requiredCapabilities?: string[]
+
+  signal?: AbortSignal
+}
 
 export interface StructuredModelRequest<T> {
   role: ModelRole
@@ -17,7 +38,7 @@ export interface StructuredModelRequest<T> {
   taskId: string
   agentRunId?: string
   signal?: AbortSignal
-  // Mock LLM executor for isolated testing & pluggable provider backends
+  maxRepairRawChars?: number
   llmExecutor?: (
     modelId: string,
     systemPrompt: string,
@@ -35,13 +56,22 @@ export interface StructuredModelResponse<T> {
   routingDecision: ModelRoutingDecision
 }
 
-import { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
+export interface ModelInvocationGateway {
+  streamAgentTurn(
+    input: AgentTurnModelRequest,
+  ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>>
 
-export class StructuredModelGateway {
+  executeStructured<T>(
+    input: StructuredModelRequest<T>,
+  ): Promise<StructuredModelResponse<T>>
+}
+
+export class StructuredModelGateway implements ModelInvocationGateway {
   private router: ModelRouter
   private healthStore: ModelHealthStore
   private circuitBreaker: ModelCircuitBreaker
   private trajectoryRecorder?: TrajectoryRecorder
+  private providers = new Map<string, ModelProvider>()
 
   constructor(
     router: ModelRouter,
@@ -55,16 +85,27 @@ export class StructuredModelGateway {
     this.trajectoryRecorder = trajectoryRecorder
   }
 
-  public async executeStructured<T>(
-    req: StructuredModelRequest<T>,
-  ): Promise<StructuredModelResponse<T>> {
-    const startTime = Date.now()
+  public registerProvider(provider: ModelProvider): void {
+    this.providers.set(provider.id, provider)
+  }
 
-    // 1. Route model
+  public getProvider(id: string): ModelProvider | undefined {
+    return this.providers.get(id)
+  }
+
+  public hasProvider(id: string): boolean {
+    return this.providers.has(id)
+  }
+
+  public async streamAgentTurn(
+    req: AgentTurnModelRequest,
+  ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>> {
     const routingDecision = this.router.route({
       role: req.role,
       preferredModelId: req.preferredModelId,
+      requiredCapabilities: req.requiredCapabilities,
       taskId: req.taskId,
+      hasProvider: (pId) => this.providers.size > 0 ? this.providers.has(pId) : true,
     })
 
     this.trajectoryRecorder?.record(
@@ -74,6 +115,7 @@ export class StructuredModelGateway {
         selectedModelId: routingDecision.selectedModelId,
         reason: routingDecision.reason,
         role: req.role,
+        mode: 'streaming',
       },
       1,
       req.agentRunId,
@@ -88,9 +130,106 @@ export class StructuredModelGateway {
 
     for (let i = 0; i < candidateModels.length; i++) {
       const activeModelId = candidateModels[i]
+
+      const roleCheck = ModelRolePolicy.validateRolePermission(
+        activeModelId,
+        req.role,
+        'stream_agent_turn',
+      )
+      if (!roleCheck.allowed) {
+        this.healthStore.recordFailure(activeModelId, 'schema', roleCheck.reason, req.taskId)
+        continue
+      }
+
+      try {
+        let provider = Array.from(this.providers.values())[0]
+        if (!provider) {
+          throw new MissingModelProviderError(activeModelId, 'openai-compatible')
+        }
+
+        const modelProfile = {
+          id: activeModelId,
+          provider: provider.id,
+          model: activeModelId,
+          contextWindow: 128000,
+          capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: true },
+          reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+          economics: {},
+          allowedRoles: [req.role],
+          limits: { maxVisibleTools: 20, maxIterations: 50, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+          fallbackModelIds: [],
+        }
+
+        const stream = await provider.streamAgentTurn(modelProfile, {
+          taskId: req.taskId,
+          agentRunId: req.agentRunId,
+          role: req.role,
+          preferredModelId: activeModelId,
+          messages: req.messages,
+          tools: req.tools,
+          temperature: req.temperature,
+          maxOutputTokens: req.maxOutputTokens,
+          signal: req.signal,
+        })
+
+        this.healthStore.recordSuccess(activeModelId, req.taskId)
+        return stream
+      } catch (err: any) {
+        this.healthStore.recordFailure(
+          activeModelId,
+          'provider',
+          err.message,
+          req.taskId,
+        )
+        lastError = err
+      }
+    }
+
+    throw (
+      lastError ||
+      new Error(
+        `ModelInvocationGateway failed streamAgentTurn for role '${req.role}' across candidate models [${candidateModels.join(', ')}].`,
+      )
+    )
+  }
+
+  public async executeStructured<T>(
+    req: StructuredModelRequest<T>,
+  ): Promise<StructuredModelResponse<T>> {
+    const startTime = Date.now()
+
+    const routingDecision = this.router.route({
+      role: req.role,
+      preferredModelId: req.preferredModelId,
+      taskId: req.taskId,
+      hasProvider: (pId) => this.providers.size > 0 ? this.providers.has(pId) : true,
+    })
+
+    this.trajectoryRecorder?.record(
+      req.taskId,
+      'model_routing_decision',
+      {
+        selectedModelId: routingDecision.selectedModelId,
+        reason: routingDecision.reason,
+        role: req.role,
+        mode: 'structured',
+      },
+      1,
+      req.agentRunId,
+    )
+
+    const candidateModels = [
+      routingDecision.selectedModelId,
+      ...routingDecision.fallbackModelIds,
+    ]
+
+    let lastError: Error | null = null
+    const maxChars = req.maxRepairRawChars ?? 4000
+
+    for (let i = 0; i < candidateModels.length; i++) {
+      const activeModelId = candidateModels[i]
       const isFallback = i > 0
 
-      // Check role policy for active model
       const roleCheck = ModelRolePolicy.validateRolePermission(
         activeModelId,
         req.role,
@@ -102,18 +241,50 @@ export class StructuredModelGateway {
       }
 
       try {
-        const executor =
-          req.llmExecutor ||
-          (async (mId, sys, user) => {
-            // Default placeholder executor if not provided
-            return {
-              rawText: JSON.stringify({ mockSuccess: true }),
-              usage: { inputTokens: 100, outputTokens: 50 },
+        let executor = req.llmExecutor
+        if (!executor) {
+          const provider = Array.from(this.providers.values())[0]
+          if (!provider) {
+            throw new MissingModelProviderError(activeModelId, 'default')
+          }
+          executor = async (mId, sys, user) => {
+            const modelProfile = {
+              id: mId,
+              provider: provider.id,
+              model: mId,
+              contextWindow: 128000,
+              capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: true },
+              reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+              economics: {},
+              allowedRoles: [req.role],
+              limits: { maxVisibleTools: 20, maxIterations: 50, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+              fallbackModelIds: [],
             }
-          })
+            const res = await provider.executeStructured(modelProfile, {
+              taskId: req.taskId,
+              agentRunId: req.agentRunId,
+              role: req.role,
+              preferredModelId: mId,
+              systemPrompt: sys,
+              userPrompt: user,
+              signal: req.signal,
+            })
+            return {
+              rawText: res.rawText,
+              usage: res.usage
+                ? { inputTokens: res.usage.promptTokens, outputTokens: res.usage.completionTokens }
+                : undefined,
+            }
+          }
+        }
 
-        // Initial call
         const res = await executor(activeModelId, req.systemPrompt, req.userPrompt)
+
+        if (res.rawText === '' || res.rawText === undefined) {
+          this.healthStore.recordFailure(activeModelId, 'empty', 'empty_response', req.taskId)
+          continue
+        }
+
         let parsedResult: T | null = null
         let repaired = false
 
@@ -121,7 +292,6 @@ export class StructuredModelGateway {
           const parsedJson = JSON.parse(res.rawText)
           parsedResult = req.outputSchema.parse(parsedJson)
         } catch (parseErr: any) {
-          // Schema failure — attempt ONE controlled repair prompt
           this.healthStore.recordFailure(
             activeModelId,
             'schema',
@@ -131,12 +301,11 @@ export class StructuredModelGateway {
 
           const rec = this.healthStore.getRecord(activeModelId, req.taskId)
           if (this.circuitBreaker.shouldTripCircuit(rec)) {
-            // Circuit open, jump to fallback
             continue
           }
 
-          // Single controlled repair attempt
-          const repairPrompt = `Your previous JSON output failed validation with error: ${parseErr.message}. Output ONLY valid JSON conforming to the requested schema. Raw text was: ${res.rawText}`
+          const truncatedRaw = res.rawText.slice(0, maxChars)
+          const repairPrompt = `Your previous JSON output failed validation with error: ${parseErr.message}. Output ONLY valid JSON matching the schema. Raw text was: ${truncatedRaw}`
           const repairRes = await executor(
             activeModelId,
             req.systemPrompt,
@@ -148,7 +317,6 @@ export class StructuredModelGateway {
             parsedResult = req.outputSchema.parse(repairedJson)
             repaired = true
           } catch (repairErr: any) {
-            // Repair failed — record schema failure again & skip to fallback
             this.healthStore.recordFailure(
               activeModelId,
               'schema',
@@ -166,7 +334,6 @@ export class StructuredModelGateway {
         }
 
         if (parsedResult !== null) {
-          // Successful parse
           this.healthStore.recordSuccess(activeModelId, req.taskId)
           return {
             modelId: activeModelId,
@@ -189,11 +356,10 @@ export class StructuredModelGateway {
       }
     }
 
-    // Absolutely NO NOOP return on failure! Throw explicit exception
     throw (
       lastError ||
       new Error(
-        `StructuredModelGateway failed for role '${req.role}' across all candidate models [${candidateModels.join(', ')}].`,
+        `StructuredModelGateway failed for role '${req.role}' across candidate models [${candidateModels.join(', ')}].`,
       )
     )
   }

@@ -112,10 +112,12 @@ export interface CreateHarnessInput {
    * artifact directory so the projector can observe its writes.
    */
   artifactStore?: ArtifactStore
-  /**
-   * Override the finding store used by this harness.
-   */
+  /** Override the finding store used by this harness. */
   findingStore?: FindingStore
+  /** Phase 3.1 — Model Gateway, Visibility Policy, Trajectory Recorder */
+  modelGateway?: import('./modelReliability/structuredModelGateway.js').ModelInvocationGateway
+  toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
+  trajectoryRecorder?: import('./trajectory/trajectoryRecorder.js').TrajectoryRecorder
 }
 
 export interface HarnessBundle {
@@ -263,6 +265,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     findingStore,
     handoffStore,
     toolFirstPolicy,
+    toolVisibilityPolicy: input.toolVisibilityPolicy,
     eventLog: new EventLog(taskWorkspace.paths.root),
     inlineTimeoutMs: 30 * 60 * 1000,
     defaultInlineMaxBytes: input.inlineMaxBytes ?? 10240,
@@ -439,6 +442,8 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // forward it into ToolContext. Tools read workspace/scope/taskId from
       // there and refuse model-supplied equivalents.
       taskContext: taskExecutionContext,
+      modelGateway: input.modelGateway,
+      toolVisibilityPolicy: input.toolVisibilityPolicy,
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
     return engine.runTurn(userMessage, history)

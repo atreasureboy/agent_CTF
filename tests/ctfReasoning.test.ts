@@ -29,51 +29,10 @@ import {
   DEFAULT_REASONING_BUDGET_LIMITS,
   createInitialReasoningBudgetState,
 } from '../src/core/ctfReasoning/reasoningBudget.js'
+import { createTestTaskState } from './fixtures/createTestTaskState.js'
 
 function emptyState(taskId = 't1'): CTFTaskState {
-  return {
-    taskId,
-    phase: 'triage',
-    context: {
-      taskId,
-      workspaceDir: '/tmp/ctf',
-      sessionDir: '/tmp/ctf/s',
-      artifactDir: '/tmp/ctf/a',
-      inputDir: '/tmp/ctf/i',
-      eventsFile: '/tmp/ctf/e.ndjson',
-      profileId: 'triage',
-      contestScope: { allowedFilesRoot: '/tmp/ctf', allowPublicNetwork: false, allowHeavyOneShots: false },
-      contestConfig: { allowedFilesRoot: '/tmp/ctf', allowPublicNetwork: false, allowHeavyOneShots: false },
-      environment: {},
-      abortSignal: new AbortController().signal,
-      metadata: {},
-    },
-    challenge: { inputArtifactIds: [] },
-    activeProfileId: 'triage',
-    findings: [],
-    artifactIds: [],
-    hypotheses: [],
-    attempts: [],
-    handoffs: [],
-    agentRuns: [],
-    workflowRuns: [],
-    jobs: [],
-    oneShotRuns: [],
-    activeAgentRunIds: [],
-    activeWorkflowRunIds: [],
-    activeJobIds: [],
-    observations: [],
-    evidence: [],
-    strategyDecisions: [],
-    pendingActions: [],
-    reasoningBudget: createInitialReasoningBudgetState(),
-    reasoningBudgetLimits: DEFAULT_REASONING_BUDGET_LIMITS,
-    flagCandidates: [],
-    diagnostics: [],
-    degraded: false,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  }
+  return createTestTaskState({ taskId, phase: 'triage' })
 }
 
 describe('Observation', () => {

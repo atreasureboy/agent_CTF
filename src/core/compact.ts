@@ -249,20 +249,32 @@ export async function maybeCompact(
 
   let summaryText: string
   try {
-    const response = await client.chat.completions.create(
+    const { OpenAICompatibleProvider } = await import('./modelReliability/providers/openAICompatibleProvider.js')
+    const provider = new OpenAICompatibleProvider(client)
+    const res = await provider.executeStructured(
       {
+        id: model,
+        provider: 'openai-compatible',
         model,
-        messages: [
-          { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0,
-        max_tokens: SUMMARY_OUTPUT_RESERVE,
-        // No tools — we explicitly don't want tool calls here
+        contextWindow: 128000,
+        capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
+        reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+        economics: {},
+        allowedRoles: ['progress_summarizer'],
+        limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+        fallbackModelIds: [],
       },
-      signal ? { signal } : undefined,
+      {
+        taskId: 'compact',
+        role: 'progress_summarizer',
+        preferredModelId: model,
+        systemPrompt: SUMMARY_SYSTEM_PROMPT,
+        userPrompt,
+        temperature: 0,
+        signal,
+      },
     )
-    summaryText = response.choices[0]?.message?.content ?? ''
+    summaryText = res.rawText ?? ''
   } catch {
     // If summarization fails, return original messages unchanged
     return { compacted: false, messages, summaryTokens: 0, originalTokens }

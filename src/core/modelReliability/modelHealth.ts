@@ -2,6 +2,7 @@ export type ModelHealthStatus =
   | 'healthy'
   | 'degraded'
   | 'circuit_open'
+  | 'half_open'
   | 'quota_limited'
   | 'unavailable'
 
@@ -10,26 +11,36 @@ export interface ModelHealthRecord {
   taskId?: string
   status: ModelHealthStatus
 
-  schemaFailures: number
-  toolArgumentFailures: number
-  timeouts: number
-  repeatedActionLoops: number
-  emptyResponses: number
-  providerErrors: number
+  consecutiveSchemaFailures: number
+  consecutiveToolArgumentFailures: number
+  consecutiveProviderFailures: number
+
+  totalSchemaFailures: number
+  totalToolArgumentFailures: number
+  totalProviderFailures: number
+
+  timeoutTimestamps: number[]
+  loopTimestamps: number[]
 
   successfulRuns: number
 
+  lastSuccessAt?: number
   lastFailureAt?: number
+
   circuitOpenedAt?: number
   circuitReason?: string
+
+  halfOpenProbeInFlight: boolean
 }
 
 export class ModelHealthStore {
   private records = new Map<string, ModelHealthRecord>()
   private readonly maxRecords: number
+  private readonly windowMs: number
 
-  constructor(maxRecords = 200) {
+  constructor(maxRecords = 200, windowMs = 300000) {
     this.maxRecords = maxRecords
+    this.windowMs = windowMs
   }
 
   private key(modelId: string, taskId?: string): string {
@@ -44,24 +55,37 @@ export class ModelHealthStore {
         modelId,
         taskId,
         status: 'healthy',
-        schemaFailures: 0,
-        toolArgumentFailures: 0,
-        timeouts: 0,
-        repeatedActionLoops: 0,
-        emptyResponses: 0,
-        providerErrors: 0,
+        consecutiveSchemaFailures: 0,
+        consecutiveToolArgumentFailures: 0,
+        consecutiveProviderFailures: 0,
+        totalSchemaFailures: 0,
+        totalToolArgumentFailures: 0,
+        totalProviderFailures: 0,
+        timeoutTimestamps: [],
+        loopTimestamps: [],
         successfulRuns: 0,
+        halfOpenProbeInFlight: false,
       }
       this.setRecord(k, record)
     }
+    this.cleanStaleTimestamps(record)
     return record
   }
 
   public recordSuccess(modelId: string, taskId?: string): void {
     const rec = this.getRecord(modelId, taskId)
     rec.successfulRuns++
-    if (rec.status === 'degraded' && rec.schemaFailures === 0 && rec.toolArgumentFailures === 0) {
+    rec.lastSuccessAt = Date.now()
+
+    // Reset consecutive failures on success
+    rec.consecutiveSchemaFailures = 0
+    rec.consecutiveToolArgumentFailures = 0
+    rec.consecutiveProviderFailures = 0
+    rec.halfOpenProbeInFlight = false
+
+    if (rec.status === 'degraded' || rec.status === 'half_open' || rec.status === 'circuit_open') {
       rec.status = 'healthy'
+      rec.circuitReason = undefined
     }
   }
 
@@ -72,27 +96,35 @@ export class ModelHealthStore {
     taskId?: string,
   ): void {
     const rec = this.getRecord(modelId, taskId)
-    rec.lastFailureAt = Date.now()
+    const now = Date.now()
+    rec.lastFailureAt = now
+
     switch (type) {
       case 'schema':
-        rec.schemaFailures++
+        rec.consecutiveSchemaFailures++
+        rec.totalSchemaFailures++
         break
       case 'toolArg':
-        rec.toolArgumentFailures++
-        break
-      case 'timeout':
-        rec.timeouts++
-        break
-      case 'loop':
-        rec.repeatedActionLoops++
-        break
-      case 'empty':
-        rec.emptyResponses++
+        rec.consecutiveToolArgumentFailures++
+        rec.totalToolArgumentFailures++
         break
       case 'provider':
-        rec.providerErrors++
+      case 'empty':
+        rec.consecutiveProviderFailures++
+        rec.totalProviderFailures++
+        break
+      case 'timeout':
+        rec.timeoutTimestamps.push(now)
+        rec.consecutiveProviderFailures++
+        rec.totalProviderFailures++
+        break
+      case 'loop':
+        rec.loopTimestamps.push(now)
+        rec.consecutiveToolArgumentFailures++
+        rec.totalToolArgumentFailures++
         break
     }
+
     if (rec.status === 'healthy') {
       rec.status = 'degraded'
     }
@@ -109,7 +141,25 @@ export class ModelHealthStore {
     if (status === 'circuit_open') {
       rec.circuitOpenedAt = Date.now()
       rec.circuitReason = reason
+      rec.halfOpenProbeInFlight = false
+    } else if (status === 'half_open') {
+      rec.halfOpenProbeInFlight = true
     }
+  }
+
+  public tryAcquireHalfOpenProbe(modelId: string, taskId?: string): boolean {
+    const rec = this.getRecord(modelId, taskId)
+    if (rec.status === 'half_open' && !rec.halfOpenProbeInFlight) {
+      rec.halfOpenProbeInFlight = true
+      return true
+    }
+    return false
+  }
+
+  private cleanStaleTimestamps(rec: ModelHealthRecord): void {
+    const cutoff = Date.now() - this.windowMs
+    rec.timeoutTimestamps = rec.timeoutTimestamps.filter((t) => t >= cutoff)
+    rec.loopTimestamps = rec.loopTimestamps.filter((t) => t >= cutoff)
   }
 
   private setRecord(key: string, record: ModelHealthRecord): void {

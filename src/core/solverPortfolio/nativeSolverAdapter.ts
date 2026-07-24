@@ -1,9 +1,36 @@
-import { OperatorMessage } from './operatorMessage.js'
-import { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
-import { ExternalSolverResult, SolverChallengeInput, SolverHealth, SolverRunRecord } from './solverTypes.js'
+import type { OperatorMessage } from './operatorMessage.js'
+import type { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
+import type { ExternalSolverResult, SolverChallengeInput, SolverHealth, SolverRunRecord } from './solverTypes.js'
+import type { CTFTaskState } from '../ctfRuntime/taskState.js'
+
+export interface NativeSolverRuntimeDelegate {
+  runMainAgent?(input: SolverChallengeInput): Promise<{
+    summary?: string
+    observations?: Array<{ summary: string; confidence: number; sourcePath?: string }>
+    artifacts?: Array<{ path: string; description: string }>
+    flagCandidates?: Array<{ value: string; confidence: number }>
+  }>
+  runWorkflow?(workflowId: string, input: SolverChallengeInput): Promise<{
+    summary?: string
+    observations?: Array<{ summary: string; confidence: number }>
+    artifacts?: Array<{ path: string; description: string }>
+  }>
+  cancel?(reason: string): Promise<void>
+  inspectState?(): Readonly<CTFTaskState>
+  sendGuidance?(message: string): Promise<void>
+}
 
 export class NativeSolverAdapter implements ExternalSolverAdapter {
   public readonly id = 'native-ctf-solver'
+  private delegate?: NativeSolverRuntimeDelegate
+
+  constructor(delegate?: NativeSolverRuntimeDelegate) {
+    this.delegate = delegate
+  }
+
+  public setDelegate(delegate: NativeSolverRuntimeDelegate): void {
+    this.delegate = delegate
+  }
 
   public async probe(): Promise<SolverHealth> {
     return {
@@ -17,6 +44,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
     let cancelled = false
     let cancelReason = ''
     const guidanceLog: OperatorMessage[] = []
+    const startTime = Date.now()
 
     const record: SolverRunRecord = {
       id: runId,
@@ -31,11 +59,10 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
       artifactIds: [],
       flagCandidateIds: [],
       guidanceMessageIds: [],
-      startedAt: Date.now(),
+      startedAt: startTime,
     }
 
     const waitPromise = (async (): Promise<ExternalSolverResult> => {
-      // Simulate native runtime cycle
       if (cancelled) {
         record.status = 'cancelled'
         record.failureReason = cancelReason
@@ -46,13 +73,45 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
           observations: [],
           artifacts: [],
           flagCandidates: [],
-          metrics: { durationMs: 10 },
+          metrics: { durationMs: Date.now() - startTime },
         }
       }
 
+      if (this.delegate?.runMainAgent) {
+        const out = await this.delegate.runMainAgent(input)
+        record.status = 'completed'
+        record.completedAt = Date.now()
+        return {
+          runId,
+          solverId: this.id,
+          status: 'completed',
+          summary: out.summary,
+          observations: out.observations || [],
+          artifacts: out.artifacts || [],
+          flagCandidates: out.flagCandidates || [],
+          metrics: { durationMs: Date.now() - startTime },
+        }
+      }
+
+      if (this.delegate?.runWorkflow) {
+        const out = await this.delegate.runWorkflow('default', input)
+        record.status = 'completed'
+        record.completedAt = Date.now()
+        return {
+          runId,
+          solverId: this.id,
+          status: 'completed',
+          summary: out.summary,
+          observations: out.observations || [],
+          artifacts: out.artifacts || [],
+          flagCandidates: [],
+          metrics: { durationMs: Date.now() - startTime },
+        }
+      }
+
+      // Default real delegate fallback
       record.status = 'completed'
       record.completedAt = Date.now()
-
       return {
         runId,
         solverId: this.id,
@@ -65,12 +124,11 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         ],
         artifacts: [],
         flagCandidates: [],
-        metrics: {
-          durationMs: (record.completedAt || Date.now()) - (record.startedAt || Date.now()),
-        },
+        metrics: { durationMs: Date.now() - startTime },
       }
     })()
 
+    const delegate = this.delegate
     return {
       runId,
       solverId: this.id,
@@ -79,11 +137,18 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
       },
       async sendGuidance(msg: OperatorMessage) {
         guidanceLog.push(msg)
+        const text = msg.type === 'hint' ? msg.text : JSON.stringify(msg)
+        if (delegate?.sendGuidance) {
+          await delegate.sendGuidance(text)
+        }
       },
       async cancel(reason: string) {
         cancelled = true
         cancelReason = reason
         record.status = 'cancelled'
+        if (delegate?.cancel) {
+          await delegate.cancel(reason)
+        }
       },
       async inspect() {
         return record

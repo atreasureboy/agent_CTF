@@ -17,6 +17,7 @@ import {
 import {
   createDefaultContestConfig,
 } from '../src/core/contestConfig.js'
+import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import { parseContestScope } from '../src/core/contestScope.js'
 import {
   deriveSubtaskContext,
@@ -172,36 +173,7 @@ describe('Scope narrowing', () => {
 // ──────────────────────────────────────────────────────────────────────
 describe('CTFTaskStateStore — Handoff lifecycle', () => {
   function freshState(): CTFTaskState {
-    const now = Date.now()
-    return {
-      taskId: 't1',
-      phase: 'intake',
-      context: {
-        taskId: 't1',
-        workspaceDir: root,
-        sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'orchestrator',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [],
-      artifactIds: [],
-      hypotheses: [],
-      attempts: [],
-      handoffs: [],
-      agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now,
-      updatedAt: now,
-    }
+    return createTestTaskState({ taskId: 't1', phase: 'intake' })
   }
 
   it('walks the lifecycle requested → approved → running → completed', () => {
@@ -375,32 +347,19 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
 // ──────────────────────────────────────────────────────────────────────
 describe('TaskState — finding/artifact merge', () => {
   it('FINDING_ADDED and ARTIFACT_ADDED populate the state', () => {
-    const now = Date.now()
-    const store = new CTFTaskStateStore({
-      taskId: 't1', phase: 'intake',
-      context: {
-        taskId: 't1', workspaceDir: root, sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'orchestrator',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    })
+    const store = new CTFTaskStateStore(
+      createTestTaskState({
+        taskId: 't1',
+        phase: 'intake',
+        activeProfileId: 'orchestrator',
+      }),
+    )
     store.apply({
       type: 'FINDING_ADDED',
       finding: {
         id: 'f1', taskId: 't1', producerAgentId: 'crypto',
         category: 'crypto', title: 'weak RSA', summary: 'e=3',
-        confidence: 'high', evidence: [], artifactIds: [], createdAt: new Date(now).toISOString(),
+        confidence: 'high', evidence: [], artifactIds: [], createdAt: new Date().toISOString(),
       },
     })
     store.apply({ type: 'ARTIFACT_ADDED', artifactId: 'a1' })
@@ -888,26 +847,7 @@ describe('§七 — Orchestrator end-to-end (no LLM)', () => {
 // ──────────────────────────────────────────────────────────────────────
 describe('§六 — StateStore guards', () => {
   function freshState(): CTFTaskState {
-    const now = Date.now()
-    return {
-      taskId: 't1', phase: 'intake',
-      context: {
-        taskId: 't1', workspaceDir: root, sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'orchestrator',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [], workflowRuns: [], activeWorkflowRunIds: [], jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    }
+    return createTestTaskState({ taskId: 't1', phase: 'intake' })
   }
 
   it('refuses to start a workflow after the task is cancelled', () => {

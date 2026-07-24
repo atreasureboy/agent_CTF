@@ -1,12 +1,14 @@
 export interface SolverEvidenceCursor {
   solverRunId: string
   lastSeenStateRevision: number
+  seenMessageIds: Set<string>
 }
 
 export interface SolverEvidenceMessage {
   id: string
   taskId: string
   sourceSolverRunId: string
+  stateRevision?: number
   evidenceIds: string[]
   observationIds: string[]
   artifactIds: string[]
@@ -25,9 +27,14 @@ export class CrossSolverEvidenceBus {
     this.maxMessages = maxMessages
   }
 
+  private buildDedupKey(msg: SolverEvidenceMessage): string {
+    const evs = (msg.evidenceIds || []).sort().join(',')
+    return `${msg.taskId}:${msg.sourceSolverRunId}:${msg.stateRevision || 0}:${evs}:${msg.summary}`
+  }
+
   public publish(msg: SolverEvidenceMessage): void {
-    // Deduplicate by message ID or summary
-    if (this.messages.some((m) => m.id === msg.id || m.summary === msg.summary)) {
+    const key = this.buildDedupKey(msg)
+    if (this.messages.some((m) => this.buildDedupKey(m) === key || m.id === msg.id)) {
       return
     }
 
@@ -38,34 +45,43 @@ export class CrossSolverEvidenceBus {
   }
 
   public getUnreadMessages(
+    taskId: string,
     solverRunId: string,
     currentRevision: number,
     limit = 5,
   ): SolverEvidenceMessage[] {
     let cursor = this.cursors.get(solverRunId)
     if (!cursor) {
-      cursor = { solverRunId, lastSeenStateRevision: 0 }
+      cursor = { solverRunId, lastSeenStateRevision: 0, seenMessageIds: new Set<string>() }
       this.cursors.set(solverRunId, cursor)
     }
 
     const unread = this.messages.filter(
       (m) =>
+        m.taskId === taskId &&
         m.sourceSolverRunId !== solverRunId &&
+        !cursor!.seenMessageIds.has(m.id) &&
         (!m.expiresAt || m.expiresAt > Date.now()),
     )
 
-    // Sort by priority
     const priorityWeight = { critical: 4, high: 3, normal: 2, low: 1 }
     unread.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority])
 
     const selected = unread.slice(0, limit)
+    for (const m of selected) {
+      cursor.seenMessageIds.add(m.id)
+    }
     cursor.lastSeenStateRevision = currentRevision
 
     return selected
   }
 
-  public clear(): void {
+  public dispose(): void {
     this.messages = []
     this.cursors.clear()
+  }
+
+  public clear(): void {
+    this.dispose()
   }
 }

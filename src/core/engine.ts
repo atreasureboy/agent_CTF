@@ -495,23 +495,53 @@ export class ExecutionEngine {
 
     let stream: AsyncIterable<OpenAI.Chat.ChatCompletionChunk>
     try {
-      stream = await this.client.chat.completions.create(
-        {
-          model: this.config.model,
+      if (this.config.modelGateway) {
+        stream = await this.config.modelGateway.streamAgentTurn({
+          taskId: this.config.taskId ?? 'session',
+          agentRunId: this.config.agentRunId,
+          role: (this.config.profile?.id as any) || 'task_planner',
+          preferredModelId: this.config.model,
           messages: [
             { role: 'system', content: systemPrompt },
             ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),
           ],
-          tools: toolDefs,
-          tool_choice: 'auto',
+          tools: toolDefs as OpenAI.Chat.ChatCompletionTool[],
           temperature: this.config.temperature ?? 0,
-          max_tokens: this.config.maxOutputTokens ?? 8192,
-          stream: true,
-          // Request usage in the final stream chunk so we can track token cost.
-          stream_options: { include_usage: true },
-        },
-        { signal: turnAbortSignal },
-      )
+          maxOutputTokens: this.config.maxOutputTokens ?? 8192,
+          signal: turnAbortSignal,
+        })
+      } else {
+        const { OpenAICompatibleProvider } = await import('./modelReliability/providers/openAICompatibleProvider.js')
+        const provider = new OpenAICompatibleProvider(this.client)
+        stream = await provider.streamAgentTurn(
+          {
+            id: this.config.model,
+            provider: 'openai-compatible',
+            model: this.config.model,
+            contextWindow: 128000,
+            capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: true },
+            reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+            economics: {},
+            allowedRoles: [(this.config.profile?.id as any) || 'task_planner'],
+            limits: { maxVisibleTools: 20, maxIterations: 50, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+            fallbackModelIds: [],
+          },
+          {
+            taskId: this.config.taskId ?? 'session',
+            agentRunId: this.config.agentRunId,
+            role: (this.config.profile?.id as any) || 'task_planner',
+            preferredModelId: this.config.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),
+            ],
+            tools: toolDefs as OpenAI.Chat.ChatCompletionTool[],
+            temperature: this.config.temperature ?? 0,
+            maxOutputTokens: this.config.maxOutputTokens ?? 8192,
+            signal: turnAbortSignal,
+          },
+        )
+      }
     } catch (err: unknown) {
       this.renderer.stopSpinner()
       throw err

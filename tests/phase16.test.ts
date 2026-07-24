@@ -48,6 +48,7 @@ import type OpenAI from 'openai'
 type OpenAIClient = OpenAI
 import { parseContestScope } from '../src/core/contestScope.js'
 import { createDefaultContestConfig } from '../src/core/contestConfig.js'
+import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import type { Renderer } from '../src/ui/renderer.js'
 import { getBuiltinProfile } from '../src/capabilityProfiles/index.js'
 
@@ -433,30 +434,13 @@ describe('§4 — Abort chain', () => {
     // directly, and confirm the run transitions out of 'running' and is
     // removed from activeWorkflowRunIds.
     const now = Date.now()
-    const store = new CTFTaskStateStore({
-      taskId: 'wf-cancel',
-      phase: 'exploration',
-      context: {
+    const store = new CTFTaskStateStore(
+      createTestTaskState({
         taskId: 'wf-cancel',
-        workspaceDir: root,
-        sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'triage',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'triage',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    })
+        phase: 'exploration',
+        activeProfileId: 'triage',
+      }),
+    )
     // Register a running workflow.
     const wfId = 'wf_test'
     store.apply({
@@ -575,30 +559,13 @@ describe('§4 — Abort chain', () => {
     // Tested via the reducer: when a workflow run is in failed status the
     // orchestrator must record WORKFLOW_FAILED, not WORKFLOW_COMPLETED.
     const now = Date.now()
-    const store = new CTFTaskStateStore({
-      taskId: 'wf-fail',
-      phase: 'exploration',
-      context: {
+    const store = new CTFTaskStateStore(
+      createTestTaskState({
         taskId: 'wf-fail',
-        workspaceDir: root,
-        sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'triage',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'triage',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    })
+        phase: 'exploration',
+        activeProfileId: 'triage',
+      }),
+    )
     const wfId = 'wf_failed_test'
     store.apply({
       type: 'WORKFLOW_STARTED',
@@ -889,30 +856,7 @@ describe('§4 — Abort chain', () => {
 // ────────────────────────────────────────────────────────────────────────
 describe('§5 — BackgroundJobEvent → TaskState', () => {
   function freshState(): CTFTaskState {
-    const now = Date.now()
-    return {
-      taskId: 't', phase: 'intake',
-      context: {
-        taskId: 't',
-        workspaceDir: root,
-        sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'orchestrator',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    }
+    return createTestTaskState({ taskId: 't', phase: 'intake' })
   }
 
   it('JOB_RECORDED → jobs[] grows; duplicate throws', () => {
@@ -1001,30 +945,7 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
 // ────────────────────────────────────────────────────────────────────────
 describe('§6 — Reducer invariants', () => {
   function freshState(): CTFTaskState {
-    const now = Date.now()
-    return {
-      taskId: 't', phase: 'intake',
-      context: {
-        taskId: 't',
-        workspaceDir: root,
-        sessionDir: root,
-        artifactDir: join(root, 'artifacts'),
-        eventsFile: join(root, 'events.ndjson'),
-        profileId: 'orchestrator',
-        contestScope: parseContestScope({ allowedFilesRoot: root, allowPublicNetwork: false }),
-        contestConfig: createDefaultContestConfig({ cwd: root }),
-      },
-      challenge: { inputArtifactIds: [] },
-      activeProfileId: 'orchestrator',
-      findings: [], artifactIds: [], hypotheses: [], attempts: [],
-      handoffs: [], agentRuns: [], activeAgentRunIds: [],
-      workflowRuns: [], activeWorkflowRunIds: [],
-      jobs: [], oneShotRuns: [], activeJobIds: [], observations: [], evidence: [], strategyDecisions: [], pendingActions: [], reasoningBudget: { strategyCyclesUsed: 0, actionsExecuted: 0, cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0, workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0, estimatedCostUnitsUsed: 0 }, reasoningBudgetLimits: { maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4, maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64 },
-      flagCandidates: [],
-      diagnostics: [],
-      degraded: false,
-      createdAt: now, updatedAt: now,
-    }
+    return createTestTaskState({ taskId: 't', phase: 'intake' })
   }
 
   it('HYPOTHESIS_ADDED appends; duplicates rejected', () => {

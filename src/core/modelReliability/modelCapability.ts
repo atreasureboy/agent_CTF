@@ -92,10 +92,15 @@ export const DEFAULT_CONSERVATIVE_PROFILE: ModelCapabilityProfile = {
     expectedLatencyMs: 2000,
   },
   allowedRoles: [
+    'competition_coordinator',
+    'task_planner',
     'solver_scout',
+    'deep_solver',
     'progress_summarizer',
     'context_compiler',
     'specialist',
+    'flag_discriminator',
+    'reporter',
   ],
   limits: {
     maxVisibleTools: 12,

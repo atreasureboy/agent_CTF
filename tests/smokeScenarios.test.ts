@@ -107,7 +107,7 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
       createdAt: Date.now(),
     })
 
-    const unread = bus.getUnreadMessages('run_B', 1)
+    const unread = bus.getUnreadMessages('smoke_5', 'run_B', 1)
     const guidance = GuidanceCompiler.compileGuidance(unread, 'm3-mini')
     expect(guidance).toContain('/admin_backup')
     expect(guidance).toContain('ev_A1')

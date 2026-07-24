@@ -1105,6 +1105,107 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
       return { ...state, oneShotRuns: runs }
     }
 
+    case 'SOLVER_RUN_QUEUED': {
+      if (state.solverRuns.some((r) => r.id === event.run.id)) return state
+      const solverRuns = [...state.solverRuns, { ...event.run }]
+      return {
+        ...state,
+        solverRuns,
+        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+      }
+    }
+
+    case 'SOLVER_RUN_STARTED': {
+      const solverRuns = state.solverRuns.map((r) =>
+        r.id === event.runId ? { ...r, status: 'running' as const, startedAt: event.startedAt } : r,
+      )
+      return {
+        ...state,
+        solverRuns,
+        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+      }
+    }
+
+    case 'SOLVER_RUN_GUIDANCE_SENT': {
+      const solverRuns = state.solverRuns.map((r) =>
+        r.id === event.runId
+          ? { ...r, guidanceMessages: [...(r.guidanceMessages ?? []), event.message] }
+          : r,
+      )
+      return { ...state, solverRuns }
+    }
+
+    case 'SOLVER_RUN_STAGNATING': {
+      const solverRuns = state.solverRuns.map((r) =>
+        r.id === event.runId && r.status === 'running' ? { ...r, status: 'stagnating' as const, summary: event.reason } : r,
+      )
+      return {
+        ...state,
+        solverRuns,
+        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+      }
+    }
+
+    case 'SOLVER_RUN_PAUSED': {
+      const solverRuns = state.solverRuns.map((r) =>
+        r.id === event.runId && (r.status === 'running' || r.status === 'stagnating')
+          ? { ...r, status: 'paused' as const, summary: event.reason }
+          : r,
+      )
+      return {
+        ...state,
+        solverRuns,
+        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+      }
+    }
+
+    case 'SOLVER_RUN_COMPLETED':
+    case 'SOLVER_RUN_CANDIDATE_FOUND':
+    case 'SOLVER_RUN_GAVE_UP':
+    case 'SOLVER_RUN_CANCELLED':
+    case 'SOLVER_RUN_FAILED': {
+      const nextStatus =
+        event.type === 'SOLVER_RUN_COMPLETED' ? ('completed' as const)
+          : event.type === 'SOLVER_RUN_CANDIDATE_FOUND' ? ('candidate_found' as const)
+          : event.type === 'SOLVER_RUN_GAVE_UP' ? ('gave_up' as const)
+          : event.type === 'SOLVER_RUN_CANCELLED' ? ('cancelled' as const)
+          : ('failed' as const)
+
+      const solverRuns = state.solverRuns.map((r) => {
+        if (r.id !== event.runId) return r
+        const patch: Partial<typeof r> = {
+          status: nextStatus,
+          completedAt: event.completedAt,
+        }
+        if (event.type === 'SOLVER_RUN_COMPLETED') patch.summary = event.summary
+        else if (event.type === 'SOLVER_RUN_GAVE_UP') patch.summary = event.reason
+        else if (event.type === 'SOLVER_RUN_CANCELLED') patch.error = event.reason
+        else if (event.type === 'SOLVER_RUN_FAILED') patch.error = event.error
+        else if (event.type === 'SOLVER_RUN_CANDIDATE_FOUND') {
+          patch.producedCandidateIds = [...new Set([...(r.producedCandidateIds ?? []), event.candidateId])]
+        }
+        return { ...r, ...patch }
+      })
+      return {
+        ...state,
+        solverRuns,
+        activeSolverRunIds: solverRuns.filter((r) => r.status === 'running' || r.status === 'stagnating').map((r) => r.id),
+      }
+    }
+
+    case 'SOLVER_RUN_OUTPUT_RECORDED': {
+      const solverRuns = state.solverRuns.map((r) =>
+        r.id === event.runId
+          ? {
+              ...r,
+              producedCandidateIds: [...new Set([...(r.producedCandidateIds ?? []), ...event.candidateIds])],
+              producedEvidenceIds: [...new Set([...(r.producedEvidenceIds ?? []), ...event.evidenceIds])],
+            }
+          : r,
+      )
+      return { ...state, solverRuns }
+    }
+
     case 'TASK_COMPLETED':
       return {
         ...state,

@@ -1,8 +1,8 @@
-import { ModelRole } from './modelCapability.js'
-
+import type { ModelRole } from './modelCapability.js'
 import { ModelCircuitBreaker } from './modelCircuitBreaker.js'
 import { ModelHealthStore } from './modelHealth.js'
 import { ModelCapabilityRegistry } from './modelRegistry.js'
+import { NoEligibleModelError } from './errors.js'
 
 export interface ModelRoutingInput {
   role: ModelRole
@@ -14,6 +14,7 @@ export interface ModelRoutingInput {
   }
   preferredModelId?: string
   taskId?: string
+  hasProvider?: (providerId: string) => boolean
 }
 
 export interface ModelRoutingDecision {
@@ -45,32 +46,64 @@ export class ModelRouter {
     const rejectedModels: Array<{ modelId: string; reason: string }> = []
     const profiles = this.registry.listProfiles()
 
-    // Filter by preferred if specified and healthy
+    // 1. Evaluate preferred model if specified
     if (input.preferredModelId) {
       const prefProfile = this.registry.getProfile(input.preferredModelId)
-      const health = this.healthStore.getRecord(input.preferredModelId, input.taskId)
-      const isTripped = this.circuitBreaker.shouldTripCircuit(health)
-
-      if (!isTripped && health.status !== 'unavailable') {
-        const fallbacks = prefProfile.fallbackModelIds.filter((id) => id !== input.preferredModelId)
-        return {
-          selectedModelId: input.preferredModelId,
-          fallbackModelIds: fallbacks,
-          reason: `Preferred model '${input.preferredModelId}' requested and healthy.`,
-          rejectedModels,
-        }
-      } else {
+      if (!prefProfile) {
         rejectedModels.push({
           modelId: input.preferredModelId,
-          reason: `Preferred model circuit open or status=${health.status}`,
+          reason: `Preferred model '${input.preferredModelId}' not found in registry`,
         })
+      } else {
+        const health = this.healthStore.getRecord(input.preferredModelId, input.taskId)
+        const isTripped = this.circuitBreaker.shouldTripCircuit(health)
+
+        let rejectReason: string | undefined
+        if (isTripped || health.status === 'unavailable') {
+          rejectReason = `Circuit open or status=${health.status}`
+        } else if (!prefProfile.allowedRoles.includes(input.role)) {
+          rejectReason = `Role '${input.role}' not in allowedRoles of preferred model`
+        } else if (input.hasProvider && !input.hasProvider(prefProfile.provider)) {
+          rejectReason = `Provider '${prefProfile.provider}' not available`
+        } else if (input.requiredCapabilities) {
+          for (const cap of input.requiredCapabilities) {
+            if (!(prefProfile.capabilities as Record<string, boolean>)[cap]) {
+              rejectReason = `Missing required capability '${cap}'`
+              break
+            }
+          }
+        }
+
+        if (rejectReason) {
+          rejectedModels.push({
+            modelId: input.preferredModelId,
+            reason: rejectReason,
+          })
+        } else {
+          // Re-evaluate fallbacks
+          const validFallbacks = this.filterEligibleModels(
+            prefProfile.fallbackModelIds,
+            input,
+            rejectedModels,
+          )
+          return {
+            selectedModelId: input.preferredModelId,
+            fallbackModelIds: validFallbacks,
+            reason: `Preferred model '${input.preferredModelId}' requested and passed all eligibility checks.`,
+            rejectedModels,
+          }
+        }
       }
     }
 
-    // Evaluate candidates
+    // 2. Evaluate candidate profiles in registry
     const eligible: Array<{ modelId: string; score: number }> = []
 
     for (const prof of profiles) {
+      if (prof.id === input.preferredModelId && rejectedModels.some((r) => r.modelId === prof.id)) {
+        continue // Already rejected
+      }
+
       const health = this.healthStore.getRecord(prof.id, input.taskId)
       if (this.circuitBreaker.shouldTripCircuit(health) || health.status === 'unavailable') {
         rejectedModels.push({
@@ -88,7 +121,14 @@ export class ModelRouter {
         continue
       }
 
-      // Check required capabilities
+      if (input.hasProvider && !input.hasProvider(prof.provider)) {
+        rejectedModels.push({
+          modelId: prof.id,
+          reason: `Provider '${prof.provider}' not available`,
+        })
+        continue
+      }
+
       if (input.requiredCapabilities && input.requiredCapabilities.length > 0) {
         let missingCap = false
         for (const cap of input.requiredCapabilities) {
@@ -104,10 +144,8 @@ export class ModelRouter {
         if (missingCap) continue
       }
 
-      // Calculate candidate score
       let score = prof.reliability.structuredOutput * 10
       if (input.estimatedDifficulty === 'easy' && prof.economics.inputCostPerMillion) {
-        // Prefer cheaper models for easy tasks
         score += 10 / (prof.economics.inputCostPerMillion + 0.1)
       } else if (input.estimatedDifficulty === 'hard') {
         score += prof.reliability.longHorizonPlanning * 20
@@ -117,17 +155,13 @@ export class ModelRouter {
     }
 
     if (eligible.length === 0) {
-      // Emergency fallback to default conservative profile ID
-      const fallbackId = 'high-tier-model'
-      return {
-        selectedModelId: fallbackId,
-        fallbackModelIds: [],
-        reason: 'All candidate models rejected or un-routable. Falling back to default high tier.',
+      throw new NoEligibleModelError({
+        role: input.role,
+        requiredCapabilities: input.requiredCapabilities,
         rejectedModels,
-      }
+      })
     }
 
-    // Sort by score descending
     eligible.sort((a, b) => b.score - a.score)
     const selected = eligible[0].modelId
     const fallbacks = eligible.slice(1).map((e) => e.modelId)
@@ -138,5 +172,25 @@ export class ModelRouter {
       reason: `Routed to '${selected}' based on capability and health scoring (score=${eligible[0].score.toFixed(2)}).`,
       rejectedModels,
     }
+  }
+
+  private filterEligibleModels(
+    modelIds: string[],
+    input: ModelRoutingInput,
+    rejectedModels: Array<{ modelId: string; reason: string }>,
+  ): string[] {
+    const valid: string[] = []
+    for (const id of modelIds) {
+      const prof = this.registry.getProfile(id)
+      if (!prof) continue
+      const health = this.healthStore.getRecord(id, input.taskId)
+      if (this.circuitBreaker.shouldTripCircuit(health) || health.status === 'unavailable') {
+        continue
+      }
+      if (!prof.allowedRoles.includes(input.role)) continue
+      if (input.hasProvider && !input.hasProvider(prof.provider)) continue
+      valid.push(id)
+    }
+    return valid
   }
 }

@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
-import { OperatorMessage } from './operatorMessage.js'
-import { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
-import { ExternalSolverResult, SolverChallengeInput, SolverHealth, SolverRunRecord } from './solverTypes.js'
+import { existsSync, accessSync, constants } from 'node:fs'
+import type { OperatorMessage } from './operatorMessage.js'
+import type { ExternalSolverAdapter, SolverRunHandle } from './solverAdapter.js'
+import type { ExternalSolverResult, SolverChallengeInput, SolverHealth, SolverRunRecord } from './solverTypes.js'
 
 export interface GenericProcessSolverOptions {
   executablePath: string
@@ -20,9 +21,22 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
   }
 
   public async probe(): Promise<SolverHealth> {
-    return {
-      status: 'ready',
-      capabilities: ['external_process', 'jsonl_protocol'],
+    try {
+      if (!existsSync(this.options.executablePath) && !this.options.executablePath.includes('/')) {
+        // Simple executable name like 'node' or 'codex'
+      } else if (existsSync(this.options.executablePath)) {
+        accessSync(this.options.executablePath, constants.X_OK)
+      }
+      return {
+        status: 'ready',
+        capabilities: ['external_process', 'jsonl_protocol'],
+      }
+    } catch (err) {
+      return {
+        status: 'unavailable',
+        capabilities: [],
+        reason: `Process probe failed for binary ${this.options.executablePath}: ${(err as Error).message}`,
+      }
     }
   }
 
@@ -46,7 +60,6 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
       startedAt: Date.now(),
     }
 
-    // Filter environment variables strictly (whitelist)
     const allowedKeys = new Set(this.options.allowedEnvKeys || ['PATH', 'HOME', 'LANG', 'TMPDIR'])
     const safeEnv: Record<string, string> = {}
     for (const k of allowedKeys) {
@@ -55,57 +68,84 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
 
     let isCancelled = false
     let isTimedOut = false
+    let cancelReason = ''
+    let childProcess: ReturnType<typeof spawn> | undefined
 
     const waitPromise = new Promise<ExternalSolverResult>((resolve) => {
-      // Spawn process with shell: false
       const child = spawn(this.options.executablePath, this.options.args || [], {
         shell: false,
         cwd: input.workspaceDir,
         env: safeEnv,
       })
+      childProcess = child
 
       const observations: any[] = []
       const artifacts: any[] = []
       const flagCandidates: any[] = []
       const logLines: string[] = []
+      let pendingBuffer = ''
 
       const timer = setTimeout(() => {
         isTimedOut = true
         child.kill('SIGKILL')
       }, timeoutMs)
 
-      // Send JSONL start packet to stdin
+      if (input.signal) {
+        input.signal.addEventListener('abort', () => {
+          isCancelled = true
+          child.kill('SIGTERM')
+        }, { once: true })
+      }
+
       const startPacket = JSON.stringify({
         type: 'start',
+        protocolVersion: '1.0.0',
         runId,
         taskId: input.taskId,
         objective: input.compiledContext.objective,
+        scopeSummary: input.compiledContext.scopeSummary,
         workspaceDir: input.workspaceDir,
+        completionContract: input.compiledContext.completionContract,
+        allowedTools: input.compiledContext.allowedToolIds,
       })
-      child.stdin.write(startPacket + '\n')
+      if (child.stdin.writable) {
+        child.stdin.write(startPacket + '\n')
+      }
+
+      const processLine = (line: string) => {
+        const trimmed = line.trim()
+        if (!trimmed) return
+        try {
+          const parsed = JSON.parse(trimmed)
+          if (parsed.type === 'observation') {
+            observations.push({
+              summary: parsed.summary || 'Process observation',
+              confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.8,
+              sourcePath: parsed.sourcePath,
+            })
+          } else if (parsed.type === 'flag_candidate') {
+            flagCandidates.push({
+              value: parsed.value,
+              sourcePath: parsed.sourcePath,
+            })
+          } else if (parsed.type === 'artifact') {
+            artifacts.push({
+              path: parsed.path || parsed.artifactId,
+              description: parsed.description || 'Process artifact',
+            })
+          }
+        } catch {
+          logLines.push(trimmed)
+        }
+      }
 
       child.stdout.on('data', (data: Buffer) => {
-        const lines = data.toString('utf-8').split('\n')
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const parsed = JSON.parse(line)
-            if (parsed.type === 'observation') {
-              observations.push({
-                summary: parsed.summary || 'Process observation',
-                confidence: parsed.confidence || 0.8,
-                sourcePath: parsed.sourcePath,
-              })
-            } else if (parsed.type === 'flag_candidate') {
-              flagCandidates.push({
-                value: parsed.value,
-                sourcePath: parsed.sourcePath,
-              })
-            }
-          } catch {
-            // NON-JSON lines are saved strictly as raw log output (never directly becoming Evidence)
-            logLines.push(line)
-          }
+        pendingBuffer += data.toString('utf-8')
+        let idx: number
+        while ((idx = pendingBuffer.indexOf('\n')) !== -1) {
+          const line = pendingBuffer.slice(0, idx)
+          pendingBuffer = pendingBuffer.slice(idx + 1)
+          processLine(line)
         }
       })
 
@@ -125,8 +165,13 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
         })
       })
 
-      child.on('exit', (code) => {
+      child.on('exit', () => {
         clearTimeout(timer)
+        if (pendingBuffer.trim()) {
+          processLine(pendingBuffer)
+          pendingBuffer = ''
+        }
+
         record.completedAt = Date.now()
         const durationMs = record.completedAt - (record.startedAt || Date.now())
 
@@ -148,6 +193,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
 
         if (isCancelled) {
           record.status = 'cancelled'
+          record.failureReason = cancelReason
           resolve({
             runId,
             solverId: this.id,
@@ -181,12 +227,29 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
         return waitPromise
       },
       async sendGuidance(msg: OperatorMessage) {
-        // Send guidance line to stdin if supported
+        if (childProcess && childProcess.stdin && childProcess.stdin.writable) {
+          const packet = JSON.stringify({
+            type: 'guidance',
+            operatorMessage: msg,
+            text: msg.type === 'hint' ? msg.text : JSON.stringify(msg),
+            createdAt: Date.now(),
+          })
+          childProcess.stdin.write(packet + '\n')
+        }
       },
       async cancel(reason: string) {
         isCancelled = true
+        cancelReason = reason
         record.status = 'cancelled'
         record.failureReason = reason
+        if (childProcess) {
+          childProcess.kill('SIGTERM')
+          setTimeout(() => {
+            if (childProcess && !childProcess.killed) {
+              childProcess.kill('SIGKILL')
+            }
+          }, 2000)
+        }
       },
       async inspect() {
         return record

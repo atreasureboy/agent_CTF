@@ -217,6 +217,8 @@ export interface EngineConfig {
    * scope/taskId/profileId; model-supplied equivalents are ignored.
    */
   taskContext?: import('./ctfRuntime/taskExecutionContext.js').TaskExecutionContext
+  /** Model Invocation Gateway — Phase 3.1 requirement for routing/health/circuit/reliability */
+  modelGateway?: import('./modelReliability/structuredModelGateway.js').ModelInvocationGateway
 }
 
 /** Cumulative token usage across one or more turns, for cost observability. */

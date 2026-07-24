@@ -42,23 +42,33 @@ export class CriticModule implements AgentModule {
     if (recent.length < 4) return
 
     try {
-      const response = await this.client.chat.completions.create(
+      const { OpenAICompatibleProvider } = await import('../core/modelReliability/providers/openAICompatibleProvider.js')
+      const provider = new OpenAICompatibleProvider(this.client)
+      const res = await provider.executeStructured(
         {
+          id: this.model,
+          provider: 'openai-compatible',
           model: this.model,
-          messages: [
-            { role: 'system', content: DEFAULT_CRITIC_SYSTEM_PROMPT },
-            {
-              role: 'user',
-              content: `以下是最近的操作历史，请检查是否存在失误：\n\n${formatMessagesForCritic(recent)}`,
-            },
-          ],
-          temperature: 0,
-          max_tokens: CRITIC_MAX_TOKENS,
+          contextWindow: 128000,
+          capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
+          reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+          economics: {},
+          allowedRoles: ['specialist'],
+          limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+          fallbackModelIds: [],
         },
-        { signal: ctx.abortSignal },
+        {
+          taskId: 'critic',
+          role: 'specialist',
+          preferredModelId: this.model,
+          systemPrompt: DEFAULT_CRITIC_SYSTEM_PROMPT,
+          userPrompt: `以下是最近的操作历史，请检查是否存在失误：\n\n${formatMessagesForCritic(recent)}`,
+          temperature: 0,
+          signal: ctx.abortSignal,
+        },
       )
 
-      const output = response.choices[0]?.message?.content ?? ''
+      const output = res.rawText ?? ''
       const criticism = parseCriticOutput(output)
 
       if (criticism) {

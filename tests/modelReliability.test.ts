@@ -63,6 +63,6 @@ describe('ModelReliability & StructuredGateway', () => {
     expect(res.modelId).toBe('high-tier-model')
 
     const m3Record = healthStore.getRecord('m3-low-cost-tier', 'task-test-1')
-    expect(m3Record.schemaFailures).toBeGreaterThan(0)
+    expect(m3Record.consecutiveSchemaFailures).toBeGreaterThan(0)
   })
 })

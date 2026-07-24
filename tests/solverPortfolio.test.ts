@@ -42,7 +42,7 @@ describe('Solver Portfolio & Swarm Suite', () => {
       createdAt: Date.now(),
     })
 
-    const unread = bus.getUnreadMessages('run_B', 1)
+    const unread = bus.getUnreadMessages('task_1', 'run_B', 1)
     expect(unread.length).toBe(1)
     expect(unread[0].summary).toContain('SQLi confirmed')
 
@@ -84,7 +84,7 @@ describe('Solver Portfolio & Swarm Suite', () => {
       candidateValue: 'flag{valid_ctf_format}',
       modelId: 'high-tier-model',
     })
-    expect(highTierSub.accepted).toBe(true)
+    expect(highTierSub.status).toBe('simulated_accepted')
   })
 
   it('runs challenge swarm successfully', async () => {

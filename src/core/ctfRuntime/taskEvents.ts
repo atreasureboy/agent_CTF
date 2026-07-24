@@ -185,6 +185,18 @@ export type CTFTaskEvent =
   | { type: 'FLAG_CANDIDATE_DETECTED'; candidate: FlagCandidate }
   | { type: 'FLAG_CANDIDATE_VALIDATED'; candidateId: string; errors: string[] }
   | { type: 'FLAG_CANDIDATE_REJECTED'; candidateId: string; reason: string }
+  /* ─── Phase 3.1 — SolverRun events ────────────────────────────────────── */
+  | { type: 'SOLVER_RUN_QUEUED'; run: import('./taskState.js').SolverRunRecord }
+  | { type: 'SOLVER_RUN_STARTED'; runId: string; startedAt: number }
+  | { type: 'SOLVER_RUN_GUIDANCE_SENT'; runId: string; message: string }
+  | { type: 'SOLVER_RUN_STAGNATING'; runId: string; reason?: string }
+  | { type: 'SOLVER_RUN_PAUSED'; runId: string; reason?: string }
+  | { type: 'SOLVER_RUN_COMPLETED'; runId: string; summary?: string; completedAt: number }
+  | { type: 'SOLVER_RUN_CANDIDATE_FOUND'; runId: string; candidateId: string; completedAt: number }
+  | { type: 'SOLVER_RUN_GAVE_UP'; runId: string; reason: string; completedAt: number }
+  | { type: 'SOLVER_RUN_CANCELLED'; runId: string; reason: string; completedAt: number }
+  | { type: 'SOLVER_RUN_FAILED'; runId: string; error: string; completedAt: number }
+  | { type: 'SOLVER_RUN_OUTPUT_RECORDED'; runId: string; candidateIds: string[]; evidenceIds: string[] }
 
 /** A subscriber receives every event AFTER it has been applied. */
 export type TaskStateListener = (event: CTFTaskEvent, state: Readonly<CTFTaskState>) => void

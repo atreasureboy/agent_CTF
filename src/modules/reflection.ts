@@ -62,20 +62,32 @@ export class ReflectionModule implements AgentModule {
     try {
       const conversationSummary = this.serializeForReflection(ctx.messages)
 
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: 'system', content: REFLECTION_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `Analyze this agent run (outcome: ${ctx.turnResult.reason}):\n\n${conversationSummary}`,
-          },
-        ],
-        temperature: 0,
-        max_tokens: REFLECTION_MAX_TOKENS,
-      }, { timeout: 30_000 })
+      const { OpenAICompatibleProvider } = await import('../core/modelReliability/providers/openAICompatibleProvider.js')
+      const provider = new OpenAICompatibleProvider(this.client)
+      const res = await provider.executeStructured(
+        {
+          id: this.model,
+          provider: 'openai-compatible',
+          model: this.model,
+          contextWindow: 128000,
+          capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
+          reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+          economics: {},
+          allowedRoles: ['reporter'],
+          limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+          fallbackModelIds: [],
+        },
+        {
+          taskId: 'reflection',
+          role: 'reporter',
+          preferredModelId: this.model,
+          systemPrompt: REFLECTION_SYSTEM_PROMPT,
+          userPrompt: `Analyze this agent run (outcome: ${ctx.turnResult.reason}):\n\n${conversationSummary}`,
+          temperature: 0,
+        },
+      )
 
-      const output = response.choices[0]?.message?.content ?? ''
+      const output = res.rawText ?? ''
       const parsed = parseReflection(output)
 
       for (const entry of parsed) {
@@ -175,20 +187,32 @@ export async function consolidateSession(
   }).join('\n')
 
   try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: REFLECTION_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Summarize this entire coding session and extract durable knowledge:\n\n${sessionSummary}`,
-        },
-      ],
-      temperature: 0,
-      max_tokens: REFLECTION_MAX_TOKENS,
-    }, { timeout: 30_000 })
+    const { OpenAICompatibleProvider } = await import('../core/modelReliability/providers/openAICompatibleProvider.js')
+    const provider = new OpenAICompatibleProvider(client)
+    const res = await provider.executeStructured(
+      {
+        id: model,
+        provider: 'openai-compatible',
+        model,
+        contextWindow: 128000,
+        capabilities: { toolCalling: false, structuredOutput: true, vision: false, longContext: true, codeExecutionPlanning: false },
+        reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+        economics: {},
+        allowedRoles: ['reporter'],
+        limits: { maxVisibleTools: 5, maxIterations: 1, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+        fallbackModelIds: [],
+      },
+      {
+        taskId: 'consolidate',
+        role: 'reporter',
+        preferredModelId: model,
+        systemPrompt: REFLECTION_SYSTEM_PROMPT,
+        userPrompt: `Summarize this entire coding session and extract durable knowledge:\n\n${sessionSummary}`,
+        temperature: 0,
+      },
+    )
 
-      const output = response.choices[0]?.message?.content ?? ''
+    const output = res.rawText ?? ''
       const parsed = parseReflection(output)
 
       for (const entry of parsed) {

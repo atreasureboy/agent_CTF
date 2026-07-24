@@ -1,4 +1,5 @@
-import { ModelRole } from '../modelReliability/modelCapability.js'
+import type { ModelRole } from '../modelReliability/modelCapability.js'
+import type { CTFHypothesis } from '../ctfRuntime/taskState.js'
 
 export type CompilerType =
   | 'challenge_prompt'
@@ -16,8 +17,10 @@ export interface CompiledEvidenceRef {
 
 export interface CompiledHypothesisRef {
   id: string
-  title: string
-  status: 'active' | 'confirmed' | 'rejected' | 'pending'
+  statement: string
+  title?: string
+  status: CTFHypothesis['status']
+  confidence?: number
   reasoning?: string
 }
 

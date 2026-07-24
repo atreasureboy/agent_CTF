@@ -1,0 +1,96 @@
+import type { CTFTaskState } from '../ctfRuntime/taskState.js'
+import type { ModelExecutionIdentity } from '../modelReliability/modelExecutionIdentity.js'
+import type { ModelCapabilityProfile } from '../modelReliability/modelCapability.js'
+import type { TaskStateProjectionInput } from './contextProjection.js'
+import type { CompilerType } from './compiledContext.js'
+import type { FindingStore } from '../findings.js'
+import type { ArtifactStore } from '../artifacts.js'
+import { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
+
+export interface TaskStateProjectionBuilderInput {
+  state: Readonly<CTFTaskState>
+  findingStore?: FindingStore
+  artifactStore?: ArtifactStore
+  identity: ModelExecutionIdentity
+  targetModel?: ModelCapabilityProfile
+  compilerType: CompilerType
+  toolVisibilityPolicy?: ToolVisibilityPolicy
+}
+
+export class TaskStateProjectionBuilder {
+  public static build(input: TaskStateProjectionBuilderInput): TaskStateProjectionInput {
+    const { state, identity, targetModel, toolVisibilityPolicy } = input
+
+    const stateRevision = state.updatedAt || 1
+    const snapshotContent = `${state.taskId}:${state.phase}:${state.hypotheses.length}:${state.evidence.length}:${state.attempts.length}:${state.artifactIds.length}`
+    const stateSnapshotHash = `hash_${stateRevision}_${snapshotContent.length}`
+
+    const objective = state.challenge.description || `Solve CTF challenge ${state.taskId} (${state.challenge.category || 'general'})`
+    const scopeSummary = state.context.contestScope?.allowedFilesRoot || 'workspace_and_targets'
+
+    const evidences = state.evidence.map((e) => ({
+      id: e.id,
+      title: e.claim,
+      factSummary: e.claim,
+      confidence: e.confidence,
+      confirmed: e.confidence >= 0.8,
+    }))
+
+    const hypotheses = state.hypotheses.map((h) => ({
+      id: h.id,
+      title: h.statement,
+      status: h.status,
+      reasoning: `Priority ${h.priority}, confidence ${(h.confidence * 100).toFixed(0)}%`,
+    }))
+
+    const attempts = state.attempts.map((a) => ({
+      id: a.id,
+      actionSummary: `${a.kind}:${a.targetId}`,
+      fingerprint: a.fingerprint,
+      outcome: a.status,
+      reason: a.error?.message,
+    }))
+
+    const artifacts = state.artifactIds.map((id) => ({
+      id,
+      path: id,
+      description: `Artifact ${id} for task ${state.taskId}`,
+    }))
+
+    const policy = toolVisibilityPolicy || new ToolVisibilityPolicy()
+    const allowedTools = policy.filterVisibleTools([], {
+      role: identity.modelRole,
+      modelId: identity.modelId,
+      solverId: identity.solverId,
+      specialistId: identity.specialistId,
+      isOrchestrator: identity.isOrchestrator,
+      isWorkflow: identity.isWorkflow,
+      isOneShot: identity.isOneShot,
+      maxVisibleTools: targetModel?.limits?.maxVisibleTools ?? 20,
+    }).map((t: any) => typeof t === 'string' ? t : t.name)
+
+    const pendingActions = state.pendingActions
+      ?.filter((p) => p.status === 'pending')
+      .map((p: any) => ({
+        id: p.id,
+        actionName: p.actionName || p.action?.type || p.kind || 'action',
+        target: p.target || p.targetId || p.action?.toolId || 'target',
+        rationale: p.rationale || p.reason || 'Suggested action',
+      }))
+
+    return {
+      taskId: state.taskId,
+      stateRevision,
+      stateSnapshotHash,
+      objective,
+      scopeSummary,
+      evidences,
+      hypotheses,
+      attempts,
+      artifacts,
+      actions: pendingActions,
+      currentBlocker: state.degraded ? 'Task marked degraded due to diagnostic error' : undefined,
+      allowedToolIds: allowedTools,
+    }
+  }
+}
