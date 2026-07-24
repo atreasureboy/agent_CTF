@@ -18,7 +18,9 @@ describe('ActionSchema (F)', () => {
     expect(r.ok).toBe(true)
     if (r.ok) {
       expect(r.value.type).toBe('run_workflow')
-      expect(r.value.workflowId).toBe('image_quick_scan')
+      if (r.value.type === 'run_workflow') {
+        expect(r.value.workflowId).toBe('image_quick_scan')
+      }
     }
   })
 
@@ -71,7 +73,12 @@ describe('ActionSchema (F)', () => {
       hypothesisIds: ['h1', 'h2'],
     })
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.value.hypothesisIds).toEqual(['h1', 'h2'])
+    if (r.ok) {
+      expect(r.value.type).toBe('verify_flag')
+      if (r.value.type === 'verify_flag') {
+        expect(r.value.hypothesisIds).toEqual(['h1', 'h2'])
+      }
+    }
   })
 
   it('accepts request_handoff with all required fields', () => {
@@ -106,6 +113,11 @@ describe('ActionSchema (F)', () => {
       costTier: 'normal',
     })
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.value.options).toEqual({ timeout: 30 })
+    if (r.ok) {
+      expect(r.value.type).toBe('run_oneshot')
+      if (r.value.type === 'run_oneshot') {
+        expect(r.value.options).toEqual({ timeout: 30 })
+      }
+    }
   })
 })

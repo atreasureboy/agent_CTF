@@ -230,6 +230,8 @@ export class CTFTaskStateStore {
         'FLAG_CANDIDATE_DETECTED',
         'FLAG_CANDIDATE_VALIDATED',
         'FLAG_CANDIDATE_REJECTED',
+        'TASK_PAUSED',
+        'TASK_RESUMED',
       ]
       if (!bookkeepingOnly.includes(event.type)) {
         throw new TaskAlreadyCompletedError(
@@ -254,7 +256,7 @@ export class CTFTaskStateStore {
       'SPECIALIST_FAILED',
       'SPECIALIST_CANCELLED',
     ]
-    if (handoffTransitions.includes(event.type)) {
+    if ((handoffTransitions as ReadonlyArray<CTFTaskEvent['type']>).includes(event.type)) {
       const handoffId = (event as { handoffId?: string }).handoffId
       if (!handoffId) {
         throw new TaskStateStoreError(`${event.type} requires handoffId`)
@@ -395,6 +397,40 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
   switch (event.type) {
     case 'TASK_CREATED':
       return event.initial
+
+    case 'TASK_PAUSED': {
+      // §borrow H1 — pause does not change state but is recorded
+      // for audit. Future Strategy Cycles check this flag and skip
+      // planning.
+      return {
+        ...state,
+        diagnostics: [
+          ...state.diagnostics,
+          {
+            kind: 'task_degraded',
+            source: 'main-agent',
+            message: `paused: ${event.reason}`,
+            at: event.at,
+          },
+        ],
+      }
+    }
+
+    case 'TASK_RESUMED': {
+      return {
+        ...state,
+        diagnostics: [
+          ...state.diagnostics,
+          {
+            kind: 'task_degraded',
+            source: 'main-agent',
+            message: `resumed: ${event.reason}`,
+            at: event.at,
+          },
+        ],
+      }
+    }
+
 
     case 'PHASE_CHANGED': {
       if (state.phase === event.to) return state

@@ -20,7 +20,7 @@ import type {
   StrategyActionExecutor,
   StrategyActionExecutorContext,
 } from '../ctfReasoning/strategyActionExecutor.js'
-import type { McpClient, McpToolDescriptor } from './mcpClient.js'
+import type { McpClient, McpCallResult, McpToolDescriptor } from './mcpClient.js'
 import { createObservation } from '../ctfReasoning/observation.js'
 
 export function createMcpExecutor(client: McpClient): StrategyActionExecutor {
@@ -51,8 +51,8 @@ export function createMcpExecutor(client: McpClient): StrategyActionExecutor {
         }
       }
       const text = result.content
-        .filter((c) => c.type === 'text' && c.text)
-        .map((c) => c.text!)
+        .filter((c: { type: string; text?: string }) => c.type === 'text' && c.text)
+        .map((c: { text?: string }) => c.text ?? '')
         .join('\n')
       const observations = result.isError
         ? []

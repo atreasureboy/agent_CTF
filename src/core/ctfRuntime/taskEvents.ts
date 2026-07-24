@@ -128,6 +128,8 @@ export type CTFTaskEvent =
       patch: Partial<OneShotRunRecord>
     }
   | { type: 'TASK_COMPLETED'; status: 'solved' | 'blocked' | 'failed' | 'cancelled'; reason: string; flagCandidateId?: string }
+  | { type: 'TASK_PAUSED'; pausedBy: 'user' | 'system'; reason: string; at: number }
+  | { type: 'TASK_RESUMED'; resumedBy: 'user' | 'system'; reason: string; at: number }
   /* ─── Phase 2.1 §六 — structured reasoning events ──────────────────── */
   | { type: 'OBSERVATION_ADDED'; observation: Observation }
   | { type: 'EVIDENCE_ADDED'; evidence: Evidence }
