@@ -4,7 +4,9 @@ export interface ModelExecutionIdentity {
   taskId: string
   modelRole: ModelRole
 
-  capabilityProfileId: string
+  modelProfileId?: string
+  providerId?: string
+  capabilityProfileId?: string
 
   modelId?: string
   solverId?: string

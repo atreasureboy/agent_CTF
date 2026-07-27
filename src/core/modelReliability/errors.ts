@@ -45,3 +45,23 @@ export class MissingModelProviderError extends Error {
     this.providerId = providerId
   }
 }
+
+export class MissingModelInvocationGatewayError extends Error {
+  constructor(message = 'ModelInvocationGateway is required in LLM mode but not provided.') {
+    super(message)
+    this.name = 'MissingModelInvocationGatewayError'
+  }
+}
+
+export class SolverUnavailableError extends Error {
+  public readonly solverId: string
+  public readonly reason: string
+
+  constructor(solverId: string, reason: string) {
+    super(`Solver '${solverId}' unavailable: ${reason}`)
+    this.name = 'SolverUnavailableError'
+    this.solverId = solverId
+    this.reason = reason
+  }
+}
+

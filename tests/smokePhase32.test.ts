@@ -114,10 +114,13 @@ describe('Phase 3.2 Smoke Tests', () => {
     const healthStore = new ModelHealthStore()
     const breaker = new ModelCircuitBreaker(healthStore)
     const router = new ModelRouter(registry, healthStore, breaker)
-    const gateway = new StructuredModelGateway(router, healthStore, breaker, registry)
-
-    gateway.registerProvider(pA)
-    gateway.registerProvider(pB)
+    const gateway = new StructuredModelGateway({
+      router,
+      healthStore,
+      circuitBreaker: breaker,
+      registry,
+      providers: [pA, pB],
+    })
 
     const stream = await gateway.streamAgentTurn({
       taskId: 'smoke_1',
@@ -159,9 +162,13 @@ describe('Phase 3.2 Smoke Tests', () => {
     const healthStore = new ModelHealthStore()
     const breaker = new ModelCircuitBreaker(healthStore)
     const router = new ModelRouter(registry, healthStore, breaker)
-    const gateway = new StructuredModelGateway(router, healthStore, breaker, registry)
-
-    gateway.registerProvider(failingP)
+    const gateway = new StructuredModelGateway({
+      router,
+      healthStore,
+      circuitBreaker: breaker,
+      registry,
+      providers: [failingP],
+    })
 
     const stream = await gateway.streamAgentTurn({
       taskId: 'smoke_2',

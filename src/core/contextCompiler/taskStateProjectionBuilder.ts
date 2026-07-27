@@ -78,13 +78,19 @@ export class TaskStateProjectionBuilder {
       `Solve CTF challenge ${state.taskId} (${state.challenge.category || 'general'})`
     const scopeSummary = state.context.contestScope?.allowedFilesRoot || 'workspace_and_targets'
 
-    const evidences = state.evidence.map((e) => ({
-      id: e.id,
-      title: e.claim,
-      factSummary: e.claim,
-      confidence: e.confidence,
-      confirmed: e.confidence >= 0.8,
-    }))
+    const evidences = state.evidence.map((e) => {
+      const isConfirmed =
+        e.polarity === 'supports' &&
+        e.confidence >= 0.8 &&
+        ((e as any).sourceIds?.length > 0 || (e.sources || []).length > 0)
+      return {
+        id: e.id,
+        title: e.claim,
+        factSummary: e.claim,
+        confidence: e.confidence,
+        confirmed: isConfirmed,
+      }
+    })
 
     const hypotheses = state.hypotheses.map((h) => ({
       id: h.id,
@@ -101,11 +107,16 @@ export class TaskStateProjectionBuilder {
       reason: a.error?.message,
     }))
 
-    const artifacts = state.artifactIds.map((id) => ({
-      id,
-      path: id,
-      description: `Artifact ${id} for task ${state.taskId}`,
-    }))
+    const artifacts = state.artifactIds.map((id) => {
+      const storeMeta = input.artifactStore?.getMetadata(id)
+      const path = (storeMeta as any)?.authorizedPath || storeMeta?.path || `/artifacts/${id}`
+      return {
+        id,
+        path,
+        sha256: storeMeta?.sha256,
+        description: storeMeta?.summary || `Artifact ${id} for task ${state.taskId}`,
+      }
+    })
 
     const pendingActions = state.pendingActions
       ?.filter((p) => p.status === 'pending')

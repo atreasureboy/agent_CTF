@@ -9,6 +9,8 @@
  */
 
 import type OpenAI from 'openai'
+import type { ModelInvocationGateway } from '../core/modelReliability/structuredModelGateway.js'
+import { z } from 'zod'
 import type {
   AgentModule,
   ModuleBootResult,
@@ -31,6 +33,7 @@ export class CriticModule implements AgentModule {
     private client: OpenAI,
     private model: string,
     private planMode: boolean,
+    private gateway?: ModelInvocationGateway,
   ) {}
 
   boot(): ModuleBootResult {
@@ -47,55 +50,20 @@ export class CriticModule implements AgentModule {
     if (recent.length < 4) return
 
     try {
-      const { OpenAICompatibleProvider } =
-        await import('../core/modelReliability/providers/openAICompatibleProvider.js')
-      const provider = new OpenAICompatibleProvider(this.client)
-      const res = await provider.executeStructured(
-        {
-          id: this.model,
-          providerId: 'openai-compatible',
-          providerModelName: this.model,
-          provider: 'openai-compatible',
-          model: this.model,
-          trustLevel: 'standard',
-          reliabilityClass: 'standard',
-          contextWindow: 128000,
-          capabilities: {
-            toolCalling: false,
-            structuredOutput: true,
-            vision: false,
-            longContext: true,
-            codeExecutionPlanning: false,
-          },
-          reliability: {
-            structuredOutput: 0.9,
-            toolArguments: 0.9,
-            longHorizonPlanning: 0.8,
-            summarization: 0.9,
-            instructionFollowing: 0.9,
-          },
-          economics: {},
-          allowedRoles: ['specialist'],
-          limits: {
-            maxVisibleTools: 5,
-            maxIterations: 1,
-            maxRepairAttempts: 1,
-            maxConsecutiveFailures: 2,
-          },
-          fallbackModelIds: [],
-        },
-        {
-          taskId: 'critic',
-          role: 'specialist',
-          preferredModelId: this.model,
-          systemPrompt: DEFAULT_CRITIC_SYSTEM_PROMPT,
-          userPrompt: `以下是最近的操作历史，请检查是否存在失误：\n\n${formatMessagesForCritic(recent)}`,
-          temperature: 0,
-          signal: ctx.abortSignal,
-        },
-      )
+      if (!this.gateway) return
 
-      const output = res.rawText ?? ''
+      const schema = z.object({ analysis: z.string().optional(), criticism: z.string().optional() }).passthrough()
+      const res = await this.gateway.executeStructured({
+        role: 'specialist',
+        preferredModelId: this.model,
+        systemPrompt: DEFAULT_CRITIC_SYSTEM_PROMPT,
+        userPrompt: `以下是最近的操作历史，请检查是否存在失误：\n\n${formatMessagesForCritic(recent)}`,
+        outputSchema: schema,
+        taskId: 'critic',
+        signal: ctx.abortSignal,
+      })
+
+      const output = JSON.stringify(res.value)
       const criticism = parseCriticOutput(output)
 
       if (criticism) {

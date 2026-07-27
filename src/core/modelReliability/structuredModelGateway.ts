@@ -70,29 +70,49 @@ export interface ModelInvocationGateway {
   executeStructured<T>(input: StructuredModelRequest<T>): Promise<StructuredModelResponse<T>>
 }
 
+export interface StructuredModelGatewayDependencies {
+  registry: ModelProfileResolver
+  router: ModelRouter
+  healthStore: ModelHealthStore
+  circuitBreaker: ModelCircuitBreaker
+  providers?: ReadonlyMap<string, ModelProvider> | Map<string, ModelProvider> | ModelProvider[]
+  trajectoryRecorder?: TrajectoryRecorder
+  getStateRevision?: (taskId: string) => number
+}
+
 export class StructuredModelGateway implements ModelInvocationGateway {
   private router: ModelRouter
   private healthStore: ModelHealthStore
   private circuitBreaker: ModelCircuitBreaker
-  private profileResolver?: ModelProfileResolver
+  private profileResolver: ModelProfileResolver
   private trajectoryRecorder?: TrajectoryRecorder
   private getRevisionFn?: (taskId: string) => number
   private providers = new Map<string, ModelProvider>()
 
-  constructor(
-    router: ModelRouter,
-    healthStore: ModelHealthStore,
-    circuitBreaker: ModelCircuitBreaker,
-    profileResolver?: ModelProfileResolver,
-    trajectoryRecorder?: TrajectoryRecorder,
-    getRevisionFn?: (taskId: string) => number,
-  ) {
-    this.router = router
-    this.healthStore = healthStore
-    this.circuitBreaker = circuitBreaker
-    this.profileResolver = profileResolver
-    this.trajectoryRecorder = trajectoryRecorder
-    this.getRevisionFn = getRevisionFn
+  constructor(deps: StructuredModelGatewayDependencies) {
+    if (!deps || !deps.router || !deps.healthStore || !deps.circuitBreaker || !deps.registry) {
+      throw new Error(
+        'StructuredModelGateway missing required dependencies: router, healthStore, circuitBreaker, registry',
+      )
+    }
+    this.router = deps.router
+    this.healthStore = deps.healthStore
+    this.circuitBreaker = deps.circuitBreaker
+    this.profileResolver = deps.registry
+    this.trajectoryRecorder = deps.trajectoryRecorder
+    this.getRevisionFn = deps.getStateRevision
+
+    if (deps.providers) {
+      if (deps.providers instanceof Map || (deps.providers as any) instanceof Map) {
+        for (const [k, v] of (deps.providers as Map<string, ModelProvider>).entries()) {
+          this.providers.set(k, v)
+        }
+      } else if (Array.isArray(deps.providers)) {
+        for (const p of deps.providers as ModelProvider[]) {
+          this.providers.set(p.id, p)
+        }
+      }
+    }
   }
 
   public registerProvider(provider: ModelProvider): void {
@@ -119,13 +139,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
       preferredModelId: req.preferredModelId,
       requiredCapabilities: req.requiredCapabilities,
       taskId: req.taskId,
-      hasProvider: (pId) => {
-        if (this.providers.size === 0) return true
-        return (
-          this.providers.has(pId) ||
-          Array.from(this.providers.values()).some((p) => p.id.includes(pId) || pId.includes(p.id))
-        )
-      },
+      hasProvider: (pId) => this.providers.has(pId),
     })
 
     this.trajectoryRecorder?.record(
@@ -148,41 +162,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
     for (let i = 0; i < candidateModels.length; i++) {
       const activeModelId = candidateModels[i]
 
-      const modelProfile = this.profileResolver
-        ? this.profileResolver.getProfile(activeModelId)
-        : {
-            id: activeModelId,
-            providerId: 'openai-compatible',
-            providerModelName: activeModelId,
-            provider: 'openai-compatible',
-            model: activeModelId,
-            trustLevel: 'standard' as const,
-            reliabilityClass: 'standard' as const,
-            contextWindow: 128000,
-            capabilities: {
-              toolCalling: true,
-              structuredOutput: true,
-              vision: false,
-              longContext: true,
-              codeExecutionPlanning: true,
-            },
-            reliability: {
-              structuredOutput: 0.9,
-              toolArguments: 0.9,
-              longHorizonPlanning: 0.8,
-              summarization: 0.9,
-              instructionFollowing: 0.9,
-            },
-            economics: {},
-            allowedRoles: [req.role],
-            limits: {
-              maxVisibleTools: 20,
-              maxIterations: 50,
-              maxRepairAttempts: 1,
-              maxConsecutiveFailures: 2,
-            },
-            fallbackModelIds: [],
-          }
+      const modelProfile = this.profileResolver.getRequired(activeModelId)
 
       const roleCheck = ModelRolePolicy.validateRolePermission(
         modelProfile,
@@ -190,7 +170,6 @@ export class StructuredModelGateway implements ModelInvocationGateway {
         'stream_agent_turn',
       )
       if (!roleCheck.allowed) {
-        // Record role_denied, not schema failure
         this.healthStore.recordFailure(
           activeModelId,
           'role',
@@ -202,13 +181,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
 
       try {
         const providerId = modelProfile.providerId || modelProfile.provider
-        let provider = this.providers.get(providerId)
-        if (!provider && this.providers.size > 0) {
-          provider =
-            Array.from(this.providers.values()).find(
-              (p) => p.id.includes(providerId) || providerId.includes(p.id),
-            ) || Array.from(this.providers.values())[0]
-        }
+        const provider = this.providers.get(providerId)
         if (!provider) {
           throw new MissingModelProviderError(activeModelId, providerId)
         }
@@ -255,13 +228,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
       role: req.role,
       preferredModelId: req.preferredModelId,
       taskId: req.taskId,
-      hasProvider: (pId) => {
-        if (this.providers.size === 0) return true
-        return (
-          this.providers.has(pId) ||
-          Array.from(this.providers.values()).some((p) => p.id.includes(pId) || pId.includes(p.id))
-        )
-      },
+      hasProvider: (pId) => this.providers.has(pId),
     })
 
     this.trajectoryRecorder?.record(
@@ -286,41 +253,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
       const activeModelId = candidateModels[i]
       const isFallback = i > 0
 
-      const modelProfile = this.profileResolver
-        ? this.profileResolver.getProfile(activeModelId)
-        : {
-            id: activeModelId,
-            providerId: 'openai-compatible',
-            providerModelName: activeModelId,
-            provider: 'openai-compatible',
-            model: activeModelId,
-            trustLevel: 'standard' as const,
-            reliabilityClass: 'standard' as const,
-            contextWindow: 128000,
-            capabilities: {
-              toolCalling: true,
-              structuredOutput: true,
-              vision: false,
-              longContext: true,
-              codeExecutionPlanning: true,
-            },
-            reliability: {
-              structuredOutput: 0.9,
-              toolArguments: 0.9,
-              longHorizonPlanning: 0.8,
-              summarization: 0.9,
-              instructionFollowing: 0.9,
-            },
-            economics: {},
-            allowedRoles: [req.role],
-            limits: {
-              maxVisibleTools: 20,
-              maxIterations: 50,
-              maxRepairAttempts: 1,
-              maxConsecutiveFailures: 2,
-            },
-            fallbackModelIds: [],
-          }
+      const modelProfile = this.profileResolver.getRequired(activeModelId)
 
       const roleCheck = ModelRolePolicy.validateRolePermission(
         modelProfile,
@@ -341,13 +274,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
         let executor = req.llmExecutor
         if (!executor) {
           const providerId = modelProfile.providerId || modelProfile.provider
-          let provider = this.providers.get(providerId)
-          if (!provider && this.providers.size > 0) {
-            provider =
-              Array.from(this.providers.values()).find(
-                (p) => p.id.includes(providerId) || providerId.includes(p.id),
-              ) || Array.from(this.providers.values())[0]
-          }
+          const provider = this.providers.get(providerId)
           if (!provider) {
             throw new MissingModelProviderError(activeModelId, providerId)
           }

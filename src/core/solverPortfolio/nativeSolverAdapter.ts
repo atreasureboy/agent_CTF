@@ -12,6 +12,12 @@ import {
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface NativeSolverRuntimeDelegate {
+  run?(input: SolverChallengeInput): Promise<{
+    summary?: string
+    observations?: Array<{ summary: string; confidence: number; sourcePath?: string }>
+    artifacts?: Array<{ path: string; description: string }>
+    flagCandidates?: Array<{ value: string; confidence: number }>
+  }>
   runMainAgent?(input: SolverChallengeInput): Promise<{
     summary?: string
     observations?: Array<{ summary: string; confidence: number; sourcePath?: string }>
@@ -45,10 +51,11 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
 
   public async probe(): Promise<SolverHealth> {
     await Promise.resolve()
-    if (!this.delegate) {
+    const d = this.delegate as any
+    if (!d || (!d.runMainAgent && !d.runWorkflow && !d.run)) {
       return {
         status: 'unavailable',
-        reason: 'NativeSolverRuntimeDelegate not configured',
+        reason: 'NativeSolverRuntimeDelegate not configured or lacks execution methods',
         capabilities: ['native_task_runtime', 'structured_reasoning', 'workflow_dag'],
       }
     }
@@ -113,6 +120,23 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         }
       }
 
+      if (this.delegate?.run) {
+        const out = await this.delegate.run(input as any)
+        record.status = 'completed'
+        record.completedAt = Date.now()
+        emitEvent({ type: 'status', status: 'completed', timestamp: Date.now() })
+        return {
+          runId,
+          solverId: this.id,
+          status: 'completed',
+          summary: (out as any).summary,
+          observations: (out as any).observations || [],
+          artifacts: (out as any).artifacts || [],
+          flagCandidates: (out as any).flagCandidates || [],
+          metrics: { durationMs: Date.now() - startTime },
+        }
+      }
+
       if (this.delegate?.runMainAgent) {
         const out = await this.delegate.runMainAgent(input)
         record.status = 'completed'
@@ -147,18 +171,10 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
         }
       }
 
-      record.status = 'completed'
-      record.completedAt = Date.now()
-      emitEvent({ type: 'status', status: 'completed', timestamp: Date.now() })
-      return {
-        runId,
-        solverId: this.id,
-        status: 'completed',
-        observations: [],
-        artifacts: [],
-        flagCandidates: [],
-        metrics: { durationMs: Date.now() - startTime },
-      }
+      record.status = 'failed'
+      record.failureReason = 'NativeSolverRuntimeDelegate has no executable method (run/runMainAgent/runWorkflow)'
+      emitEvent({ type: 'status', status: 'failed', timestamp: Date.now() })
+      throw new SolverUnavailableError(this.id, record.failureReason)
     })()
 
     const delegate = this.delegate

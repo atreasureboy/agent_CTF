@@ -164,20 +164,85 @@ export async function createCTFTaskRuntime(
   const healthStore = new ModelHealthStore()
   const circuitBreaker = new ModelCircuitBreaker(healthStore)
   const router = new ModelRouter(registry, healthStore, circuitBreaker)
-  const gateway = new StructuredModelGateway(
-    router,
-    healthStore,
-    circuitBreaker,
-    registry,
-    trajectoryRecorder,
-  )
 
+  const providersMap = new Map<string, any>()
   if (input.client) {
     const { OpenAICompatibleProvider } =
       await import('../modelReliability/providers/openAICompatibleProvider.js')
     const provider = new OpenAICompatibleProvider(input.client)
-    gateway.registerProvider(provider)
+    providersMap.set(provider.id, provider)
+
+    // Register active model profile matching provider
+    const modelName = input.modelConfig?.model ?? 'gpt-4o'
+    const profileIdsToRegister = new Set([
+      modelName,
+      input.profileId,
+      initialProfile.id,
+      'triage',
+      'coder',
+      'orchestrator',
+      'default',
+    ])
+
+    for (const pId of profileIdsToRegister) {
+      if (!pId || registry.hasProfile(pId)) continue
+      registry.registerProfile({
+        id: pId,
+        providerId: provider.id,
+        providerModelName: modelName,
+        provider: provider.id,
+        model: modelName,
+        trustLevel: 'privileged',
+        reliabilityClass: 'privileged',
+        contextWindow: 128000,
+        capabilities: {
+          toolCalling: true,
+          structuredOutput: true,
+          vision: true,
+          longContext: true,
+          codeExecutionPlanning: true,
+        },
+        reliability: {
+          structuredOutput: 0.98,
+          toolArguments: 0.95,
+          longHorizonPlanning: 0.92,
+          summarization: 0.95,
+          instructionFollowing: 0.96,
+        },
+        economics: {},
+        allowedRoles: [
+          'competition_coordinator',
+          'task_planner',
+          'solver_scout',
+          'deep_solver',
+          'context_compiler',
+          'progress_summarizer',
+          'specialist',
+          'flag_discriminator',
+          'reporter',
+        ],
+        limits: {
+          maxVisibleTools: 50,
+          maxIterations: 30,
+          maxRepairAttempts: 2,
+          maxConsecutiveFailures: 3,
+        },
+        fallbackModelIds: [],
+      })
+    }
   }
+
+  let orchestratorRef: any = null
+
+  const gateway = new StructuredModelGateway({
+    router,
+    healthStore,
+    circuitBreaker,
+    registry,
+    providers: providersMap,
+    trajectoryRecorder,
+    getStateRevision: (tid) => orchestratorRef?.store?.getState().stateRevision ?? 1,
+  })
 
   const toolVisibilityPolicy = new ToolVisibilityPolicy([], 'profile_allowed')
 
@@ -212,10 +277,14 @@ export async function createCTFTaskRuntime(
     challenge: input.challenge,
     environment: input.environment,
   })
+  orchestratorRef = orchestrator
 
   // 9. Wire Job & SolverPortfolio
   const { SolverPortfolio } = await import('../solverPortfolio/solverPortfolio.js')
-  const portfolio = new SolverPortfolio()
+  const portfolio = new SolverPortfolio({
+    stateStore: orchestrator.store,
+    trajectoryRecorder,
+  })
 
   const projector = orchestrator.projector
   const canonicalTaskDir = harness.taskWorkspace.paths.root

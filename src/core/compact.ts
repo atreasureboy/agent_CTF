@@ -207,12 +207,15 @@ export interface CompactResult {
  * abort (Task-level cancel / Ctrl+C) interrupts summarization instead
  * of leaving a hanging request behind.
  */
+import type { ModelInvocationGateway } from './modelReliability/structuredModelGateway.js'
+
 export async function maybeCompact(
   client: OpenAI,
   model: string,
   messages: OpenAIMessage[],
   strategy: CompressionStrategy = 'proportional',
   signal?: AbortSignal,
+  modelGateway?: ModelInvocationGateway,
 ): Promise<CompactResult> {
   const originalTokens = estimateTokens(messages)
   const keepRecent = keepRecentFor(strategy)
@@ -244,54 +247,21 @@ export async function maybeCompact(
 
   let summaryText: string
   try {
-    const { OpenAICompatibleProvider } =
-      await import('./modelReliability/providers/openAICompatibleProvider.js')
-    const provider = new OpenAICompatibleProvider(client)
-    const res = await provider.executeStructured(
-      {
-        id: model,
-        providerId: 'openai-compatible',
-        providerModelName: model,
-        provider: 'openai-compatible',
-        model,
-        trustLevel: 'standard',
-        reliabilityClass: 'standard',
-        contextWindow: 128000,
-        capabilities: {
-          toolCalling: false,
-          structuredOutput: true,
-          vision: false,
-          longContext: true,
-          codeExecutionPlanning: false,
-        },
-        reliability: {
-          structuredOutput: 0.9,
-          toolArguments: 0.9,
-          longHorizonPlanning: 0.8,
-          summarization: 0.9,
-          instructionFollowing: 0.9,
-        },
-        economics: {},
-        allowedRoles: ['progress_summarizer'],
-        limits: {
-          maxVisibleTools: 5,
-          maxIterations: 1,
-          maxRepairAttempts: 1,
-          maxConsecutiveFailures: 2,
-        },
-        fallbackModelIds: [],
-      },
-      {
-        taskId: 'compact',
-        role: 'progress_summarizer',
-        preferredModelId: model,
-        systemPrompt: SUMMARY_SYSTEM_PROMPT,
-        userPrompt,
-        temperature: 0,
-        signal,
-      },
-    )
-    summaryText = res.rawText ?? ''
+    if (!modelGateway) {
+      return { compacted: false, messages, summaryTokens: 0, originalTokens }
+    }
+    const { z } = await import('zod')
+    const schema = z.object({ summary: z.string().optional() }).passthrough()
+    const res = await modelGateway.executeStructured({
+      role: 'progress_summarizer',
+      preferredModelId: model,
+      systemPrompt: SUMMARY_SYSTEM_PROMPT,
+      userPrompt,
+      outputSchema: schema,
+      taskId: 'compact',
+      signal,
+    })
+    summaryText = (res.value as any)?.summary || JSON.stringify(res.value)
   } catch {
     // If summarization fails, return original messages unchanged
     return { compacted: false, messages, summaryTokens: 0, originalTokens }

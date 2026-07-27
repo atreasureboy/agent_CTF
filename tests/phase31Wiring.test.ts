@@ -23,11 +23,27 @@ import { rmSync, existsSync } from 'fs'
 
 describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   it('1. Main Agent requests pass through ModelInvocationGateway & Provider (no mockSuccess)', async () => {
-    const registry = new ModelCapabilityRegistry()
+    const registry = new ModelCapabilityRegistry([
+      {
+        id: 'gpt-4o',
+        providerId: 'openai',
+        providerModelName: 'gpt-4o',
+        provider: 'openai',
+        model: 'gpt-4o',
+        trustLevel: 'privileged',
+        reliabilityClass: 'privileged',
+        contextWindow: 128000,
+        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
+        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        economics: {},
+        allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
+        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        fallbackModelIds: [],
+      },
+    ])
     const healthStore = new ModelHealthStore()
     const circuitBreaker = new ModelCircuitBreaker(healthStore)
     const router = new ModelRouter(registry, healthStore, circuitBreaker)
-    const gateway = new StructuredModelGateway(router, healthStore, circuitBreaker)
 
     const fakeProvider: ModelProvider = {
       id: 'openai',
@@ -47,7 +63,13 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       },
     }
 
-    gateway.registerProvider(fakeProvider)
+    const gateway = new StructuredModelGateway({
+      router,
+      healthStore,
+      circuitBreaker,
+      registry,
+      providers: [fakeProvider],
+    })
 
     const stream = await gateway.streamAgentTurn({
       taskId: 'task_1',
@@ -68,11 +90,28 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   })
 
   it('2. Throws MissingModelProviderError when no provider is registered instead of mockSuccess', async () => {
-    const registry = new ModelCapabilityRegistry()
+    const registry = new ModelCapabilityRegistry([
+      {
+        id: 'gpt-4o',
+        providerId: 'openai',
+        providerModelName: 'gpt-4o',
+        provider: 'openai',
+        model: 'gpt-4o',
+        trustLevel: 'privileged',
+        reliabilityClass: 'privileged',
+        contextWindow: 128000,
+        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
+        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        economics: {},
+        allowedRoles: ['task_planner'],
+        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        fallbackModelIds: [],
+      },
+    ])
     const healthStore = new ModelHealthStore()
     const circuitBreaker = new ModelCircuitBreaker(healthStore)
     const router = new ModelRouter(registry, healthStore, circuitBreaker)
-    const gateway = new StructuredModelGateway(router, healthStore, circuitBreaker)
+    const gateway = new StructuredModelGateway({ router, healthStore, circuitBreaker, registry })
 
     await expect(
       gateway.executeStructured({
@@ -83,7 +122,7 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
         userPrompt: 'User',
         outputSchema: z.object({ ok: z.boolean() }),
       }),
-    ).rejects.toThrow(MissingModelProviderError)
+    ).rejects.toThrow(NoEligibleModelError)
   })
 
   it('3. ToolVisibilityPolicy is Fail-Closed and restricts Orchestrator to high-level tools', () => {

@@ -34,6 +34,21 @@ function makeEngine(opts: {
   taskId: string
   cwd: string
 }) {
+  const fakeGateway = {
+    async streamAgentTurn(input: any) {
+      return opts.client.chat.completions.create({
+        model: input.preferredModelId,
+        messages: input.messages,
+        tools: input.tools,
+        temperature: input.temperature,
+        stream: true,
+      }) as any
+    },
+    async executeStructured() {
+      return { rawText: 'ok' }
+    },
+  }
+
   const config: EngineConfig = {
     client: opts.client,
     cwd: opts.cwd,
@@ -48,6 +63,7 @@ function makeEngine(opts: {
     agentId: 'image-stego',
     systemPrompt: 'You are an image-stego agent.',
     temperature: 0,
+    modelGateway: fakeGateway as any,
   }
   return new ExecutionEngine(config, new Renderer())
 }

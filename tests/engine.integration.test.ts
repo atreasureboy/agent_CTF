@@ -69,6 +69,31 @@ function makeEngine(
   } = {},
 ): { engine: ExecutionEngine; eventLog: EventLog } {
   const eventLog = new EventLog(workDir)
+  const client = createMockClient(scripts)
+  const fakeGateway = {
+    async streamAgentTurn(input: any) {
+      return client.chat.completions.create({
+        model: input.preferredModelId,
+        messages: input.messages,
+        tools: input.tools,
+        temperature: input.temperature,
+        stream: true,
+      }) as any
+    },
+    async executeStructured(input: any) {
+      const res: any = await client.chat.completions.create({
+        model: input.preferredModelId,
+        messages: [
+          { role: 'system', content: input.systemPrompt },
+          { role: 'user', content: input.userPrompt },
+        ],
+        stream: false,
+      })
+      const text = res.choices?.[0]?.message?.content || '<summary>The user worked through ten earlier tasks; all completed.</summary>'
+      return { rawText: text, value: { summary: text } }
+    },
+  }
+
   const config: EngineConfig = {
     model: 'test-model',
     apiKey: 'test-key',
@@ -79,7 +104,8 @@ function makeEngine(
     sessionDir: workDir,
     eventLog,
     extraTools: opts.extraTools,
-    client: createMockClient(scripts),
+    client,
+    modelGateway: fakeGateway as any,
     permissionChecker: opts.permissionChecker,
     maxContextTokens: opts.maxContextTokens,
   }
@@ -227,6 +253,22 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
         throw new Error('boom from onToolCall')
       },
     }
+    const client = createMockClient([
+      toolCallResponse([{ name: 'Recorder', arguments: { input: 'x' } }]),
+      textResponse('done'),
+    ])
+    const fakeGateway = {
+      async streamAgentTurn(input: any) {
+        return client.chat.completions.create({
+          model: input.preferredModelId,
+          messages: input.messages,
+          tools: input.tools,
+          temperature: input.temperature,
+          stream: true,
+        }) as any
+      },
+      async executeStructured() { return { rawText: 'ok' } },
+    }
     const config: EngineConfig = {
       model: 'test-model',
       apiKey: 'test-key',
@@ -236,10 +278,8 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       sessionDir: workDir,
       eventLog,
       extraTools: [rec.tool],
-      client: createMockClient([
-        toolCallResponse([{ name: 'Recorder', arguments: { input: 'x' } }]),
-        textResponse('done'),
-      ]),
+      client,
+      modelGateway: fakeGateway as any,
     }
     const engine = new ExecutionEngine(config, new Renderer())
     // Register the faulty module directly on the engine.
@@ -263,6 +303,19 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
         throw new Error('iteration boom')
       },
     }
+    const client = createMockClient([textResponse('hello')])
+    const fakeGateway = {
+      async streamAgentTurn(input: any) {
+        return client.chat.completions.create({
+          model: input.preferredModelId,
+          messages: input.messages,
+          tools: input.tools,
+          temperature: input.temperature,
+          stream: true,
+        }) as any
+      },
+      async executeStructured() { return { rawText: 'ok' } },
+    }
     const config: EngineConfig = {
       model: 'test-model',
       apiKey: 'test-key',
@@ -271,7 +324,8 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       permissionMode: 'auto',
       sessionDir: workDir,
       eventLog,
-      client: createMockClient([textResponse('hello')]),
+      client,
+      modelGateway: fakeGateway as any,
     }
     const engine = new ExecutionEngine(config, new Renderer())
     ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]

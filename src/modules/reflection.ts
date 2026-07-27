@@ -10,9 +10,11 @@
  */
 
 import type OpenAI from 'openai'
+import { z } from 'zod'
 import type { AgentModule, ModuleBootResult, ModuleRunContext } from '../core/module.js'
 import type { SemanticMemory } from '../core/semanticMemory.js'
 import type { EpisodicMemory } from '../core/episodicMemory.js'
+import type { ModelInvocationGateway } from '../core/modelReliability/structuredModelGateway.js'
 
 const REFLECTION_SYSTEM_PROMPT = `You are a reflection engine. Analyze the completed agent run and extract reusable knowledge.
 
@@ -35,6 +37,8 @@ Rules:
 - If nothing worth remembering, return {"knowledge": []}
 - Respond with JSON only, no prose`
 
+const SUMMARY_SYSTEM_PROMPT = `You are a summarization engine. Analyze the coding session and extract durable knowledge.`
+
 export class ReflectionModule implements AgentModule {
   readonly name = 'reflection'
   readonly dependencies = ['memory']
@@ -43,6 +47,8 @@ export class ReflectionModule implements AgentModule {
     private client: OpenAI,
     private model: string,
     private semantic: SemanticMemory,
+    private episodic?: EpisodicMemory,
+    private gateway?: ModelInvocationGateway,
   ) {}
 
   boot(): ModuleBootResult {
@@ -50,64 +56,26 @@ export class ReflectionModule implements AgentModule {
   }
 
   async onComplete(ctx: ModuleRunContext): Promise<void> {
-    // Skip if the run was too short to yield useful insights
-    const toolCallCount = ctx.messages.filter((m) => m.role === 'tool').length
+    const toolCallCount = ctx.messages.filter((m: any) => m.role === 'tool').length
     if (toolCallCount < 3) return
-
-    // Skip if the run ended in error
     if (ctx.turnResult.reason === 'error') return
 
     try {
-      const conversationSummary = this.serializeForReflection(ctx.messages)
+      if (!this.gateway) return
 
-      const { OpenAICompatibleProvider } =
-        await import('../core/modelReliability/providers/openAICompatibleProvider.js')
-      const provider = new OpenAICompatibleProvider(this.client)
-      const res = await provider.executeStructured(
-        {
-          id: this.model,
-          providerId: 'openai-compatible',
-          providerModelName: this.model,
-          provider: 'openai-compatible',
-          model: this.model,
-          trustLevel: 'standard',
-          reliabilityClass: 'standard',
-          contextWindow: 128000,
-          capabilities: {
-            toolCalling: false,
-            structuredOutput: true,
-            vision: false,
-            longContext: true,
-            codeExecutionPlanning: false,
-          },
-          reliability: {
-            structuredOutput: 0.9,
-            toolArguments: 0.9,
-            longHorizonPlanning: 0.8,
-            summarization: 0.9,
-            instructionFollowing: 0.9,
-          },
-          economics: {},
-          allowedRoles: ['reporter'],
-          limits: {
-            maxVisibleTools: 5,
-            maxIterations: 1,
-            maxRepairAttempts: 1,
-            maxConsecutiveFailures: 2,
-          },
-          fallbackModelIds: [],
-        },
-        {
-          taskId: 'reflection',
-          role: 'reporter',
-          preferredModelId: this.model,
-          systemPrompt: REFLECTION_SYSTEM_PROMPT,
-          userPrompt: `Analyze this agent run (outcome: ${ctx.turnResult.reason}):\n\n${conversationSummary}`,
-          temperature: 0,
-        },
-      )
+      const conversationSummary = this.serializeForReflection(ctx.messages as any)
+      const schema = z.object({ knowledge: z.array(z.any()).optional() }).passthrough()
 
-      const output = res.rawText ?? ''
+      const res = await this.gateway.executeStructured({
+        role: 'reporter',
+        preferredModelId: this.model,
+        systemPrompt: REFLECTION_SYSTEM_PROMPT,
+        userPrompt: `Analyze this agent run (outcome: ${ctx.turnResult.reason}):\n\n${conversationSummary}`,
+        outputSchema: schema,
+        taskId: 'reflection',
+      })
+
+      const output = JSON.stringify(res.value)
       const parsed = parseReflection(output)
 
       for (const entry of parsed) {
@@ -119,42 +87,29 @@ export class ReflectionModule implements AgentModule {
           timestamp: new Date().toISOString(),
         })
       }
-
-      if (parsed.length > 0) {
-        ctx.eventLog?.append('memory_write', 'reflection', {
-          entries: parsed.length,
-          module: 'reflection',
-        })
-      }
-    } catch (err) {
-      // reflection failures must never break anything, but should be traceable
-      ctx.eventLog?.append('module_error', this.name, {
-        stage: 'onComplete',
-        error: (err as Error).message,
-      })
+    } catch {
+      // reflection is non-blocking
     }
   }
 
-  private serializeForReflection(
-    messages: { role: string; content: string | null; tool_calls?: unknown[] }[],
-  ): string {
-    const parts: string[] = []
-    for (const msg of messages.slice(-30)) {
-      if (msg.role === 'user' && typeof msg.content === 'string') {
-        parts.push(`[USER]: ${msg.content.slice(0, 200)}`)
-      } else if (msg.role === 'assistant') {
-        if (msg.content) parts.push(`[ASSISTANT]: ${msg.content.slice(0, 200)}`)
-        if (msg.tool_calls?.length) {
-          const names = (msg.tool_calls as Array<{ function: { name: string } }>)
-            .map((tc) => tc.function.name)
-            .join(', ')
-          parts.push(`[TOOLS USED]: ${names}`)
+  private serializeForReflection(messages: any[]): string {
+    return messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => {
+        if (m.role === 'user') return `User: ${m.content}`
+        if (m.role === 'assistant') {
+          const calls = m.tool_calls
+            ? ` [tools: ${m.tool_calls.map((t: any) => t.function.name).join(', ')}]`
+            : ''
+          return `Assistant: ${(m.content ?? '').slice(0, 200)}${calls}`
         }
-      } else if (msg.role === 'tool' && typeof msg.content === 'string') {
-        parts.push(`[RESULT]: ${msg.content.slice(0, 100)}`)
-      }
-    }
-    return parts.join('\n')
+        if (m.role === 'tool') {
+          return `Tool Output: ${(m.content ?? '').slice(0, 150)}`
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
   }
 }
 
@@ -184,20 +139,12 @@ function parseReflection(output: string): Array<{
   }
 }
 
-// ── Session-level consolidation (AgentOS §8 Memory 整合) ──────────────────────
-
-/**
- * Consolidate a session's episodic events into semantic memory.
- * Called at REPL exit to close the learning loop.
- *
- * Unlike per-turn reflection (which analyzes a single run), this summarizes
- * the entire session's activity and extracts durable knowledge.
- */
-export async function consolidateSession(
+export async function runConsolidation(
   client: OpenAI,
   model: string,
   episodic: EpisodicMemory,
   semantic: SemanticMemory,
+  gateway?: ModelInvocationGateway,
 ): Promise<{ episodes: number; knowledgeExtracted: number }> {
   const episodes = episodic.recent(100)
   if (episodes.length < 5) {
@@ -212,68 +159,37 @@ export async function consolidateSession(
     .join('\n')
 
   try {
-    const { OpenAICompatibleProvider } =
-      await import('../core/modelReliability/providers/openAICompatibleProvider.js')
-    const provider = new OpenAICompatibleProvider(client)
-    const res = await provider.executeStructured(
-      {
-        id: model,
-        providerId: 'openai-compatible',
-        providerModelName: model,
-        provider: 'openai-compatible',
-        model,
-        trustLevel: 'standard',
-        reliabilityClass: 'standard',
-        contextWindow: 128000,
-        capabilities: {
-          toolCalling: false,
-          structuredOutput: true,
-          vision: false,
-          longContext: true,
-          codeExecutionPlanning: false,
-        },
-        reliability: {
-          structuredOutput: 0.9,
-          toolArguments: 0.9,
-          longHorizonPlanning: 0.8,
-          summarization: 0.9,
-          instructionFollowing: 0.9,
-        },
-        economics: {},
-        allowedRoles: ['reporter'],
-        limits: {
-          maxVisibleTools: 5,
-          maxIterations: 1,
-          maxRepairAttempts: 1,
-          maxConsecutiveFailures: 2,
-        },
-        fallbackModelIds: [],
-      },
-      {
-        taskId: 'consolidate',
-        role: 'reporter',
-        preferredModelId: model,
-        systemPrompt: REFLECTION_SYSTEM_PROMPT,
-        userPrompt: `Summarize this entire coding session and extract durable knowledge:\n\n${sessionSummary}`,
-        temperature: 0,
-      },
-    )
+    if (!gateway) return { episodes: episodes.length, knowledgeExtracted: 0 }
 
-    const output = res.rawText ?? ''
+    const schema = z.object({ knowledge: z.array(z.any()).optional() }).passthrough()
+    const res = await gateway.executeStructured({
+      role: 'reporter',
+      preferredModelId: model,
+      systemPrompt: SUMMARY_SYSTEM_PROMPT,
+      userPrompt: `Consolidate rules from session:\n\n${sessionSummary}`,
+      outputSchema: schema,
+      taskId: 'consolidation',
+    })
+
+    const output = JSON.stringify(res.value)
     const parsed = parseReflection(output)
+    let extracted = 0
 
     for (const entry of parsed) {
       semantic.write({
-        content: `[session] ${entry.content}`,
+        content: entry.content,
         tags: entry.tags,
-        source: 'consolidation',
+        source: 'agent_inferred',
         confidence: entry.confidence,
         timestamp: new Date().toISOString(),
       })
+      extracted++
     }
 
-    return { episodes: episodes.length, knowledgeExtracted: parsed.length }
+    return { episodes: episodes.length, knowledgeExtracted: extracted }
   } catch {
     return { episodes: episodes.length, knowledgeExtracted: 0 }
   }
 }
+
+export { runConsolidation as consolidateSession }

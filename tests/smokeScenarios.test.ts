@@ -19,11 +19,59 @@ import { ToolVisibilityPolicy } from '../src/core/toolVisibility/index.js'
 
 describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
   it('Smoke 1: M3 Reliability (Fake M3 invalid JSON -> Repair fail -> Fallback -> High-tier model succeeds)', async () => {
-    const registry = new ModelCapabilityRegistry()
+    const registry = new ModelCapabilityRegistry([
+      {
+        id: 'high-tier-model',
+        providerId: 'test-provider',
+        providerModelName: 'gpt-4o',
+        provider: 'test-provider',
+        model: 'gpt-4o',
+        trustLevel: 'privileged',
+        reliabilityClass: 'privileged',
+        contextWindow: 128000,
+        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
+        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        economics: {},
+        allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
+        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        fallbackModelIds: [],
+      },
+      {
+        id: 'm3-low-cost-tier',
+        providerId: 'test-provider',
+        providerModelName: 'm3-mini',
+        provider: 'test-provider',
+        model: 'm3-mini',
+        trustLevel: 'auxiliary',
+        reliabilityClass: 'auxiliary',
+        contextWindow: 32768,
+        capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: false, codeExecutionPlanning: false },
+        reliability: { structuredOutput: 0.8, toolArguments: 0.75, longHorizonPlanning: 0.6, summarization: 0.85, instructionFollowing: 0.8 },
+        economics: {},
+        allowedRoles: ['solver_scout', 'progress_summarizer', 'context_compiler', 'specialist'],
+        limits: { maxVisibleTools: 12, maxIterations: 10, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+        fallbackModelIds: ['high-tier-model'],
+      },
+    ])
     const healthStore = new ModelHealthStore()
     const circuitBreaker = new ModelCircuitBreaker(healthStore)
     const router = new ModelRouter(registry, healthStore, circuitBreaker)
-    const gateway = new StructuredModelGateway(router, healthStore, circuitBreaker)
+    const fakeProvider = {
+      id: 'test-provider',
+      async streamAgentTurn() {
+        return (async function* () {
+          yield { choices: [{ delta: { content: 'chunk' } }] } as any
+        })()
+      },
+      async executeStructured() { return { rawText: 'ok' } },
+    }
+    const gateway = new StructuredModelGateway({
+      router,
+      healthStore,
+      circuitBreaker,
+      registry,
+      providers: [fakeProvider],
+    })
 
     const schema = z.object({ result: z.string() })
 

@@ -299,6 +299,10 @@ export class ArtifactStore {
     return null
   }
 
+  getMetadata(id: string): ArtifactMeta | null {
+    return this.read(id)
+  }
+
   list(): ArtifactMeta[] {
     if (!existsSync(this.metaPath)) return []
     const out: ArtifactMeta[] = []

@@ -2,7 +2,7 @@ import type { ExternalSolverAdapter } from './solverAdapter.js'
 import type { ExternalSolverResult, SolverChallengeInput } from './solverTypes.js'
 
 export interface SolverPortfolioDependencies {
-  stateStore?: any
+  stateStore: any
   contextCompiler?: any
   resultNormalizer?: any
   trajectoryRecorder?: any
@@ -12,8 +12,11 @@ export interface SolverPortfolioDependencies {
 export class SolverPortfolio {
   private adapters = new Map<string, ExternalSolverAdapter>()
 
-  constructor(deps?: SolverPortfolioDependencies) {
-    if (deps?.adapters) {
+  constructor(private readonly deps: SolverPortfolioDependencies) {
+    if (!deps || !deps.stateStore) {
+      throw new Error('SolverPortfolio missing required dependencies (stateStore, etc.)')
+    }
+    if (deps.adapters) {
       for (const adapter of deps.adapters) {
         this.registerAdapter(adapter)
       }

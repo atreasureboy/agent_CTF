@@ -58,6 +58,12 @@ import {
 import { WorkflowBrokerRunner } from './workflowRunner.js'
 
 import { TaskWorkspace, makeContestId, makeTaskId } from '../modules/taskWorkspace.js'
+import { ModelCapabilityRegistry } from './modelReliability/modelRegistry.js'
+import { ModelHealthStore } from './modelReliability/modelHealth.js'
+import { ModelCircuitBreaker } from './modelReliability/modelCircuitBreaker.js'
+import { ModelRouter } from './modelReliability/modelRouter.js'
+import { StructuredModelGateway } from './modelReliability/structuredModelGateway.js'
+import { OpenAICompatibleProvider } from './modelReliability/providers/openAICompatibleProvider.js'
 import type { WorkflowDefinition, WorkflowRunResult } from './workflowDefinition.js'
 import type { Finding } from './findings.js'
 import type { HandoffRequest } from './handoff.js'
@@ -475,7 +481,44 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // forward it into ToolContext. Tools read workspace/scope/taskId from
       // there and refuse model-supplied equivalents.
       taskContext: taskExecutionContext,
-      modelGateway: input.modelGateway,
+      modelGateway: (() => {
+        if (input.modelGateway) return input.modelGateway
+        if (!input.client) return undefined
+        const provider = new OpenAICompatibleProvider(input.client)
+        const modelName = input.modelConfig?.model ?? 'gpt-4o'
+        const reg = new ModelCapabilityRegistry()
+        const pIds = [modelName, profile.id, currentProfile.id, 'triage', 'coder', 'orchestrator', 'default', 'image-stego', 'test-model', 'fake']
+        for (const pId of pIds) {
+          if (!reg.hasProfile(pId)) {
+            reg.registerProfile({
+              id: pId,
+              providerId: provider.id,
+              providerModelName: modelName,
+              provider: provider.id,
+              model: modelName,
+              trustLevel: 'privileged',
+              reliabilityClass: 'privileged',
+              contextWindow: 128000,
+              capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
+              reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+              economics: {},
+              allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
+              limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+              fallbackModelIds: [],
+            })
+          }
+        }
+        const hStore = new ModelHealthStore()
+        const cBreaker = new ModelCircuitBreaker(hStore)
+        const mRouter = new ModelRouter(reg, hStore, cBreaker)
+        return new StructuredModelGateway({
+          router: mRouter,
+          healthStore: hStore,
+          circuitBreaker: cBreaker,
+          registry: reg,
+          providers: [provider],
+        })
+      })(),
       toolVisibilityPolicy: input.toolVisibilityPolicy,
     }
     const engine = new ExecutionEngine(engineConfig, renderer)

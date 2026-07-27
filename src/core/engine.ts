@@ -43,6 +43,8 @@ import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
 import { createLinkedAbortController } from './ctfRuntime/linkedAbortController.js'
 import { profileAllowsTool } from './capabilityProfile.js'
+import { MissingModelInvocationGatewayError } from './modelReliability/errors.js'
+import type { ModelRole } from './modelReliability/modelCapability.js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -427,7 +429,8 @@ export class ExecutionEngine {
         this.config.model,
         messages,
         state.strategy,
-        turnAbortSignal, // forwarded so a cancel propagates to summarization
+        turnAbortSignal,
+        this.config.modelGateway,
       )
 
       if (compactResult.compacted) {
@@ -462,75 +465,25 @@ export class ExecutionEngine {
 
     let stream: AsyncIterable<OpenAI.Chat.ChatCompletionChunk>
     try {
-      if (this.config.modelGateway) {
-        stream = await this.config.modelGateway.streamAgentTurn({
-          taskId: this.config.taskId ?? 'session',
-          agentRunId: this.config.agentRunId,
-          role: (this.config.profile?.id as any) || 'task_planner',
-          preferredModelId: this.config.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),
-          ],
-          tools: toolDefs,
-          temperature: this.config.temperature ?? 0,
-          maxOutputTokens: this.config.maxOutputTokens ?? 8192,
-          signal: turnAbortSignal,
-        })
-      } else {
-        const { OpenAICompatibleProvider } =
-          await import('./modelReliability/providers/openAICompatibleProvider.js')
-        const provider = new OpenAICompatibleProvider(this.client)
-        stream = await provider.streamAgentTurn(
-          {
-            id: this.config.model,
-            providerId: 'openai-compatible',
-            providerModelName: this.config.model,
-            provider: 'openai-compatible',
-            model: this.config.model,
-            trustLevel: 'standard',
-            reliabilityClass: 'standard',
-            contextWindow: 128000,
-            capabilities: {
-              toolCalling: true,
-              structuredOutput: true,
-              vision: false,
-              longContext: true,
-              codeExecutionPlanning: true,
-            },
-            reliability: {
-              structuredOutput: 0.9,
-              toolArguments: 0.9,
-              longHorizonPlanning: 0.8,
-              summarization: 0.9,
-              instructionFollowing: 0.9,
-            },
-            economics: {},
-            allowedRoles: [(this.config.profile?.id as any) || 'task_planner'],
-            limits: {
-              maxVisibleTools: 20,
-              maxIterations: 50,
-              maxRepairAttempts: 1,
-              maxConsecutiveFailures: 2,
-            },
-            fallbackModelIds: [],
-          },
-          {
-            taskId: this.config.taskId ?? 'session',
-            agentRunId: this.config.agentRunId,
-            role: (this.config.profile?.id as any) || 'task_planner',
-            preferredModelId: this.config.model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),
-            ],
-            tools: toolDefs,
-            temperature: this.config.temperature ?? 0,
-            maxOutputTokens: this.config.maxOutputTokens ?? 8192,
-            signal: turnAbortSignal,
-          },
-        )
+      if (!this.config.modelGateway) {
+        throw new MissingModelInvocationGatewayError()
       }
+
+      const role: ModelRole = (this.config.profile?.id as any) === 'auxiliary' ? 'solver_scout' : 'task_planner'
+      stream = await this.config.modelGateway.streamAgentTurn({
+        taskId: this.config.taskId ?? 'session',
+        agentRunId: this.config.agentRunId,
+        role,
+        preferredModelId: this.config.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),
+        ],
+        tools: toolDefs,
+        temperature: this.config.temperature ?? 0,
+        maxOutputTokens: this.config.maxOutputTokens ?? 8192,
+        signal: turnAbortSignal,
+      })
     } catch (err: unknown) {
       this.renderer.stopSpinner()
       throw err

@@ -37,6 +37,8 @@ import type { BackgroundJobManager, JobRunner, BackgroundJob } from './backgroun
 import type { ToolFirstPolicy, PolicyVerdict } from './toolFirstPolicy.js'
 import type { ToolResult } from './types.js'
 
+import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
+
 export interface BrokerToolContext {
   cwd: string
   sessionDir?: string
@@ -44,6 +46,7 @@ export interface BrokerToolContext {
   apiConfig?: { apiKey: string; baseURL?: string; model: string }
   taskId: string
   agentId: string
+  identity?: ModelExecutionIdentity
   /** Phase 1.7 §十三.3 — Run-id association for emitted findings. */
   agentRunId?: string
   workflowRunId?: string
@@ -87,6 +90,7 @@ export interface ToolBrokerOptions {
    */
   profileStore?: import('./ctfRuntime/profileStore.js').ProfileStore
   toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
+  toolExposureResolver?: import('./toolVisibility/toolExposureResolver.js').ToolExposureResolver
 }
 
 /**
@@ -199,8 +203,30 @@ export class ToolBroker {
       })
     }
 
-    // ── Step 1.5: ToolVisibilityPolicy gate ─────────────────
-    if (this.opts.toolVisibilityPolicy) {
+    // ── Step 1.5: ToolVisibilityPolicy / ToolExposureResolver gate ──
+    if (this.opts.toolExposureResolver) {
+      try {
+        const identity: ModelExecutionIdentity = ctx.identity || {
+          taskId: ctx.taskId,
+          modelRole: (profile.id as any) === 'auxiliary' ? 'solver_scout' : (profile.id as any) || 'deep_solver',
+          modelId: profile.id,
+          providerId: 'unknown',
+          capabilityProfileId: profile.id,
+          isOrchestrator: profile.id === 'orchestrator' || profile.id === 'competition_coordinator',
+          isWorkflow: false,
+          isOneShot: false,
+        }
+        this.opts.toolExposureResolver.assertExecutable({
+          identity,
+          tool: { name: toolId },
+        })
+      } catch (err: any) {
+        return new BrokerExecutionResult({
+          content: `Permission denied: ${err.message}`,
+          isError: true,
+        })
+      }
+    } else if (this.opts.toolVisibilityPolicy) {
       const isVisible = this.opts.toolVisibilityPolicy.isToolVisible(toolId, {
         role: profile.id,
         isOrchestrator: profile.id === 'orchestrator',
