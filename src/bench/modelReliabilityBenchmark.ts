@@ -13,6 +13,7 @@ import {
 } from '../core/modelReliability/index.js'
 
 import { ModelCapabilityRegistry } from '../core/modelReliability/modelRegistry.js'
+import { CTFTaskStateStore } from '../core/ctfRuntime/taskStateStore.js'
 import {
   ChallengeSwarm,
   CrossSolverEvidenceBus,
@@ -52,15 +53,47 @@ export class ModelReliabilityBenchmarkRunner {
       artifacts: [],
       allowedToolIds: ['http_get'],
     }
-    const m3Brief = SolverBriefCompiler.compileM3Brief(sampleInput, 'm3-mini')
+    const testModelId = 'test-model-1'
+    const m3Brief = SolverBriefCompiler.compileM3Brief(sampleInput, testModelId)
     results['AB_2_ContextCompilation'] = {
       structuredXmlLength: m3Brief.renderedText?.length || 0,
       hasXmlBoundary: m3Brief.renderedText?.includes('<task>') || false,
     }
 
-    // A/B 3: Single M3 Solver vs M3 Scout -> Strong Model Escalation
-    const bus = new CrossSolverEvidenceBus()
-    const swarm = new ChallengeSwarm(bus)
+    const benchStore = new CTFTaskStateStore({
+      taskId: 'bench_task',
+      phase: 'exploration',
+      activeProfileId: 'default',
+      context: { taskId: 'bench_task' } as any,
+      challenge: { inputArtifactIds: [] },
+      findings: [],
+      artifactIds: [],
+      hypotheses: [],
+      attempts: [],
+      handoffs: [],
+      agentRuns: [],
+      workflowRuns: [],
+      jobs: [],
+      solverRuns: [],
+      oneShotRuns: [],
+      observations: [],
+      evidence: [],
+      strategyDecisions: [],
+      pendingActions: [],
+      reasoningBudget: {} as any,
+      reasoningBudgetLimits: {} as any,
+      activeAgentRunIds: [],
+      activeWorkflowRunIds: [],
+      activeJobIds: [],
+      activeSolverRunIds: [],
+      flagCandidates: [],
+      diagnostics: [],
+      degraded: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    const bus = new CrossSolverEvidenceBus(benchStore)
+    const swarm = new ChallengeSwarm(bus, benchStore)
     swarm.registerAdapter(new NativeSolverAdapter())
     results['AB_3_SwarmEscalation'] = {
       swarmInitialized: true,
@@ -68,7 +101,7 @@ export class ModelReliabilityBenchmarkRunner {
     }
 
     // A/B 4: Solver Self-summarization vs Independent ProgressCompiler
-    const progress = ProgressCompiler.compileProgress(sampleInput, 'm3-mini')
+    const progress = ProgressCompiler.compileProgress(sampleInput, testModelId)
     results['AB_4_ProgressCompiler'] = {
       compiledByIndependentModule: true,
       stateRevision: progress.stateRevision,
@@ -82,7 +115,7 @@ export class ModelReliabilityBenchmarkRunner {
         environmentDependencies: ['curl'],
         resumeEntryPoint: 'Analyze response',
       },
-      'high-tier-model',
+      testModelId,
     )
     results['AB_5_RetryHandoff'] = {
       hasReproducibleCommand: retry.renderedText?.includes('curl') || false,

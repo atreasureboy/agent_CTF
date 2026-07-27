@@ -43,8 +43,9 @@ import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
 import { createLinkedAbortController } from './ctfRuntime/linkedAbortController.js'
 import { profileAllowsTool } from './capabilityProfile.js'
+import type { ModelCapabilityProfile, ModelRole } from './modelReliability/modelCapability.js'
+import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
 import { MissingModelInvocationGatewayError } from './modelReliability/errors.js'
-import type { ModelRole } from './modelReliability/modelCapability.js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -284,32 +285,50 @@ export class ExecutionEngine {
     // Merge base tools + module-provided tools
     const allTools = [...this.tools, ...moduleTools]
     let defs = getToolDefinitions(allTools)
-    // Filter by agent tool whitelist (if configured)
-    const whitelist = this.config.agent?.tools
-    if (whitelist) {
-      const allowed = new Set(whitelist)
-      defs = defs.filter((t) => allowed.has(t.function.name))
-    }
-    // Audit rounds 6-10 — when a CapabilityProfile is provided, hide
-    // tools the profile denies from the LLM. Previously the LLM saw
-    // every tool and was only rejected at execution time, which made
-    // the LLM retry denied tools in a loop. Use the canonical
-    // `profileAllowsTool` so the rule order (deny > allow > otherwise) is
-    // identical to runtime enforcement in the broker.
-    if (this.config.profile) {
-      const profile = this.config.profile
-      defs = defs.filter((d) => profileAllowsTool(profile, d.function.name))
-    }
-    // Phase 3.0 — Apply ToolVisibilityPolicy filter if present
-    if (this.config.toolVisibilityPolicy) {
-      const policy = this.config.toolVisibilityPolicy
-      const role = this.config.profile?.id || 'solver'
-      defs = defs.filter((d) =>
-        policy.isToolVisible(d.function.name, {
-          role,
-          isOrchestrator: role === 'orchestrator',
-        }),
-      )
+    // Apply ToolExposureResolver / ToolVisibilityPolicy filter if present
+    if (this.config.toolExposureResolver) {
+      const identity: ModelExecutionIdentity = this.config.identity || {
+        taskId: this.config.taskId || 'task',
+        modelRole:
+          (this.config as any).role ||
+          (this.config.agentId?.includes('scout')
+            ? 'solver_scout'
+            : this.config.agentId === 'orchestrator'
+              ? 'task_planner'
+              : 'deep_solver'),
+        modelProfileId: this.config.model,
+        providerId: 'openai-compatible',
+        capabilityProfileId: 'default',
+        isOrchestrator: (this.config as any).isOrchestrator || this.config.agentId === 'orchestrator',
+      }
+      const modelProfile: ModelCapabilityProfile = {
+        id: this.config.model,
+        providerId: 'openai-compatible',
+        providerModelName: this.config.model,
+        provider: 'openai-compatible',
+        model: this.config.model,
+        trustLevel: 'standard',
+        reliabilityClass: 'standard',
+        contextWindow: 128000,
+        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
+        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        economics: {},
+        allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
+        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        fallbackModelIds: [],
+      }
+      const descriptors = defs.map((d) => ({
+        name: d.function.name,
+        description: d.function.description,
+        parameters: d.function.parameters,
+      }))
+      const resolvedDescriptors = this.config.toolExposureResolver.resolveDefinitions({
+        identity,
+        modelProfile,
+        allTools: descriptors,
+      })
+      const resolvedNames = new Set(resolvedDescriptors.map((r: any) => r.name))
+      defs = defs.filter((d) => resolvedNames.has(d.function.name))
     }
     // Filter by plan mode (read-only tools only)
     if (planMode) {
@@ -469,12 +488,20 @@ export class ExecutionEngine {
         throw new MissingModelInvocationGatewayError()
       }
 
-      const role: ModelRole = (this.config.profile?.id as any) === 'auxiliary' ? 'solver_scout' : 'task_planner'
-      stream = await this.config.modelGateway.streamAgentTurn({
+      const identity: ModelExecutionIdentity = this.config.identity || {
         taskId: this.config.taskId ?? 'session',
-        agentRunId: this.config.agentRunId,
-        role,
-        preferredModelId: this.config.model,
+        modelRole: (this.config as any).role ?? (this.config.agentId === 'orchestrator' ? 'task_planner' : 'deep_solver'),
+        modelProfileId: this.config.model,
+        providerId: 'openai-compatible',
+        capabilityProfileId: 'default',
+        isOrchestrator: (this.config as any).isOrchestrator || this.config.agentId === 'orchestrator',
+      }
+
+      stream = await this.config.modelGateway.streamAgentTurn({
+        taskId: identity.taskId,
+        agentRunId: identity.agentRunId,
+        role: identity.modelRole,
+        preferredModelId: identity.modelProfileId,
         messages: [
           { role: 'system', content: systemPrompt },
           ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),

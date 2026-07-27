@@ -11,6 +11,7 @@ import {
   StagnationDetector,
   SubmissionController,
 } from '../src/core/solverPortfolio/index.js'
+import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
 
 describe('Solver Portfolio & Swarm Suite', () => {
   it('normalizes external solver results cleanly', () => {
@@ -29,7 +30,54 @@ describe('Solver Portfolio & Swarm Suite', () => {
   })
 
   it('handles cross-solver evidence bus and cursors', () => {
-    const bus = new CrossSolverEvidenceBus()
+    const store = new CTFTaskStateStore({
+      taskId: 'task_1',
+      phase: 'exploration',
+      activeProfileId: 'default',
+      context: { taskId: 'task_1' } as any,
+      challenge: { inputArtifactIds: [] },
+      findings: [],
+      artifactIds: [],
+      hypotheses: [],
+      attempts: [],
+      handoffs: [],
+      agentRuns: [],
+      workflowRuns: [],
+      jobs: [],
+      solverRuns: [],
+      oneShotRuns: [],
+      observations: [],
+      evidence: [
+        {
+          id: 'ev_1',
+          taskId: 'task_1',
+          kind: 'generic',
+          claimFamily: 'generic',
+          claim: 'SQLi confirmed in /api/v1/user',
+          normalizedClaim: 'SQLi confirmed in /api/v1/user',
+          confidence: 0.9,
+          polarity: 'supports',
+          fingerprint: 'ev_1',
+          sources: [{ producer: { type: 'workflow', id: 'run_A' }, id: 'run_A' }] as any,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+      strategyDecisions: [],
+      pendingActions: [],
+      reasoningBudget: {} as any,
+      reasoningBudgetLimits: {} as any,
+      activeAgentRunIds: [],
+      activeWorkflowRunIds: [],
+      activeJobIds: [],
+      activeSolverRunIds: [],
+      flagCandidates: [],
+      diagnostics: [],
+      degraded: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    const bus = new CrossSolverEvidenceBus(store)
     bus.publish({
       id: 'msg_1',
       taskId: 'task_1',
@@ -88,8 +136,40 @@ describe('Solver Portfolio & Swarm Suite', () => {
   })
 
   it('runs challenge swarm successfully', async () => {
-    const bus = new CrossSolverEvidenceBus()
-    const swarm = new ChallengeSwarm(bus)
+    const store = new CTFTaskStateStore({
+      taskId: 'swarm_task',
+      phase: 'exploration',
+      activeProfileId: 'default',
+      context: { taskId: 'swarm_task' } as any,
+      challenge: { inputArtifactIds: [] },
+      findings: [],
+      artifactIds: [],
+      hypotheses: [],
+      attempts: [],
+      handoffs: [],
+      agentRuns: [],
+      workflowRuns: [],
+      jobs: [],
+      solverRuns: [],
+      oneShotRuns: [],
+      observations: [],
+      evidence: [],
+      strategyDecisions: [],
+      pendingActions: [],
+      reasoningBudget: {} as any,
+      reasoningBudgetLimits: {} as any,
+      activeAgentRunIds: [],
+      activeWorkflowRunIds: [],
+      activeJobIds: [],
+      activeSolverRunIds: [],
+      flagCandidates: [],
+      diagnostics: [],
+      degraded: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    const bus = new CrossSolverEvidenceBus(store)
+    const swarm = new ChallengeSwarm(bus, store)
     swarm.registerAdapter(
       new NativeSolverAdapter({
         async runMainAgent() {

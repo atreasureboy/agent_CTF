@@ -5,6 +5,7 @@ import type { ExternalSolverResult, SolverChallengeInput } from './solverTypes.j
 import { StagnationDetector } from './stagnationDetector.js'
 import { StagnationSignalCollector } from './stagnationCollector.js'
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
+import type { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
 
 export interface ChallengeSwarmPolicy {
   maxConcurrentSolvers: number
@@ -31,9 +32,15 @@ export class ChallengeSwarm {
   private adapters = new Map<string, ExternalSolverAdapter>()
   private activeHandles = new Map<string, SolverRunHandle>()
   private evidenceBus?: CrossSolverEvidenceBus
+  private stateStore?: CTFTaskStateStore
 
-  constructor(evidenceBus?: CrossSolverEvidenceBus, policy: Partial<ChallengeSwarmPolicy> = {}) {
+  constructor(
+    evidenceBus?: CrossSolverEvidenceBus,
+    stateStore?: CTFTaskStateStore,
+    policy: Partial<ChallengeSwarmPolicy> = {},
+  ) {
     this.evidenceBus = evidenceBus
+    this.stateStore = stateStore
     this.policy = { ...DEFAULT_SWARM_POLICY, ...policy }
   }
 
@@ -118,20 +125,38 @@ export class ChallengeSwarm {
       activePromises.delete(finished.handle.runId)
       allResults.push(finished.result)
 
-      // Publish Grounded evidence with formal IDs
-      for (const obs of finished.result.observations) {
-        const formalObsId = `obs_${finished.handle.runId}_${Date.now()}`
-        this.evidenceBus?.publish({
-          id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          taskId: input.taskId,
-          sourceSolverRunId: finished.handle.runId,
-          evidenceIds: [],
-          observationIds: [formalObsId],
-          artifactIds: [],
-          summary: obs.summary,
-          priority: 'normal',
-          createdAt: Date.now(),
-        })
+      // Apply observations to CTFTaskStateStore FIRST before publishing knowledge
+      if (this.stateStore) {
+        for (const obs of finished.result.observations) {
+          const obsId = (obs as any).id || `obs_${finished.handle.runId}_${Date.now()}`
+          try {
+            this.stateStore.apply({
+              type: 'OBSERVATION_ADDED',
+              observation: {
+                id: obsId,
+                taskId: input.taskId,
+                sourceSolverRunId: finished.handle.runId,
+                summary: obs.summary,
+                data: (obs as any).data ?? {},
+                createdAt: Date.now(),
+              } as any,
+            })
+            // Publish grounded observation message with real ID from state
+            this.evidenceBus?.publish({
+              id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              taskId: input.taskId,
+              sourceSolverRunId: finished.handle.runId,
+              evidenceIds: [],
+              observationIds: [obsId],
+              artifactIds: [],
+              summary: obs.summary,
+              priority: 'normal',
+              createdAt: Date.now(),
+            })
+          } catch (err) {
+            // State apply error must be handled
+          }
+        }
       }
 
       // Check flag candidates using FlagDiscriminator

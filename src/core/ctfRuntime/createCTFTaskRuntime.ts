@@ -57,6 +57,8 @@ export interface CreateCTFTaskRuntimeInput {
   /** Model config. Required for LLM mode. */
   modelConfig?: ModelConfig
 
+  workflowOnly?: boolean
+
   mode?: CTFTaskRuntimeMode
 
   challenge?: {
@@ -68,6 +70,9 @@ export interface CreateCTFTaskRuntimeInput {
   environment?: Record<string, string>
 
   jobLimits?: { maxPerAgent?: number; maxPerTask?: number; globalTimeoutMs?: number }
+  runtimeMode?: 'production' | 'test'
+  runtimeModelConfig?: import('../modelReliability/modelRegistry.js').RuntimeModelConfiguration
+  nativeRuntimeDelegate?: import('../solverPortfolio/nativeSolverAdapter.js').NativeSolverRuntimeDelegate
 }
 
 export interface CTFTaskRuntime {
@@ -152,7 +157,10 @@ export async function createCTFTaskRuntime(
   const { TrajectoryRecorder } = await import('../trajectory/trajectoryRecorder.js')
   const trajectoryRecorder = new TrajectoryRecorder(`${taskWorkspace.paths.root}/trajectory.jsonl`)
 
-  // 5. Model Reliability Infrastructure
+  // 5. Model Reliability Infrastructure & Guard
+  const { ProductionTruthfulnessGuard } = await import('../runtimeGuard/productionTruthfulnessGuard.js')
+  const guard = new ProductionTruthfulnessGuard({ mode: input.runtimeMode ?? 'production' })
+
   const { ModelCapabilityRegistry } = await import('../modelReliability/modelRegistry.js')
   const { ModelHealthStore } = await import('../modelReliability/modelHealth.js')
   const { ModelCircuitBreaker } = await import('../modelReliability/modelCircuitBreaker.js')
@@ -166,70 +174,72 @@ export async function createCTFTaskRuntime(
   const router = new ModelRouter(registry, healthStore, circuitBreaker)
 
   const providersMap = new Map<string, any>()
-  if (input.client) {
+
+  if (input.runtimeModelConfig) {
+    registry.registerConfiguration(input.runtimeModelConfig)
+    if (input.runtimeModelConfig.providers) {
+      for (const p of input.runtimeModelConfig.providers) {
+        if (input.client) {
+          const { OpenAICompatibleProvider } =
+            await import('../modelReliability/providers/openAICompatibleProvider.js')
+          providersMap.set(p.id, new OpenAICompatibleProvider(input.client, p.id))
+        }
+      }
+    }
+  } else if (input.client || input.modelConfig) {
     const { OpenAICompatibleProvider } =
       await import('../modelReliability/providers/openAICompatibleProvider.js')
-    const provider = new OpenAICompatibleProvider(input.client)
+    const provider = new OpenAICompatibleProvider(input.client!)
     providersMap.set(provider.id, provider)
 
-    // Register active model profile matching provider
     const modelName = input.modelConfig?.model ?? 'gpt-4o'
-    const profileIdsToRegister = new Set([
-      modelName,
-      input.profileId,
-      initialProfile.id,
-      'triage',
-      'coder',
-      'orchestrator',
-      'default',
-    ])
+    registry.registerProfile({
+      id: modelName,
+      providerId: provider.id,
+      providerModelName: modelName,
+      provider: provider.id,
+      model: modelName,
+      trustLevel: 'privileged',
+      reliabilityClass: 'privileged',
+      contextWindow: 128000,
+      capabilities: {
+        toolCalling: true,
+        structuredOutput: true,
+        vision: true,
+        longContext: true,
+        codeExecutionPlanning: true,
+      },
+      reliability: {
+        structuredOutput: 0.98,
+        toolArguments: 0.95,
+        longHorizonPlanning: 0.92,
+        summarization: 0.95,
+        instructionFollowing: 0.96,
+      },
+      economics: {},
+      allowedRoles: [
+        'competition_coordinator',
+        'task_planner',
+        'solver_scout',
+        'deep_solver',
+        'context_compiler',
+        'progress_summarizer',
+        'specialist',
+        'flag_discriminator',
+        'reporter',
+      ],
+      limits: {
+        maxVisibleTools: 50,
+        maxIterations: 30,
+        maxRepairAttempts: 2,
+        maxConsecutiveFailures: 3,
+      },
+      fallbackModelIds: [],
+    })
+  }
 
-    for (const pId of profileIdsToRegister) {
-      if (!pId || registry.hasProfile(pId)) continue
-      registry.registerProfile({
-        id: pId,
-        providerId: provider.id,
-        providerModelName: modelName,
-        provider: provider.id,
-        model: modelName,
-        trustLevel: 'privileged',
-        reliabilityClass: 'privileged',
-        contextWindow: 128000,
-        capabilities: {
-          toolCalling: true,
-          structuredOutput: true,
-          vision: true,
-          longContext: true,
-          codeExecutionPlanning: true,
-        },
-        reliability: {
-          structuredOutput: 0.98,
-          toolArguments: 0.95,
-          longHorizonPlanning: 0.92,
-          summarization: 0.95,
-          instructionFollowing: 0.96,
-        },
-        economics: {},
-        allowedRoles: [
-          'competition_coordinator',
-          'task_planner',
-          'solver_scout',
-          'deep_solver',
-          'context_compiler',
-          'progress_summarizer',
-          'specialist',
-          'flag_discriminator',
-          'reporter',
-        ],
-        limits: {
-          maxVisibleTools: 50,
-          maxIterations: 30,
-          maxRepairAttempts: 2,
-          maxConsecutiveFailures: 3,
-        },
-        fallbackModelIds: [],
-      })
-    }
+  if (input.mode === 'llm' && (providersMap.size === 0 || registry.listProfiles().length === 0)) {
+    throw new Error('Runtime creation failed: No configured model/provider available')
   }
 
   let orchestratorRef: any = null
@@ -279,11 +289,21 @@ export async function createCTFTaskRuntime(
   })
   orchestratorRef = orchestrator
 
-  // 9. Wire Job & SolverPortfolio
+  // 9. Wire Job & SolverPortfolio with complete dependencies
   const { SolverPortfolio } = await import('../solverPortfolio/solverPortfolio.js')
+  const { NativeSolverAdapter } = await import('../solverPortfolio/nativeSolverAdapter.js')
+  const { GenericProcessSolverAdapter } = await import('../solverPortfolio/genericProcessSolverAdapter.js')
+  const { SolverResultNormalizer } = await import('../solverPortfolio/solverResultNormalizer.js')
+
   const portfolio = new SolverPortfolio({
     stateStore: orchestrator.store,
+    contextCompiler: (orchestrator as any).contextCompiler || (dependencies as any).contextCompiler,
+    resultNormalizer: new SolverResultNormalizer(),
     trajectoryRecorder,
+    adapters: [
+      new NativeSolverAdapter(input.nativeRuntimeDelegate),
+      new GenericProcessSolverAdapter('generic-process-solver'),
+    ],
   })
 
   const projector = orchestrator.projector

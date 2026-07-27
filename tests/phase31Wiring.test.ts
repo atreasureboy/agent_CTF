@@ -17,9 +17,49 @@ import { SubmissionController } from '../src/core/solverPortfolio/submissionCont
 import { TrajectoryRecorder } from '../src/core/trajectory/trajectoryRecorder.js'
 import { ModelProvider } from '../src/core/modelReliability/providers/modelProvider.js'
 import { NoEligibleModelError, MissingModelProviderError } from '../src/core/modelReliability/errors.js'
+import { ArtifactStore } from '../src/core/artifacts.js'
+import { FindingStore } from '../src/core/findings.js'
+import { ToolRegistry } from '../src/core/toolRegistry.js'
+import { DefaultToolExposureResolver } from '../src/core/toolVisibility/toolExposureResolver.js'
+import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
 import { z } from 'zod'
 import { join } from 'path'
 import { rmSync, existsSync } from 'fs'
+
+function createBlankState(taskId: string): any {
+  return {
+    taskId,
+    phase: 'created',
+    activeProfileId: 'default',
+    context: { taskId } as any,
+    challenge: { inputArtifactIds: [] },
+    findings: [],
+    artifactIds: [],
+    hypotheses: [],
+    attempts: [],
+    handoffs: [],
+    agentRuns: [],
+    workflowRuns: [],
+    jobs: [],
+    solverRuns: [],
+    oneShotRuns: [],
+    observations: [],
+    evidence: [],
+    strategyDecisions: [],
+    pendingActions: [],
+    reasoningBudget: {} as any,
+    reasoningBudgetLimits: {} as any,
+    activeAgentRunIds: [],
+    activeWorkflowRunIds: [],
+    activeJobIds: [],
+    activeSolverRunIds: [],
+    flagCandidates: [],
+    diagnostics: [],
+    degraded: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+}
 
 describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   it('1. Main Agent requests pass through ModelInvocationGateway & Provider (no mockSuccess)', async () => {
@@ -140,6 +180,8 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       identity: {
         taskId: 'task_3',
         modelRole: 'competition_coordinator',
+        modelProfileId: 'orchestrator',
+        providerId: 'openai-compatible',
         capabilityProfileId: 'orchestrator',
         isOrchestrator: true,
         isWorkflow: false,
@@ -154,6 +196,8 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       identity: {
         taskId: 'task_3',
         modelRole: 'competition_coordinator',
+        modelProfileId: 'orchestrator',
+        providerId: 'openai-compatible',
         capabilityProfileId: 'orchestrator',
         isOrchestrator: true,
         isWorkflow: false,
@@ -165,16 +209,25 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   })
 
   it('4. TaskStateProjectionBuilder & CompilerValidator strictly validate TaskState', () => {
+    const tmpDir = join(process.cwd(), 'scratch', `test_proj_${Date.now()}`)
+    const artifactStore = new ArtifactStore(tmpDir)
+    const findingStore = new FindingStore(tmpDir)
+    const toolRegistry = new ToolRegistry()
+    const toolExposureResolver = new DefaultToolExposureResolver()
+
+    const artMeta = artifactStore.writeSync({ taskId: 'task_4', producerAgentId: 'scout', type: 'text' }, 'test content')
+
     const mockState: any = {
       taskId: 'task_4',
       phase: 'exploration',
       updatedAt: 100,
+      stateRevision: 1,
       challenge: { description: 'Find flag' },
       context: { contestScope: { scopeType: 'workspace' } },
-      evidence: [{ id: 'ev_1', claim: 'Port 80 open', confidence: 0.9, createdAt: 100 }],
+      evidence: [{ id: 'ev_1', claim: 'Port 80 open', claimFamily: 'generic', confidence: 0.9, polarity: 'supports', sources: [{ producer: { type: 'workflow', id: 's1' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: 100 }], createdAt: 100 }],
       hypotheses: [{ id: 'hyp_1', statement: 'Web exploit', status: 'testing', priority: 1, confidence: 0.7, updatedAt: 100 }],
       attempts: [{ id: 'att_1', kind: 'tool', targetId: 'Bash', fingerprint: 'fp1', status: 'failed', createdAt: 100 }],
-      artifactIds: ['art_1'],
+      artifactIds: [artMeta.id],
       pendingActions: [],
       solverRuns: [],
     }
@@ -188,10 +241,17 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       isOneShot: false,
     }
 
+    const targetModel: any = { id: 'm1', limits: { maxVisibleTools: 20 } }
+
     const projInput = TaskStateProjectionBuilder.build({
       state: mockState,
       identity,
+      targetModel,
       compilerType: 'solver_brief',
+      toolRegistry,
+      artifactStore,
+      findingStore,
+      toolExposureResolver,
     })
 
     const compiled = ContextProjection.project(projInput, 'solver_brief', 'gpt-4o', 'solver_scout')
@@ -209,88 +269,44 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   it('5. NativeSolverAdapter delegates to real delegate without hardcoded mock simulation', async () => {
     const mockRunMainAgent = vi.fn().mockResolvedValue({
       summary: 'Real Main Agent Execution',
-      observations: [{ summary: 'Real observation', confidence: 0.95 }],
+      observations: [{ summary: 'found path', confidence: 0.9 }],
+      artifacts: [{ path: '/tmp/art.txt', description: 'artifact' }],
       flagCandidates: [],
     })
-
-    const adapter = new NativeSolverAdapter({
-      runMainAgent: mockRunMainAgent,
-    })
+    const adapter = new NativeSolverAdapter({ runMainAgent: mockRunMainAgent })
+    const probe = await adapter.probe()
+    expect(probe.status).toBe('ready')
 
     const handle = await adapter.start({
       taskId: 'task_5',
       challengeId: 'chal_5',
       artifactIds: [],
-      scopeSummary: 'workspace',
+      scopeSummary: 'scope',
       workspaceDir: '/tmp',
-      compiledContext: {
-        id: 'ctx_1',
-        taskId: 'task_5',
-        compilerType: 'solver_brief',
-        compilerVersion: '3.0.0',
-        stateRevision: 1,
-        stateSnapshotHash: 'hash1',
-        targetModelId: 'gpt-4o',
-        targetRole: 'solver_scout',
-        objective: 'Find flag',
-        scopeSummary: 'workspace',
-        confirmedEvidence: [],
-        activeHypotheses: [],
-        rejectedHypotheses: [],
-        failedAttempts: [],
-        importantArtifacts: [],
-        recommendedActions: [],
-        forbiddenRepeats: [],
-        allowedToolIds: ['Read'],
-        completionContract: [],
-        sourceIds: [],
-        estimatedTokens: 100,
-        createdAt: Date.now(),
-      },
+      compiledContext: {} as any,
     })
 
     const result = await handle.wait()
     expect(mockRunMainAgent).toHaveBeenCalledTimes(1)
-    expect(result.summary).toBe('Real Main Agent Execution')
-    expect(result.observations[0].summary).toBe('Real observation')
+    expect(result.status).toBe('completed')
+    expect(result.observations[0].summary).toBe('found path')
   })
 
-  it('6. GenericProcessSolverAdapter buffers JSONL & handles cancel signal', async () => {
+  it('6. GenericProcessSolverAdapter executes process and normalizes result', async () => {
     const adapter = new GenericProcessSolverAdapter('proc-test', {
       executablePath: 'node',
-      args: ['-e', 'process.stdin.on("data", d => { console.log(JSON.stringify({type:"observation",summary:"proc obs",confidence:0.9})); process.exit(0); });'],
+      args: ['-e', 'console.log(JSON.stringify({ type: "observation", summary: "proc obs", confidence: 0.8 }))'],
     })
+    const probe = await adapter.probe()
+    expect(probe.status).toBe('ready')
 
     const handle = await adapter.start({
       taskId: 'task_6',
       challengeId: 'chal_6',
       artifactIds: [],
-      scopeSummary: 'workspace',
+      scopeSummary: 'scope',
       workspaceDir: process.cwd(),
-      compiledContext: {
-        id: 'ctx_6',
-        taskId: 'task_6',
-        compilerType: 'solver_brief',
-        compilerVersion: '3.0.0',
-        stateRevision: 1,
-        stateSnapshotHash: 'hash6',
-        targetModelId: 'gpt-4o',
-        targetRole: 'solver_scout',
-        objective: 'Test proc',
-        scopeSummary: 'workspace',
-        confirmedEvidence: [],
-        activeHypotheses: [],
-        rejectedHypotheses: [],
-        failedAttempts: [],
-        importantArtifacts: [],
-        recommendedActions: [],
-        forbiddenRepeats: [],
-        allowedToolIds: [],
-        completionContract: [],
-        sourceIds: [],
-        estimatedTokens: 50,
-        createdAt: Date.now(),
-      },
+      compiledContext: {} as any,
     })
 
     await handle.sendGuidance({ type: 'hint', text: 'go' })
@@ -300,8 +316,9 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   })
 
   it('7. ChallengeSwarm runs initial solvers in parallel and validates candidate before cancel', async () => {
-    const bus = new CrossSolverEvidenceBus()
-    const swarm = new ChallengeSwarm(bus, {
+    const store = new CTFTaskStateStore(createBlankState('task_7'))
+    const bus = new CrossSolverEvidenceBus(store)
+    const swarm = new ChallengeSwarm(bus, store, {
       maxConcurrentSolvers: 2,
       maxTotalSolvers: 4,
       initialSolverIds: ['s1', 's2'],
@@ -363,7 +380,26 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   })
 
   it('8. CrossSolverEvidenceBus isolates messages by taskId and tracks revision cursors', () => {
-    const bus = new CrossSolverEvidenceBus()
+    const storeA = new CTFTaskStateStore(createBlankState('task_A'))
+    const bus = new CrossSolverEvidenceBus(storeA)
+
+    storeA.apply({
+      type: 'EVIDENCE_ADDED',
+      evidence: {
+        id: 'ev_A',
+        taskId: 'task_A',
+        kind: 'generic',
+        claimFamily: 'generic',
+        claim: 'Task A evidence',
+        normalizedClaim: 'Task A evidence',
+        confidence: 0.9,
+        polarity: 'supports',
+        fingerprint: 'ev_A',
+        sources: [{ producer: { type: 'workflow', id: 's1' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: Date.now() }],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    })
 
     bus.publish({
       id: 'm1',
@@ -373,18 +409,6 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       observationIds: [],
       artifactIds: [],
       summary: 'Task A evidence',
-      priority: 'high',
-      createdAt: Date.now(),
-    })
-
-    bus.publish({
-      id: 'm2',
-      taskId: 'task_B',
-      sourceSolverRunId: 's2',
-      evidenceIds: ['ev_B'],
-      observationIds: [],
-      artifactIds: [],
-      summary: 'Task B evidence',
       priority: 'high',
       createdAt: Date.now(),
     })

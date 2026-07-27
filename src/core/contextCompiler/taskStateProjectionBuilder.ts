@@ -5,41 +5,100 @@ import type { TaskStateProjectionInput } from './contextProjection.js'
 import type { CompilerType } from './compiledContext.js'
 import type { FindingStore } from '../findings.js'
 import type { ArtifactStore } from '../artifacts.js'
-import { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
+import type { ToolRegistry } from '../toolRegistry.js'
+import type { ToolExposureResolver } from '../toolVisibility/toolExposureResolver.js'
 import { computeCanonicalSnapshotHash } from './canonicalSnapshot.js'
+import { ProductionTruthfulnessGuard } from '../runtimeGuard/productionTruthfulnessGuard.js'
 
 export interface TaskStateProjectionBuilderInput {
   state: Readonly<CTFTaskState>
-  findingStore?: FindingStore
-  artifactStore?: ArtifactStore
   identity: ModelExecutionIdentity
-  targetModel?: ModelCapabilityProfile
+  targetModel: ModelCapabilityProfile
   compilerType: CompilerType
-  toolVisibilityPolicy?: ToolVisibilityPolicy
+  toolRegistry: ToolRegistry
+  artifactStore: ArtifactStore
+  findingStore: FindingStore
+  toolExposureResolver: ToolExposureResolver
   getRevisionFn?: (taskId: string) => number
+  guard?: ProductionTruthfulnessGuard
 }
 
 export class TaskStateProjectionBuilder {
   public static build(input: TaskStateProjectionBuilderInput): TaskStateProjectionInput {
-    const { state, identity, targetModel, toolVisibilityPolicy, getRevisionFn } = input
+    const {
+      state,
+      identity,
+      targetModel,
+      toolRegistry,
+      artifactStore,
+      findingStore,
+      toolExposureResolver,
+      getRevisionFn,
+      guard = new ProductionTruthfulnessGuard({ mode: 'production' }),
+    } = input
 
-    const stateRevision = getRevisionFn
-      ? getRevisionFn(state.taskId)
-      : ((state as any).revision ?? 1)
+    if (!toolRegistry || !artifactStore || !findingStore || !toolExposureResolver) {
+      throw new Error(
+        '[TaskStateProjectionBuilder] Missing mandatory dependencies (toolRegistry, artifactStore, findingStore, toolExposureResolver).',
+      )
+    }
 
-    const policy = toolVisibilityPolicy || new ToolVisibilityPolicy()
-    const allowedTools = policy
-      .filterVisibleTools([], {
-        role: identity.modelRole,
-        modelId: identity.modelId,
-        solverId: identity.solverId,
-        specialistId: identity.specialistId,
-        isOrchestrator: identity.isOrchestrator,
-        isWorkflow: identity.isWorkflow,
-        isOneShot: identity.isOneShot,
-        maxVisibleTools: targetModel?.limits?.maxVisibleTools ?? 20,
-      })
-      .map((t: any) => (typeof t === 'string' ? t : t.name))
+    const stateRevision = getRevisionFn ? getRevisionFn(state.taskId) : ((state as any).revision ?? (state as any).stateRevision)
+    if (stateRevision === undefined || stateRevision === null) {
+      throw new Error(`[TaskStateProjectionBuilder] State revision for task '${state.taskId}' is undefined. Hardcoded fallback is prohibited.`)
+    }
+
+    // Build real tool descriptors from ToolRegistry
+    const allToolsDescriptors = toolRegistry.list().map((t) => ({
+      name: t.id,
+      description: t.impl?.definition?.function?.description || '',
+      parameters: (t.impl?.definition?.function?.parameters as Record<string, any>) || {},
+      metadata: { visibilityClass: 'all' as const },
+    }))
+
+    const resolvedToolDescriptors = toolExposureResolver.resolveDefinitions({
+      identity,
+      modelProfile: targetModel,
+      taskState: state,
+      allTools: allToolsDescriptors,
+    })
+
+    const allowedToolIds = resolvedToolDescriptors.map((d) => d.name)
+
+    // Build real artifact refs from ArtifactStore
+    const compiledArtifacts = state.artifactIds.map((id) => {
+      const meta = artifactStore.getMetadata(id)
+      if (!meta) {
+        throw new Error(`[TaskStateProjectionBuilder] Artifact metadata for '${id}' not found in ArtifactStore.`)
+      }
+
+      const authorizedPath = (meta as any).authorizedPath || meta.path
+      if (!authorizedPath) {
+        throw new Error(`[TaskStateProjectionBuilder] Artifact '${id}' has no authorized file path.`)
+      }
+
+      guard.assertValidArtifactPath(authorizedPath, id)
+
+      return {
+        id,
+        authorizedPath,
+        sha256: meta.sha256,
+        size: meta.size,
+        mimeType: meta.mimeType,
+        lineage: (meta as any).lineage || (meta.parentArtifactId ? [meta.parentArtifactId] : []),
+        createdByAttemptId: meta.attemptId,
+        summary: meta.summary,
+      }
+    })
+
+    // Build real findings from FindingStore
+    const taskFindings = findingStore.list((f) => f.taskId === state.taskId).map((f) => ({
+      id: f.id,
+      category: f.category,
+      title: f.title,
+      confidence: f.confidence,
+      summary: f.summary,
+    }))
 
     const stateSnapshotHash = computeCanonicalSnapshotHash({
       taskId: state.taskId,
@@ -62,15 +121,22 @@ export class TaskStateProjectionBuilder {
         status: a.status,
         fingerprint: a.fingerprint,
       })),
-      artifacts: state.artifactIds.map((id) => ({
-        id,
+      artifacts: compiledArtifacts.map((a) => ({
+        id: a.id,
+        sha256: a.sha256,
+        size: a.size,
+        mimeType: a.mimeType,
+      })),
+      findings: taskFindings.map((f) => ({
+        id: f.id,
+        severity: f.confidence,
       })),
       pendingActions: (state.pendingActions || []).map((p: any) => ({
         id: p.id,
         status: p.status || 'pending',
       })),
-      toolExposureHash: allowedTools.sort().join(','),
-      compilerVersion: '3.2.0',
+      toolExposureHash: allowedToolIds.slice().sort().join(','),
+      compilerVersion: '3.3.0',
     })
 
     const objective =
@@ -107,16 +173,14 @@ export class TaskStateProjectionBuilder {
       reason: a.error?.message,
     }))
 
-    const artifacts = state.artifactIds.map((id) => {
-      const storeMeta = input.artifactStore?.getMetadata(id)
-      const path = (storeMeta as any)?.authorizedPath || storeMeta?.path || `/artifacts/${id}`
-      return {
-        id,
-        path,
-        sha256: storeMeta?.sha256,
-        description: storeMeta?.summary || `Artifact ${id} for task ${state.taskId}`,
-      }
-    })
+    const artifacts = compiledArtifacts.map((a) => ({
+      id: a.id,
+      path: a.authorizedPath,
+      sha256: a.sha256,
+      size: a.size,
+      mimeType: a.mimeType,
+      description: a.summary || `Artifact ${a.id} for task ${state.taskId}`,
+    }))
 
     const pendingActions = state.pendingActions
       ?.filter((p) => p.status === 'pending')
@@ -139,7 +203,7 @@ export class TaskStateProjectionBuilder {
       artifacts,
       actions: pendingActions,
       currentBlocker: state.degraded ? 'Task marked degraded due to diagnostic error' : undefined,
-      allowedToolIds: allowedTools,
+      allowedToolIds,
     }
   }
 }

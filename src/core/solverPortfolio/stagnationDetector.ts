@@ -42,7 +42,7 @@ export class StagnationDetector {
     if (signals.cyclesWithoutNewEvidence >= 4 || signals.consecutiveToolFailures >= 3) {
       return {
         action: 'switch_model',
-        targetModelId: 'high-tier-model',
+        targetModelId: 'escalated-model-tier',
         reason: `Solver stagnated for ${signals.cyclesWithoutNewEvidence} cycles without new evidence. Escalating model.`,
       }
     }

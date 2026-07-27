@@ -1,4 +1,6 @@
 import { CrossSolverKnowledgeView } from './crossSolverKnowledgeView.js'
+import { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
+import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface SolverEvidenceCursor {
   solverRunId: string
@@ -21,115 +23,112 @@ export interface SolverEvidenceMessage {
 }
 
 export class CrossSolverEvidenceBus {
-  private knowledgeView?: CrossSolverKnowledgeView
-  private publishedMessages: SolverEvidenceMessage[] = []
-  private stateStore?: any
+  private knowledgeView: CrossSolverKnowledgeView
+  private stateStore: CTFTaskStateStore
   private cursors = new Map<string, SolverEvidenceCursor>()
 
-  constructor(stateStore?: any) {
-    this.stateStore = stateStore
-    if (stateStore) {
-      this.knowledgeView = new CrossSolverKnowledgeView(stateStore)
+  constructor(stateStore: CTFTaskStateStore) {
+    if (!stateStore) {
+      throw new Error('[CrossSolverEvidenceBus] Mandatory stateStore dependency missing.')
     }
+    this.stateStore = stateStore
+    this.knowledgeView = new CrossSolverKnowledgeView(this.stateStore)
   }
 
-  public setStore(stateStore: any): void {
+  public setStore(stateStore: CTFTaskStateStore): void {
+    if (!stateStore) {
+      throw new Error('[CrossSolverEvidenceBus] Mandatory stateStore dependency missing.')
+    }
     this.stateStore = stateStore
     this.knowledgeView = new CrossSolverKnowledgeView(stateStore)
   }
 
   public publish(msg: SolverEvidenceMessage): void {
     // Enforcement: Messages without grounded IDs (evidenceIds, observationIds, artifactIds)
-    // are ungrounded natural language and cannot enter the evidence bus
-    if (
-      (!msg.evidenceIds || msg.evidenceIds.length === 0) &&
-      (!msg.observationIds || msg.observationIds.length === 0) &&
-      (!msg.artifactIds || msg.artifactIds.length === 0)
-    ) {
+    // are ungrounded natural language and CANNOT enter the evidence bus.
+    const hasGroundedId =
+      (msg.evidenceIds && msg.evidenceIds.length > 0) ||
+      (msg.observationIds && msg.observationIds.length > 0) ||
+      (msg.artifactIds && msg.artifactIds.length > 0)
+
+    if (!hasGroundedId) {
       return
     }
 
-    if (this.stateStore && msg.evidenceIds?.length) {
-      try {
-        for (const evId of msg.evidenceIds) {
-          this.stateStore.apply({
-            type: 'EVIDENCE_RECORDED',
-            evidence: {
-              id: evId,
-              claim: msg.summary,
-              confidence: msg.priority === 'high' ? 0.9 : 0.8,
-              polarity: 'supports',
-              sourceSolverRunId: msg.sourceSolverRunId,
-              observationIds: msg.observationIds || [],
-              sources: [{ id: 'src_1', producer: { runId: msg.sourceSolverRunId } }],
-              createdAt: msg.createdAt || Date.now(),
-            },
-          })
-        }
-      } catch {
-        /* best effort */
-      }
-    }
+    // Verify all grounded IDs actually exist in CTFTaskStateStore
+    const state = this.stateStore.getState()
+    const validEvIds = msg.evidenceIds.filter((id) => state.evidence.some((e: any) => e.id === id))
+    const validObsIds = msg.observationIds.filter((id) => state.observations.some((o: any) => o.id === id))
+    const validArtIds = msg.artifactIds.filter((id) => state.artifactIds.includes(id))
 
-    if (!this.publishedMessages.some((m) => m.id === msg.id)) {
-      this.publishedMessages.push(msg)
+    if (validEvIds.length === 0 && validObsIds.length === 0 && validArtIds.length === 0) {
+      // IDs provided do not exist in physical TaskStateStore yet. Reject ungrounded broadcast.
+      return
     }
   }
 
   public getUnreadMessages(
     taskId: string,
     solverRunId: string,
-    currentRevision: number,
+    currentRevision?: number,
     limit = 5,
   ): SolverEvidenceMessage[] {
-    if (this.knowledgeView) {
-      const msgs = this.knowledgeView.getUnread({
-        taskId,
-        solverRunId,
-        afterRevision: 0,
-        limit,
-      })
-      if (msgs.length > 0) {
-        return msgs.map((m) => {
-          const orig = this.publishedMessages.find((pm) => pm.id === m.id)
-          return {
-            id: m.id,
-            taskId: m.taskId,
-            sourceSolverRunId: m.sourceSolverRunId ?? 'unknown',
-            stateRevision: m.stateRevision,
-            evidenceIds: m.evidenceIds,
-            observationIds: m.observationIds,
-            artifactIds: m.artifactIds,
-            summary: orig?.summary || `Grounded evidence [${m.evidenceIds.join(', ')}] from ${m.sourceSolverRunId}`,
-            priority: m.priority as any,
-            createdAt: m.createdAt,
-          }
-        })
-      }
-    }
-
     let cursor = this.cursors.get(solverRunId)
     if (!cursor) {
-      cursor = { solverRunId, lastSeenStateRevision: 0, seenMessageIds: new Set<string>() }
+      cursor = {
+        solverRunId,
+        lastSeenStateRevision: 0,
+        seenMessageIds: new Set<string>(),
+      }
       this.cursors.set(solverRunId, cursor)
     }
 
-    const unread = this.publishedMessages.filter(
-      (m) =>
-        m.taskId === taskId &&
-        m.sourceSolverRunId !== solverRunId &&
-        !cursor!.seenMessageIds.has(m.id),
-    )
-    const selected = unread.slice(0, limit)
-    for (const m of selected) {
-      cursor.seenMessageIds.add(m.id)
+    const afterRev = cursor.lastSeenStateRevision
+
+    const msgs = this.knowledgeView.getUnread({
+      taskId,
+      solverRunId,
+      afterRevision: afterRev,
+      limit,
+    })
+
+    if (msgs.length > 0) {
+      const resultMsgs: SolverEvidenceMessage[] = []
+      const state = this.stateStore.getState()
+
+      for (const m of msgs) {
+        if (cursor.seenMessageIds.has(m.id)) continue
+
+        cursor.seenMessageIds.add(m.id)
+        if (m.stateRevision > cursor.lastSeenStateRevision) {
+          cursor.lastSeenStateRevision = m.stateRevision
+        }
+
+        const ev = state.evidence.find((e: any) => m.evidenceIds.includes(e.id))
+        const obs = state.observations.find((o: any) => m.observationIds.includes(o.id))
+
+        resultMsgs.push({
+          id: m.id,
+          taskId: m.taskId,
+          sourceSolverRunId: m.sourceSolverRunId ?? 'unknown',
+          stateRevision: m.stateRevision,
+          evidenceIds: m.evidenceIds,
+          observationIds: m.observationIds,
+          artifactIds: m.artifactIds,
+          summary: ev?.claim || obs?.summary || `Grounded state update from ${m.sourceSolverRunId}`,
+          priority: m.priority === 'high' ? 'high' : 'normal',
+          createdAt: m.createdAt,
+        })
+      }
+
+      return resultMsgs
     }
-    return selected
+
+    return []
   }
 
   public dispose(): void {
-    this.knowledgeView?.dispose()
-    this.publishedMessages = []
+    this.knowledgeView.dispose()
     this.cursors.clear()
   }
 

@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Example model and provider configuration for agent_CTF production runtime",
+  "providers": [
+    {
+      "id": "openai-main",
+      "type": "openai-compatible",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "timeoutMs": 60000
+    },
+    {
+      "id": "anthropic-main",
+      "type": "openai-compatible",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "timeoutMs": 60000
+    }
+  ],
+  "models": [
+    {
+      "id": "gpt-4o-prod",
+      "providerId": "openai-main",
+      "providerModelName": "gpt-4o",
+      "contextWindow": 128000,
+      "capabilities": {
+        "toolCalling": true,
+        "structuredOutput": true,
+        "vision": true,
+        "longContext": true
+      },
+      "allowedRoles": [
+        "deep_solver",
+        "task_planner",
+        "flag_discriminator"
+      ],
+      "trustLevel": "privileged",
+      "limits": {
+        "maxVisibleTools": 20,
+        "maxIterations": 50,
+        "maxRepairAttempts": 3,
+        "maxConsecutiveFailures": 3
+      },
+      "fallbackModelIds": [
+        "claude-3-5-sonnet-prod"
+      ]
+    },
+    {
+      "id": "claude-3-5-sonnet-prod",
+      "providerId": "anthropic-main",
+      "providerModelName": "claude-3-5-sonnet-20241022",
+      "contextWindow": 200000,
+      "capabilities": {
+        "toolCalling": true,
+        "structuredOutput": true,
+        "vision": true,
+        "longContext": true
+      },
+      "allowedRoles": [
+        "deep_solver",
+        "task_planner",
+        "progress_summarizer",
+        "solver_scout"
+      ],
+      "trustLevel": "standard",
+      "limits": {
+        "maxVisibleTools": 15,
+        "maxIterations": 30,
+        "maxRepairAttempts": 3,
+        "maxConsecutiveFailures": 3
+      },
+      "fallbackModelIds": []
+    }
+  ],
+  "routingPolicies": [
+    {
+      "role": "deep_solver",
+      "primaryModelId": "gpt-4o-prod",
+      "fallbackModelIds": [
+        "claude-3-5-sonnet-prod"
+      ]
+    }
+  ]
+}

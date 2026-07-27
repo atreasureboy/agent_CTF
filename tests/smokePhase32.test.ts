@@ -197,6 +197,8 @@ describe('Phase 3.2 Smoke Tests', () => {
     const identity = {
       taskId: 'smoke_3',
       modelRole: 'solver_scout' as const,
+      modelProfileId: 'm3-scout',
+      providerId: 'openai-compatible',
       capabilityProfileId: 'auxiliary',
       modelId: 'm3-scout',
       solverId: 'scout-1',

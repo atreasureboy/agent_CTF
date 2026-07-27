@@ -186,6 +186,8 @@ export class ToolVisibilityPolicy {
     const identity: ModelExecutionIdentity = {
       taskId: 'session',
       modelRole: (context.role as any) || 'task_planner',
+      modelProfileId: context.modelId || 'default',
+      providerId: 'openai-compatible',
       capabilityProfileId: 'default',
       modelId: context.modelId,
       solverId: context.solverId,

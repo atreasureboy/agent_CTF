@@ -38,6 +38,7 @@ import type { ToolFirstPolicy, PolicyVerdict } from './toolFirstPolicy.js'
 import type { ToolResult } from './types.js'
 
 import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
+import type { ModelRole } from './modelReliability/modelCapability.js'
 
 export interface BrokerToolContext {
   cwd: string
@@ -203,16 +204,22 @@ export class ToolBroker {
       })
     }
 
-    // ── Step 1.5: ToolVisibilityPolicy / ToolExposureResolver gate ──
+    // ── Step 1.5: ToolExposureResolver gate ──
     if (this.opts.toolExposureResolver) {
       try {
         const identity: ModelExecutionIdentity = ctx.identity || {
           taskId: ctx.taskId,
-          modelRole: (profile.id as any) === 'auxiliary' ? 'solver_scout' : (profile.id as any) || 'deep_solver',
-          modelId: profile.id,
-          providerId: 'unknown',
-          capabilityProfileId: profile.id,
-          isOrchestrator: profile.id === 'orchestrator' || profile.id === 'competition_coordinator',
+          modelRole:
+            (ctx as any).agentRole ||
+            (ctx.agentId?.includes('scout')
+              ? 'solver_scout'
+              : ctx.agentId === 'orchestrator'
+                ? 'task_planner'
+                : 'deep_solver'),
+          modelProfileId: profile.id,
+          providerId: 'openai-compatible',
+          capabilityProfileId: 'default',
+          isOrchestrator: (ctx as any).isOrchestrator || ctx.agentId === 'orchestrator',
           isWorkflow: false,
           isOneShot: false,
         }
@@ -223,17 +230,6 @@ export class ToolBroker {
       } catch (err: any) {
         return new BrokerExecutionResult({
           content: `Permission denied: ${err.message}`,
-          isError: true,
-        })
-      }
-    } else if (this.opts.toolVisibilityPolicy) {
-      const isVisible = this.opts.toolVisibilityPolicy.isToolVisible(toolId, {
-        role: profile.id,
-        isOrchestrator: profile.id === 'orchestrator',
-      })
-      if (!isVisible) {
-        return new BrokerExecutionResult({
-          content: `Permission denied: Tool "${toolId}" is hidden or not visible to current role/profile "${profile.id}".`,
           isError: true,
         })
       }

@@ -219,6 +219,8 @@ export interface EngineConfig {
   taskContext?: import('./ctfRuntime/taskExecutionContext.js').TaskExecutionContext
   /** Model Invocation Gateway — Phase 3.1 requirement for routing/health/circuit/reliability */
   modelGateway?: import('./modelReliability/structuredModelGateway.js').ModelInvocationGateway
+  toolExposureResolver?: import('./toolVisibility/toolExposureResolver.js').ToolExposureResolver
+  identity?: import('./modelReliability/modelExecutionIdentity.js').ModelExecutionIdentity
 }
 
 /** Cumulative token usage across one or more turns, for cost observability. */

@@ -34,6 +34,11 @@ export interface ContextSnapshotSource {
     status: string
   }>
 
+  findings?: Array<{
+    id: string
+    severity?: string
+  }>
+
   toolExposureHash: string
   compilerVersion: string
 }
@@ -57,6 +62,7 @@ export function computeCanonicalSnapshotHash(source: ContextSnapshotSource): str
     hypotheses: [...source.hypotheses].sort((a, b) => a.id.localeCompare(b.id)),
     attempts: [...source.attempts].sort((a, b) => a.id.localeCompare(b.id)),
     artifacts: [...source.artifacts].sort((a, b) => a.id.localeCompare(b.id)),
+    findings: source.findings ? [...source.findings].sort((a, b) => a.id.localeCompare(b.id)) : [],
     pendingActions: [...source.pendingActions].sort((a, b) => a.id.localeCompare(b.id)),
     toolExposureHash: source.toolExposureHash,
     compilerVersion: source.compilerVersion,

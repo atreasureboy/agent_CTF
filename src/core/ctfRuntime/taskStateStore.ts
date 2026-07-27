@@ -107,6 +107,10 @@ export class CTFTaskStateStore {
     return this.state
   }
 
+  getRevision(_taskId?: string): number {
+    return this.seq
+  }
+
   isDegraded(): boolean {
     return this.degraded
   }

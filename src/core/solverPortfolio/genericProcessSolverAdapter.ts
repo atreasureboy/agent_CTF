@@ -20,9 +20,9 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
   public readonly id: string
   private options: GenericProcessSolverOptions
 
-  constructor(id: string, options: GenericProcessSolverOptions) {
+  constructor(id: string = 'generic-process-solver', options: Partial<GenericProcessSolverOptions> = {}) {
     this.id = id
-    this.options = options
+    this.options = { executablePath: 'node', ...options }
   }
 
   public async probe(): Promise<SolverHealth> {

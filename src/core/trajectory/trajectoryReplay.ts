@@ -11,12 +11,25 @@ export interface ReplayInput {
   mode: 'validate-only' | 'state-rebuild' | 'mock-execution'
 }
 
+export interface ReplayDiffReport {
+  observationFingerprints: { recorded: string[]; replayed: string[] }
+  evidenceFingerprints: { recorded: string[]; replayed: string[] }
+  hypothesisStatus: { recorded: Record<string, string>; replayed: Record<string, string> }
+  actionFamily: { recorded: string[]; replayed: string[] }
+  candidateStatus: { recorded: string[]; replayed: string[] }
+  consistent: boolean
+}
+
 export interface ReplayResult {
   mode: string
   success: boolean
   eventsCount: number
   validationResult?: TrajectoryValidationResult
   rebuiltStateHash?: string
+  recordedStateHash?: string
+  stateHashMatches?: boolean
+  reducerErrors?: string[]
+  diffReport?: ReplayDiffReport
   mockExecutionConsistent?: boolean
 }
 
@@ -86,6 +99,7 @@ export class TrajectoryReplay {
     if (input.mode === 'state-rebuild') {
       const initialState = createBlankState(envelopes[0]?.taskId || 'task-replayed')
       const store = new CTFTaskStateStore(initialState)
+      const reducerErrors: string[] = []
 
       for (const env of envelopes) {
         if (env.payload && typeof env.payload === 'object') {
@@ -93,17 +107,25 @@ export class TrajectoryReplay {
           if (event && event.type) {
             try {
               store.apply(event)
-            } catch {
-              // best-effort replay
+            } catch (err: any) {
+              reducerErrors.push(`Event '${event.type}' apply failed: ${err.message}`)
             }
           }
         }
       }
 
       const currentState = store.getState()
+      const currentRevision = store.getRevision(currentState.taskId)
+
+      const recordedSnapshotEnv = envelopes.find(
+        (e) => (e.eventType as string) === 'snapshot_created' || (e.eventType as string) === 'task_snapshot',
+      )
+      const recordedHash = recordedSnapshotEnv?.payloadHash || envelopes[envelopes.length - 1]?.payloadHash
+      const recordedToolExposureHash = (recordedSnapshotEnv?.payload as any)?.toolExposureHash || 'resolved'
+
       const rebuiltHash = computeCanonicalSnapshotHash({
         taskId: currentState.taskId,
-        stateRevision: (currentState as any).stateRevision ?? (currentState as any).revision ?? 1,
+        stateRevision: currentRevision,
         evidence: currentState.evidence.map((e: any) => ({
           id: e.id,
           confidence: e.confidence,
@@ -124,26 +146,100 @@ export class TrajectoryReplay {
           id: p.id,
           status: p.status || 'pending',
         })),
-        toolExposureHash: 'rebuilt',
+        toolExposureHash: recordedToolExposureHash,
         compilerVersion: '3.3.0',
       })
 
+      const stateHashMatches = recordedHash ? rebuiltHash === recordedHash : true
+
       return {
         mode: 'state-rebuild',
-        success: valResult.valid,
+        success: valResult.valid && reducerErrors.length === 0 && stateHashMatches,
         eventsCount: envelopes.length,
         validationResult: valResult,
         rebuiltStateHash: rebuiltHash,
+        recordedStateHash: recordedHash,
+        stateHashMatches,
+        reducerErrors: reducerErrors.length > 0 ? reducerErrors : undefined,
       }
     }
 
-    // mock-execution mode
+    // mock-execution mode: re-execute parsers and reasoning pipeline over recorded tool results
+    const initialState = createBlankState(envelopes[0]?.taskId || 'task-mock-execution')
+    const store = new CTFTaskStateStore(initialState)
+
+    const mockReducerErrors: string[] = []
+    const recordedObsFingerprints: string[] = []
+    const recordedEvFingerprints: string[] = []
+    const recordedHypotheses: Record<string, string> = {}
+    const recordedActionFamilies: string[] = []
+    const recordedCandidates: string[] = []
+
+    for (const env of envelopes) {
+      if (env.payload && typeof env.payload === 'object') {
+        const payload = env.payload as any
+        if (payload.observationId) recordedObsFingerprints.push(payload.observationId)
+        if (payload.evidenceId) recordedEvFingerprints.push(payload.evidenceId)
+        if (payload.hypothesisId && payload.status) recordedHypotheses[payload.hypothesisId] = payload.status
+        if (payload.actionFamily) recordedActionFamilies.push(payload.actionFamily)
+        if (payload.candidateId) recordedCandidates.push(payload.candidateId)
+
+        const event = payload.taskEvent || payload
+        if (event && event.type) {
+          try {
+            store.apply(event)
+          } catch (err: any) {
+            mockReducerErrors.push(`Mock event '${event.type}' apply failed: ${err.message}`)
+          }
+        }
+      }
+    }
+
+    const currentState = store.getState()
+    const replayedObsFingerprints = currentState.observations.map((o) => o.id)
+    const replayedEvFingerprints = currentState.evidence.map((e) => e.id)
+    const replayedHypotheses: Record<string, string> = {}
+    for (const h of currentState.hypotheses) {
+      replayedHypotheses[h.id] = h.status
+    }
+    const replayedActionFamilies = currentState.attempts.map((a) => a.kind)
+    const replayedCandidates = currentState.flagCandidates.map((c) => c.id)
+
+    const obsMatch =
+      recordedObsFingerprints.length === replayedObsFingerprints.length &&
+      recordedObsFingerprints.every((id, idx) => replayedObsFingerprints[idx] === id)
+    const evMatch =
+      recordedEvFingerprints.length === replayedEvFingerprints.length &&
+      recordedEvFingerprints.every((id, idx) => replayedEvFingerprints[idx] === id)
+    const actionMatch =
+      recordedActionFamilies.length === replayedActionFamilies.length &&
+      recordedActionFamilies.every((af, idx) => replayedActionFamilies[idx] === af)
+    const candMatch =
+      recordedCandidates.length === replayedCandidates.length &&
+      recordedCandidates.every((c, idx) => replayedCandidates[idx] === c)
+    const hypMatch = Object.keys(recordedHypotheses).every(
+      (k) => replayedHypotheses[k] === recordedHypotheses[k],
+    )
+
+    const consistent = obsMatch && evMatch && actionMatch && candMatch && hypMatch
+
+    const diffReport: ReplayDiffReport = {
+      observationFingerprints: { recorded: recordedObsFingerprints, replayed: replayedObsFingerprints },
+      evidenceFingerprints: { recorded: recordedEvFingerprints, replayed: replayedEvFingerprints },
+      hypothesisStatus: { recorded: recordedHypotheses, replayed: replayedHypotheses },
+      actionFamily: { recorded: recordedActionFamilies, replayed: replayedActionFamilies },
+      candidateStatus: { recorded: recordedCandidates, replayed: replayedCandidates },
+      consistent,
+    }
+
     return {
       mode: 'mock-execution',
-      success: valResult.valid,
+      success: valResult.valid && mockReducerErrors.length === 0 && consistent,
       eventsCount: envelopes.length,
       validationResult: valResult,
-      mockExecutionConsistent: valResult.valid,
+      diffReport,
+      mockExecutionConsistent: consistent,
+      reducerErrors: mockReducerErrors.length > 0 ? mockReducerErrors : undefined,
     }
   }
 }
