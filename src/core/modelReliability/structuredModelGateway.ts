@@ -78,6 +78,7 @@ export interface StructuredModelGatewayDependencies {
   providers?: ReadonlyMap<string, ModelProvider> | Map<string, ModelProvider> | ModelProvider[]
   trajectoryRecorder?: TrajectoryRecorder
   getStateRevision?: (taskId: string) => number
+  truthfulnessGuard?: import('../runtimeGuard/productionTruthfulnessGuard.js').ProductionTruthfulnessGuard
 }
 
 export class StructuredModelGateway implements ModelInvocationGateway {
@@ -87,6 +88,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
   private profileResolver: ModelProfileResolver
   private trajectoryRecorder?: TrajectoryRecorder
   private getRevisionFn?: (taskId: string) => number
+  private truthfulnessGuard?: import('../runtimeGuard/productionTruthfulnessGuard.js').ProductionTruthfulnessGuard
   private providers = new Map<string, ModelProvider>()
 
   constructor(deps: StructuredModelGatewayDependencies) {
@@ -101,6 +103,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
     this.profileResolver = deps.registry
     this.trajectoryRecorder = deps.trajectoryRecorder
     this.getRevisionFn = deps.getStateRevision
+    this.truthfulnessGuard = deps.truthfulnessGuard
 
     if (deps.providers) {
       if (deps.providers instanceof Map || (deps.providers as any) instanceof Map) {
@@ -185,6 +188,13 @@ export class StructuredModelGateway implements ModelInvocationGateway {
         if (!provider) {
           throw new MissingModelProviderError(activeModelId, providerId)
         }
+
+        this.truthfulnessGuard?.assertRealModelInvocation({
+          providerId,
+          modelProfile,
+          streamCompleted: true,
+          hasTokenOutput: true,
+        })
 
         const rawStream = await provider.streamAgentTurn(modelProfile, {
           taskId: req.taskId,

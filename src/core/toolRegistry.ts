@@ -51,6 +51,10 @@ export class ToolRegistry {
       riskLevel: meta.riskLevel ?? 'low',
       requiredBinaries: meta.requiredBinaries,
       inlineMaxBytes: meta.inlineMaxBytes,
+      visibilityClass: meta.visibilityClass ?? (meta.domains.some((d) => d === 'workflow' || d === 'agent') ? 'orchestrator' : 'all'),
+      roleMatch: meta.roleMatch,
+      hypothesisMatch: meta.hypothesisMatch,
+      informationGain: meta.informationGain,
       impl,
     })
   }

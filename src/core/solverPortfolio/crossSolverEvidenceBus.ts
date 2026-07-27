@@ -8,6 +8,11 @@ export interface SolverEvidenceCursor {
   seenMessageIds: Set<string>
 }
 
+export interface KnowledgePublishResult {
+  accepted: boolean
+  reason?: string
+}
+
 export interface SolverEvidenceMessage {
   id: string
   taskId: string
@@ -43,7 +48,7 @@ export class CrossSolverEvidenceBus {
     this.knowledgeView = new CrossSolverKnowledgeView(stateStore)
   }
 
-  public publish(msg: SolverEvidenceMessage): void {
+  public publish(msg: SolverEvidenceMessage): KnowledgePublishResult {
     // Enforcement: Messages without grounded IDs (evidenceIds, observationIds, artifactIds)
     // are ungrounded natural language and CANNOT enter the evidence bus.
     const hasGroundedId =
@@ -52,7 +57,7 @@ export class CrossSolverEvidenceBus {
       (msg.artifactIds && msg.artifactIds.length > 0)
 
     if (!hasGroundedId) {
-      return
+      return { accepted: false, reason: 'Ungrounded message: lacks evidenceIds, observationIds, and artifactIds.' }
     }
 
     // Verify all grounded IDs actually exist in CTFTaskStateStore
@@ -63,8 +68,10 @@ export class CrossSolverEvidenceBus {
 
     if (validEvIds.length === 0 && validObsIds.length === 0 && validArtIds.length === 0) {
       // IDs provided do not exist in physical TaskStateStore yet. Reject ungrounded broadcast.
-      return
+      return { accepted: false, reason: 'Provided IDs do not exist in physical TaskStateStore yet.' }
     }
+
+    return { accepted: true }
   }
 
   public getUnreadMessages(

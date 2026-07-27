@@ -49,6 +49,7 @@ function makeEngine(opts: {
     },
   }
 
+  const prof = (opts.broker as any).opts?.profileStore?.getCurrent() || (opts.broker as any).opts?.profile
   const config: EngineConfig = {
     client: opts.client,
     cwd: opts.cwd,
@@ -60,7 +61,16 @@ function makeEngine(opts: {
     sessionDir: join(root, 'session'),
     broker: opts.broker,
     taskId: opts.taskId,
-    agentId: 'image-stego',
+    agentId: prof?.id || 'image-stego',
+    profile: prof,
+    identity: {
+      taskId: opts.taskId,
+      modelRole: prof?.id === 'orchestrator' ? 'task_planner' : 'deep_solver',
+      modelProfileId: prof?.id || 'image-stego',
+      providerId: 'openai-compatible',
+      capabilityProfileId: prof?.id || 'image-stego',
+      isOrchestrator: prof?.id === 'orchestrator' || prof?.id === 'competition_coordinator',
+    },
     systemPrompt: 'You are an image-stego agent.',
     temperature: 0,
     modelGateway: fakeGateway as any,

@@ -16,6 +16,11 @@ export interface ToolDescriptor {
     roleMatch?: string[]
     hypothesisMatch?: string[]
     informationGain?: number
+    domains?: string[]
+    executionMode?: string
+    costClass?: string
+    outputMode?: string
+    riskLevel?: string
     [key: string]: any
   }
 }
@@ -39,18 +44,6 @@ export interface ToolExposureResolver {
   assertExecutable(input: ToolExecutionAssertInput): void
 }
 
-const ORCHESTRATOR_TOOL_NAMES = new Set([
-  'run_workflow',
-  'run_one_shot',
-  'request_handoff',
-  'inspect_task_state',
-  'inspect_solver',
-  'send_solver_guidance',
-  'validate_candidate',
-  'pause_solver',
-  'resume_solver',
-])
-
 export class DefaultToolExposureResolver implements ToolExposureResolver {
   private policy: ToolVisibilityPolicy
 
@@ -64,15 +57,17 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
     let candidates = input.allTools
 
     if (isOrchestrator) {
+      // Sole source of truth: Tool Metadata visibilityClass === 'orchestrator' or 'all'
       candidates = candidates.filter(
-        (t) => t.metadata?.visibilityClass === 'orchestrator' || ORCHESTRATOR_TOOL_NAMES.has(t.name),
+        (t) => t.metadata?.visibilityClass === 'orchestrator' || t.metadata?.visibilityClass === 'all',
       )
       if (candidates.length === 0) {
-        // Orchestrator Fail-closed: No orchestrator tools available -> Return empty definitions
+        // Fail-closed for Orchestrator when no orchestrator tools match
         return []
       }
     } else {
-      // Non-orchestrator filter via policy
+      // Non-orchestrator filter via policy and visibilityClass (exclude orchestrator-only tools)
+      candidates = candidates.filter((t) => t.metadata?.visibilityClass !== 'orchestrator')
       const context = {
         role: input.identity.modelRole,
         modelId: input.identity.modelId,
@@ -85,11 +80,9 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
 
     // Sort candidates according to Section 17 rules:
     // 1. Role match
-    // 2. Capability Profile
-    // 3. Category / Task type match
-    // 4. Information gain (desc)
-    // 5. Cost (asc)
-    // 6. Tool ID (alphabetical)
+    // 2. Information gain (desc)
+    // 3. Cost (asc)
+    // 4. Tool ID (alphabetical)
     const sorted = [...candidates].sort((a, b) => {
       const aRoleMatch = a.metadata?.roleMatch?.includes(input.identity.modelRole) ? 1 : 0
       const bRoleMatch = b.metadata?.roleMatch?.includes(input.identity.modelRole) ? 1 : 0
@@ -119,13 +112,19 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
     if (isOrchestrator) {
       const allowed =
         input.tool.metadata?.visibilityClass === 'orchestrator' ||
-        ORCHESTRATOR_TOOL_NAMES.has(input.tool.name)
+        input.tool.metadata?.visibilityClass === 'all'
       if (!allowed) {
         throw new Error(
           `ToolExecutionDenied: Orchestrator is not permitted to execute non-orchestrator tool '${input.tool.name}'.`,
         )
       }
       return
+    }
+
+    if (input.tool.metadata?.visibilityClass === 'orchestrator') {
+      throw new Error(
+        `ToolExecutionDenied: Non-orchestrator identity role='${input.identity.modelRole}' is not permitted to execute orchestrator tool '${input.tool.name}'.`,
+      )
     }
 
     const context = {

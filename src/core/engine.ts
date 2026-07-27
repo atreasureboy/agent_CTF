@@ -287,41 +287,64 @@ export class ExecutionEngine {
     let defs = getToolDefinitions(allTools)
     // Apply ToolExposureResolver / ToolVisibilityPolicy filter if present
     if (this.config.toolExposureResolver) {
+      if (!this.config.identity && this.config.taskId) {
+        throw new Error(
+          'ExecutionEngine: Mandatory ModelExecutionIdentity missing. Role guessing and dummy profile construction are prohibited.',
+        )
+      }
       const identity: ModelExecutionIdentity = this.config.identity || {
         taskId: this.config.taskId || 'task',
-        modelRole:
-          (this.config as any).role ||
-          (this.config.agentId?.includes('scout')
-            ? 'solver_scout'
-            : this.config.agentId === 'orchestrator'
-              ? 'task_planner'
-              : 'deep_solver'),
+        modelRole: 'deep_solver',
         modelProfileId: this.config.model,
         providerId: 'openai-compatible',
         capabilityProfileId: 'default',
-        isOrchestrator: (this.config as any).isOrchestrator || this.config.agentId === 'orchestrator',
+        isOrchestrator: false,
       }
-      const modelProfile: ModelCapabilityProfile = {
-        id: this.config.model,
-        providerId: 'openai-compatible',
-        providerModelName: this.config.model,
-        provider: 'openai-compatible',
-        model: this.config.model,
-        trustLevel: 'standard',
-        reliabilityClass: 'standard',
-        contextWindow: 128000,
-        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
-        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
-        economics: {},
-        allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
-        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
-        fallbackModelIds: [],
+
+      let modelProfile: ModelCapabilityProfile | undefined
+      if (this.config.modelGateway && (this.config.modelGateway as any).getRegistry) {
+        modelProfile = (this.config.modelGateway as any).getRegistry().getProfile(identity.modelProfileId)
       }
-      const descriptors = defs.map((d) => ({
-        name: d.function.name,
-        description: d.function.description,
-        parameters: d.function.parameters,
-      }))
+      if (!modelProfile) {
+        modelProfile = {
+          id: identity.modelProfileId,
+          providerId: identity.providerId || 'openai-compatible',
+          providerModelName: identity.modelProfileId,
+          provider: identity.providerId || 'openai-compatible',
+          model: identity.modelProfileId,
+          trustLevel: 'standard',
+          reliabilityClass: 'standard',
+          contextWindow: 128000,
+          capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
+          reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+          economics: {},
+          allowedRoles: [identity.modelRole],
+          limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+          fallbackModelIds: [],
+        }
+      }
+
+      const registry = (this.config.broker as any)?.getRegistry?.()
+      const descriptors = defs.map((d) => {
+        const reg = registry?.get?.(d.function.name)
+        return {
+          name: d.function.name,
+          description: d.function.description,
+          parameters: d.function.parameters,
+          cost: reg?.costClass === 'expensive' ? 3 : reg?.costClass === 'medium' ? 2 : 1,
+          metadata: {
+            visibilityClass: reg?.visibilityClass ?? (reg?.domains?.some((dom: string) => dom === 'meta' || dom === 'workflow' || dom === 'agent') ? 'orchestrator' : 'all'),
+            roleMatch: reg?.roleMatch || [],
+            hypothesisMatch: reg?.hypothesisMatch || [],
+            informationGain: reg?.informationGain ?? 1,
+            domains: reg?.domains,
+            executionMode: reg?.executionMode,
+            costClass: reg?.costClass,
+            outputMode: reg?.outputMode,
+            riskLevel: reg?.riskLevel,
+          },
+        }
+      })
       const resolvedDescriptors = this.config.toolExposureResolver.resolveDefinitions({
         identity,
         modelProfile,
@@ -488,13 +511,18 @@ export class ExecutionEngine {
         throw new MissingModelInvocationGatewayError()
       }
 
+      if (!this.config.identity && this.config.taskId) {
+        throw new Error(
+          'ExecutionEngine.callLLM: Mandatory ModelExecutionIdentity missing. Role guessing is prohibited.',
+        )
+      }
       const identity: ModelExecutionIdentity = this.config.identity || {
         taskId: this.config.taskId ?? 'session',
-        modelRole: (this.config as any).role ?? (this.config.agentId === 'orchestrator' ? 'task_planner' : 'deep_solver'),
+        modelRole: 'deep_solver',
         modelProfileId: this.config.model,
         providerId: 'openai-compatible',
         capabilityProfileId: 'default',
-        isOrchestrator: (this.config as any).isOrchestrator || this.config.agentId === 'orchestrator',
+        isOrchestrator: false,
       }
 
       stream = await this.config.modelGateway.streamAgentTurn({
@@ -646,6 +674,7 @@ export class ExecutionEngine {
         agentRunId: this.config.agentRunId,
         workflowRunId: this.config.workflowRunId,
         handoffId: this.config.handoffId,
+        identity: this.config.identity,
       })
       const out: ToolResult = brokerResult.result
       for (const module of this.modules) {

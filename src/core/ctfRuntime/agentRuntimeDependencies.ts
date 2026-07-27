@@ -42,6 +42,10 @@ export interface AgentRuntimeDependencies {
   logger?: Logger
   /** §十一 — concurrency budget for tools/oneshots (parallel limit). */
   budgetLimits?: BudgetLimits
+  modelGateway?: import('../modelReliability/structuredModelGateway.js').ModelInvocationGateway
+  toolVisibilityPolicy?: import('../toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
+  toolExposureResolver?: import('../toolVisibility/toolExposureResolver.js').ToolExposureResolver
+  trajectoryRecorder?: import('../trajectory/trajectoryRecorder.js').TrajectoryRecorder
 }
 
 /**

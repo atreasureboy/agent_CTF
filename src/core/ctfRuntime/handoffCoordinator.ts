@@ -390,6 +390,8 @@ export class HandoffCoordinator {
           `Continue from handoff ${handoffId}: ${handoffRec.objective}`,
           [],
           {
+            agentRunId,
+            handoffId,
             // Audit round 1 — propagate inherited findings / artifacts
             // so the specialist sees the parent's prior context.
             inheritedFindings: this.deps.parentFindingStore

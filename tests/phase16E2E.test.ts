@@ -67,6 +67,7 @@ describe('§13 — Specialist → Parent end-to-end lineage', () => {
       profileId: 'triage',
       client: fakeClient as OpenAI,
       renderer: makeFakeRenderer(),
+      runtimeMode: 'test',
       modelConfig: { model: 'fake', apiKey: 'test-key' },
     })
 
@@ -224,7 +225,7 @@ function makeStreamingScriptedClient(
     chat: {
       completions: {
         create: () => {
-          const idx = Math.min(turn, script.length)
+          const idx = turn
           turn += 1
           const item = script[idx]
           function* gen() {

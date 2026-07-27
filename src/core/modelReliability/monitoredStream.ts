@@ -40,6 +40,7 @@ export class MonitoredAgentTurnStream implements AsyncIterable<OpenAI.Chat.ChatC
     try {
       while (true) {
         const { value, done } = await iterator.next()
+        if (value) console.log('MONITORED CHUNK:', JSON.stringify(value))
         if (done) {
           this.isFinished = true
           if (!this.hasContent && this.chunkCount === 0) {

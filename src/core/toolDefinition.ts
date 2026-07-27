@@ -32,6 +32,7 @@ export type ToolDomain =
   | 'image'
   | 'crypto'
   | 'forensics'
+  | 'findings'
   | 'network'
   | 'reverse'
   | 'pwn'
@@ -62,6 +63,14 @@ export interface CTFToolMetadata {
    * Broker will persist as an artifact if content length exceeds this.
    * If omitted, the broker default (TOOL_OUTPUT_INLINE_MAX_BYTES) applies. */
   inlineMaxBytes?: number
+  /** Visibility class for ToolExposureResolver: 'orchestrator' | 'solver' | 'specialist' | 'all'. */
+  visibilityClass?: 'orchestrator' | 'solver' | 'specialist' | 'all'
+  /** Roles that match this tool. */
+  roleMatch?: string[]
+  /** Hypotheses or domains matching this tool. */
+  hypothesisMatch?: string[]
+  /** Expected information gain for sorting (0..1). */
+  informationGain?: number
 }
 
 /**
@@ -77,6 +86,10 @@ export interface RegisteredTool {
   riskLevel: ToolRiskLevel
   requiredBinaries?: string[]
   inlineMaxBytes?: number
+  visibilityClass?: 'orchestrator' | 'solver' | 'specialist' | 'all'
+  roleMatch?: string[]
+  hypothesisMatch?: string[]
+  informationGain?: number
   /** The underlying Tool implementation — must satisfy the legacy Tool
    * interface (name/definition/concurrencySafe/execute). */
   impl: CTFToolImpl

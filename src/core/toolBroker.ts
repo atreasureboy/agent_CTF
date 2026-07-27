@@ -206,23 +206,17 @@ export class ToolBroker {
 
     // ── Step 1.5: ToolExposureResolver gate ──
     if (this.opts.toolExposureResolver) {
+      const activeProf = this.opts.profileStore?.getCurrent() || profile
+      const identity: ModelExecutionIdentity = ctx.identity || {
+        taskId: ctx.taskId || 'task',
+        agentRunId: ctx.agentId,
+        modelRole: activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator' ? 'task_planner' : activeProf.id.includes('scout') ? 'solver_scout' : 'deep_solver',
+        modelProfileId: activeProf.id,
+        providerId: 'openai-compatible',
+        capabilityProfileId: activeProf.id,
+        isOrchestrator: activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator',
+      }
       try {
-        const identity: ModelExecutionIdentity = ctx.identity || {
-          taskId: ctx.taskId,
-          modelRole:
-            (ctx as any).agentRole ||
-            (ctx.agentId?.includes('scout')
-              ? 'solver_scout'
-              : ctx.agentId === 'orchestrator'
-                ? 'task_planner'
-                : 'deep_solver'),
-          modelProfileId: profile.id,
-          providerId: 'openai-compatible',
-          capabilityProfileId: 'default',
-          isOrchestrator: (ctx as any).isOrchestrator || ctx.agentId === 'orchestrator',
-          isWorkflow: false,
-          isOneShot: false,
-        }
         this.opts.toolExposureResolver.assertExecutable({
           identity,
           tool: { name: toolId },

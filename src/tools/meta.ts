@@ -154,7 +154,7 @@ export function makeEmitFindingTool(): Tool {
       }
     },
     {
-      domains: ['meta', 'workflow', 'forensics'],
+      domains: ['meta', 'findings', 'forensics'],
       executionMode: 'foreground',
       costClass: 'cheap',
       outputMode: 'inline',
@@ -165,11 +165,12 @@ export function makeEmitFindingTool(): Tool {
 }
 
 TOOL_METADATA['emit_finding'] = {
-  domains: ['meta', 'workflow', 'forensics'],
+  domains: ['meta', 'findings', 'forensics'],
   executionMode: 'foreground',
   costClass: 'cheap',
   outputMode: 'inline',
   riskLevel: 'low',
+  visibilityClass: 'all',
 }
 
 // ─── request_handoff ─────────────────────────────────────────────────────

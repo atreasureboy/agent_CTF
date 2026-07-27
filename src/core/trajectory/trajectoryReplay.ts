@@ -1,10 +1,12 @@
 import * as fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import type { TrajectoryEventEnvelope } from './trajectoryTypes.js'
 import type { TrajectoryValidationResult } from './trajectoryValidator.js'
 import { TrajectoryValidator } from './trajectoryValidator.js'
 import { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 import { computeCanonicalSnapshotHash } from '../contextCompiler/canonicalSnapshot.js'
+import { SolverResultNormalizer } from '../solverPortfolio/solverResultNormalizer.js'
 
 export interface ReplayInput {
   trajectoryPath: string
@@ -73,6 +75,10 @@ function createBlankState(taskId: string): CTFTaskState {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
+}
+
+function computeFingerprint(content: string): string {
+  return createHash('sha256').update(content.trim()).digest('hex').slice(0, 16)
 }
 
 export class TrajectoryReplay {
@@ -164,7 +170,7 @@ export class TrajectoryReplay {
       }
     }
 
-    // mock-execution mode: re-execute parsers and reasoning pipeline over recorded tool results
+    // mock-execution mode: re-execute parsers, normalizers, and reasoning pipeline over raw recorded outputs
     const initialState = createBlankState(envelopes[0]?.taskId || 'task-mock-execution')
     const store = new CTFTaskStateStore(initialState)
 
@@ -175,14 +181,50 @@ export class TrajectoryReplay {
     const recordedActionFamilies: string[] = []
     const recordedCandidates: string[] = []
 
+    const replayedObsFingerprints: string[] = []
+    const replayedEvFingerprints: string[] = []
+    const replayedActionFamilies: string[] = []
+    const replayedCandidates: string[] = []
+
     for (const env of envelopes) {
       if (env.payload && typeof env.payload === 'object') {
         const payload = env.payload as any
-        if (payload.observationId) recordedObsFingerprints.push(payload.observationId)
-        if (payload.evidenceId) recordedEvFingerprints.push(payload.evidenceId)
-        if (payload.hypothesisId && payload.status) recordedHypotheses[payload.hypothesisId] = payload.status
-        if (payload.actionFamily) recordedActionFamilies.push(payload.actionFamily)
-        if (payload.candidateId) recordedCandidates.push(payload.candidateId)
+
+        // Record content fingerprints (not raw IDs)
+        if (payload.observationSummary || payload.observationContent || payload.observationId) {
+          recordedObsFingerprints.push(computeFingerprint(payload.observationSummary || payload.observationContent || payload.observationId))
+        }
+        if (payload.claim || payload.evidenceClaim || payload.evidenceId) {
+          recordedEvFingerprints.push(computeFingerprint(payload.claim || payload.evidenceClaim || payload.evidenceId))
+        }
+        if (payload.hypothesisId && payload.status) {
+          recordedHypotheses[payload.hypothesisId] = payload.status
+        }
+        if (payload.actionFamily || payload.actionKind) {
+          recordedActionFamilies.push(payload.actionFamily || payload.actionKind)
+        }
+        if (payload.candidateValue || payload.candidateId) {
+          recordedCandidates.push(computeFingerprint(payload.candidateValue || payload.candidateId))
+        }
+
+        // Re-execute SolverResultNormalizer for raw solver / tool outputs
+        if (payload.rawOutput || payload.observations || payload.flagCandidates) {
+          const norm = SolverResultNormalizer.normalize({
+            runId: env.agentRunId || (env as any).runId || 'replayed_run',
+            solverId: payload.solverId || 'replayed_solver',
+            status: 'completed',
+            observations: payload.observations || (payload.rawOutput ? [{ summary: payload.rawOutput, confidence: 0.8 }] : []),
+            artifacts: payload.artifacts || [],
+            flagCandidates: payload.flagCandidates || [],
+            metrics: { durationMs: 10 },
+          })
+          for (const obs of norm.validObservations) {
+            replayedObsFingerprints.push(computeFingerprint(obs.summary))
+          }
+          for (const cand of norm.validCandidates) {
+            replayedCandidates.push(computeFingerprint(cand.value))
+          }
+        }
 
         const event = payload.taskEvent || payload
         if (event && event.type) {
@@ -196,27 +238,44 @@ export class TrajectoryReplay {
     }
 
     const currentState = store.getState()
-    const replayedObsFingerprints = currentState.observations.map((o) => o.id)
-    const replayedEvFingerprints = currentState.evidence.map((e) => e.id)
+    if (replayedObsFingerprints.length === 0) {
+      for (const o of currentState.observations) {
+        replayedObsFingerprints.push(computeFingerprint(o.summary))
+      }
+    }
+    if (replayedEvFingerprints.length === 0) {
+      for (const e of currentState.evidence) {
+        replayedEvFingerprints.push(computeFingerprint(e.claim))
+      }
+    }
+    if (replayedActionFamilies.length === 0) {
+      for (const a of currentState.attempts) {
+        replayedActionFamilies.push(a.kind)
+      }
+    }
+    if (replayedCandidates.length === 0) {
+      for (const c of currentState.flagCandidates) {
+        replayedCandidates.push(computeFingerprint(c.value))
+      }
+    }
+
     const replayedHypotheses: Record<string, string> = {}
     for (const h of currentState.hypotheses) {
       replayedHypotheses[h.id] = h.status
     }
-    const replayedActionFamilies = currentState.attempts.map((a) => a.kind)
-    const replayedCandidates = currentState.flagCandidates.map((c) => c.id)
 
     const obsMatch =
       recordedObsFingerprints.length === replayedObsFingerprints.length &&
-      recordedObsFingerprints.every((id, idx) => replayedObsFingerprints[idx] === id)
+      recordedObsFingerprints.every((fp, idx) => replayedObsFingerprints[idx] === fp)
     const evMatch =
       recordedEvFingerprints.length === replayedEvFingerprints.length &&
-      recordedEvFingerprints.every((id, idx) => replayedEvFingerprints[idx] === id)
+      recordedEvFingerprints.every((fp, idx) => replayedEvFingerprints[idx] === fp)
     const actionMatch =
       recordedActionFamilies.length === replayedActionFamilies.length &&
       recordedActionFamilies.every((af, idx) => replayedActionFamilies[idx] === af)
     const candMatch =
       recordedCandidates.length === replayedCandidates.length &&
-      recordedCandidates.every((c, idx) => replayedCandidates[idx] === c)
+      recordedCandidates.every((fp, idx) => replayedCandidates[idx] === fp)
     const hypMatch = Object.keys(recordedHypotheses).every(
       (k) => replayedHypotheses[k] === recordedHypotheses[k],
     )

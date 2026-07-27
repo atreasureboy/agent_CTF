@@ -159,6 +159,11 @@ export class SpecialistHarnessFactory {
       sessionsRoot: input.sessionsRoot ?? specialistRoot,
       client: input.dependencies.client,
       renderer,
+      modelConfig: input.dependencies.modelConfig,
+      modelGateway: (input.dependencies as any).modelGateway,
+      toolVisibilityPolicy: (input.dependencies as any).toolVisibilityPolicy,
+      toolExposureResolver: (input.dependencies as any).toolExposureResolver,
+      trajectoryRecorder: (input.dependencies as any).trajectoryRecorder,
       // Independent stores — NOT the parent's. The projector reads both
       // (parent + specialist) to assemble the diff and writes lineage.
       artifactStore: independentArtifactStore,

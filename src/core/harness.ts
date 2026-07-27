@@ -131,6 +131,7 @@ export interface CreateHarnessInput {
   /** Phase 3.1 — Model Gateway, Visibility Policy, Trajectory Recorder */
   modelGateway?: import('./modelReliability/structuredModelGateway.js').ModelInvocationGateway
   toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
+  toolExposureResolver?: import('./toolVisibility/toolExposureResolver.js').ToolExposureResolver
   trajectoryRecorder?: import('./trajectory/trajectoryRecorder.js').TrajectoryRecorder
 }
 
@@ -167,6 +168,8 @@ export interface HarnessBundle {
       systemPromptAddon?: string
       inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
       inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>
+      handoffId?: string
+      agentRunId?: string
     },
   ): Promise<{
     result: import('./types.js').TurnResult
@@ -255,6 +258,15 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
         signal,
         taskId,
         agentId: spec.agentId,
+        identity: {
+          taskId,
+          agentRunId: spec.agentId,
+          modelRole: profile.id === 'orchestrator' ? 'task_planner' : 'deep_solver',
+          modelProfileId: 'default',
+          providerId: 'openai-compatible',
+          capabilityProfileId: profile.id,
+          isOrchestrator: profile.id === 'orchestrator' || profile.id === 'competition_coordinator',
+        },
       })
       if (r.result.isError)
         return { error: r.result.content, summary: r.result.content.slice(0, 500) }
@@ -280,6 +292,15 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
         signal,
         taskId,
         agentId: spec.agentId,
+        identity: {
+          taskId,
+          agentRunId: spec.agentId,
+          modelRole: profile.id === 'orchestrator' ? 'task_planner' : 'deep_solver',
+          modelProfileId: 'default',
+          providerId: 'openai-compatible',
+          capabilityProfileId: profile.id,
+          isOrchestrator: profile.id === 'orchestrator' || profile.id === 'competition_coordinator',
+        },
       })
       if (r.result.isError)
         return { error: r.result.content, summary: r.result.content.slice(0, 500) }
@@ -292,6 +313,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     handoffStore,
     toolFirstPolicy,
     toolVisibilityPolicy: input.toolVisibilityPolicy,
+    toolExposureResolver: input.toolExposureResolver,
     eventLog: new EventLog(taskWorkspace.paths.root),
     inlineTimeoutMs: 30 * 60 * 1000,
     defaultInlineMaxBytes: input.inlineMaxBytes ?? 10240,
@@ -415,6 +437,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
       inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>
       handoffId?: string
+      agentRunId?: string
     } = {},
   ): Promise<{
     result: import('./types.js').TurnResult
@@ -424,7 +447,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     // §十三.3 — issue an agent run id at the start of each main turn so
     // subsequent workflow steps and tool calls can attribute their
     // outputs to the originating run via the broker/projector.
-    const agentRunId = `run_${Math.random().toString(16).slice(2, 14)}`
+    const agentRunId = options.agentRunId ?? `run_${Math.random().toString(16).slice(2, 14)}`
     setCurrentAgentRunId(agentRunId)
     // §十五 — read the active Profile from the broker each turn so a
     // switchProfile() call between turns is reflected in the next prompt.
@@ -481,40 +504,19 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // forward it into ToolContext. Tools read workspace/scope/taskId from
       // there and refuse model-supplied equivalents.
       taskContext: taskExecutionContext,
-      modelGateway: (() => {
-        if (input.modelGateway) return input.modelGateway
-        if (!input.client) return undefined
-        const provider = new OpenAICompatibleProvider(input.client)
-        const modelName = input.modelConfig?.model ?? 'gpt-4o'
-        const reg = new ModelCapabilityRegistry()
-        reg.registerProfile({
-          id: modelName,
-          providerId: provider.id,
-          providerModelName: modelName,
-          provider: provider.id,
-          model: modelName,
-          trustLevel: 'privileged',
-          reliabilityClass: 'privileged',
-          contextWindow: 128000,
-          capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
-          reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
-          economics: {},
-          allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
-          limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
-          fallbackModelIds: [],
-        })
-        const hStore = new ModelHealthStore()
-        const cBreaker = new ModelCircuitBreaker(hStore)
-        const mRouter = new ModelRouter(reg, hStore, cBreaker)
-        return new StructuredModelGateway({
-          router: mRouter,
-          healthStore: hStore,
-          circuitBreaker: cBreaker,
-          registry: reg,
-          providers: [provider],
-        })
-      })(),
+      modelGateway: input.modelGateway,
       toolVisibilityPolicy: input.toolVisibilityPolicy,
+      toolExposureResolver: input.toolExposureResolver,
+      identity: {
+        taskId,
+        agentRunId,
+        handoffId: options.handoffId ?? (taskExecutionContext.metadata?.['fromHandoff'] as string | undefined),
+        modelRole: currentProfile.id === 'orchestrator' ? 'task_planner' : currentProfile.id.includes('scout') ? 'solver_scout' : currentProfile.id === 'triage' ? 'specialist' : 'deep_solver',
+        modelProfileId: input.modelConfig?.model ?? 'gpt-4o',
+        providerId: 'openai-compatible',
+        capabilityProfileId: currentProfile.id,
+        isOrchestrator: currentProfile.id === 'orchestrator' || currentProfile.id === 'competition_coordinator',
+      },
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
     return engine.runTurn(userMessage, history)

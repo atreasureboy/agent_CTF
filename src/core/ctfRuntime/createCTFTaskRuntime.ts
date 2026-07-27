@@ -167,6 +167,7 @@ export async function createCTFTaskRuntime(
   const { ModelRouter } = await import('../modelReliability/modelRouter.js')
   const { StructuredModelGateway } = await import('../modelReliability/structuredModelGateway.js')
   const { ToolVisibilityPolicy } = await import('../toolVisibility/toolVisibilityPolicy.js')
+  const { DefaultToolExposureResolver } = await import('../toolVisibility/toolExposureResolver.js')
 
   const registry = new ModelCapabilityRegistry()
   const healthStore = new ModelHealthStore()
@@ -199,8 +200,8 @@ export async function createCTFTaskRuntime(
       providerModelName: modelName,
       provider: provider.id,
       model: modelName,
-      trustLevel: 'privileged',
-      reliabilityClass: 'privileged',
+      trustLevel: 'standard',
+      reliabilityClass: 'standard',
       contextWindow: 128000,
       capabilities: {
         toolCalling: true,
@@ -239,7 +240,7 @@ export async function createCTFTaskRuntime(
   }
 
   if (input.mode === 'llm' && (providersMap.size === 0 || registry.listProfiles().length === 0)) {
-    throw new Error('Runtime creation failed: No configured model/provider available')
+    throw new Error('Runtime creation failed: No configured model/provider available in registry')
   }
 
   let orchestratorRef: any = null
@@ -251,12 +252,19 @@ export async function createCTFTaskRuntime(
     registry,
     providers: providersMap,
     trajectoryRecorder,
+    truthfulnessGuard: guard,
     getStateRevision: (tid) => orchestratorRef?.store?.getState().stateRevision ?? 1,
   })
 
   const toolVisibilityPolicy = new ToolVisibilityPolicy([], 'profile_allowed')
+  const toolExposureResolver = new DefaultToolExposureResolver(toolVisibilityPolicy)
 
-  // 6. Create Harness (passing Reliability, Visibility, Trajectory)
+  dependencies.modelGateway = gateway
+  dependencies.toolVisibilityPolicy = toolVisibilityPolicy
+  dependencies.toolExposureResolver = toolExposureResolver
+  dependencies.trajectoryRecorder = trajectoryRecorder
+
+  // 6. Create Harness (passing Reliability, Visibility, Exposure Resolver, Trajectory)
   const harness = createHarness({
     cwd,
     context: ctx,
@@ -271,6 +279,7 @@ export async function createCTFTaskRuntime(
     jobLimits: input.jobLimits,
     modelGateway: gateway,
     toolVisibilityPolicy,
+    toolExposureResolver,
     trajectoryRecorder,
   })
 
@@ -295,15 +304,23 @@ export async function createCTFTaskRuntime(
   const { GenericProcessSolverAdapter } = await import('../solverPortfolio/genericProcessSolverAdapter.js')
   const { SolverResultNormalizer } = await import('../solverPortfolio/solverResultNormalizer.js')
 
+  const adapters: any[] = [
+    new NativeSolverAdapter(input.nativeRuntimeDelegate),
+  ]
+
+  if ((input as any).processSolvers && Array.isArray((input as any).processSolvers)) {
+    for (const ps of (input as any).processSolvers) {
+      adapters.push(new GenericProcessSolverAdapter(ps.id, ps.options))
+    }
+  }
+
   const portfolio = new SolverPortfolio({
     stateStore: orchestrator.store,
     contextCompiler: (orchestrator as any).contextCompiler || (dependencies as any).contextCompiler,
     resultNormalizer: new SolverResultNormalizer(),
     trajectoryRecorder,
-    adapters: [
-      new NativeSolverAdapter(input.nativeRuntimeDelegate),
-      new GenericProcessSolverAdapter('generic-process-solver'),
-    ],
+    truthfulnessGuard: guard,
+    adapters,
   })
 
   const projector = orchestrator.projector

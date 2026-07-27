@@ -27,11 +27,35 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
 
   public async probe(): Promise<SolverHealth> {
     await Promise.resolve()
+    const bin = this.options.executablePath
     try {
-      if (!existsSync(this.options.executablePath) && !this.options.executablePath.includes('/')) {
-        // Simple executable name like 'node' or 'codex'
-      } else if (existsSync(this.options.executablePath)) {
-        accessSync(this.options.executablePath, constants.X_OK)
+      if (bin.includes('/')) {
+        if (!existsSync(bin)) {
+          return {
+            status: 'unavailable',
+            capabilities: [],
+            reason: `Executable path '${bin}' does not exist on disk.`,
+          }
+        }
+        accessSync(bin, constants.X_OK)
+      } else {
+        // Simple executable name — check PATH
+        const pathDirs = (process.env.PATH || '').split(':')
+        const found = pathDirs.some((dir) => {
+          const full = `${dir}/${bin}`
+          try {
+            return existsSync(full)
+          } catch {
+            return false
+          }
+        })
+        if (!found) {
+          return {
+            status: 'unavailable',
+            capabilities: [],
+            reason: `Binary '${bin}' not found on system PATH.`,
+          }
+        }
       }
       return {
         status: 'ready',
@@ -41,7 +65,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
       return {
         status: 'unavailable',
         capabilities: [],
-        reason: `Process probe failed for binary ${this.options.executablePath}: ${(err as Error).message}`,
+        reason: `Process probe failed for binary '${bin}': ${(err as Error).message}`,
       }
     }
   }

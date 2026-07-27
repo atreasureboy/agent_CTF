@@ -48,12 +48,23 @@ export class TaskStateProjectionBuilder {
       throw new Error(`[TaskStateProjectionBuilder] State revision for task '${state.taskId}' is undefined. Hardcoded fallback is prohibited.`)
     }
 
-    // Build real tool descriptors from ToolRegistry
+    // Build real tool descriptors from ToolRegistry with authentic metadata
     const allToolsDescriptors = toolRegistry.list().map((t) => ({
       name: t.id,
       description: t.impl?.definition?.function?.description || '',
       parameters: (t.impl?.definition?.function?.parameters as Record<string, any>) || {},
-      metadata: { visibilityClass: 'all' as const },
+      cost: t.costClass === 'expensive' ? 3 : t.costClass === 'medium' ? 2 : 1,
+      metadata: {
+        visibilityClass: t.visibilityClass ?? (t.domains.some((d) => d === 'meta' || d === 'workflow' || d === 'agent') ? 'orchestrator' : 'solver'),
+        roleMatch: t.roleMatch || [],
+        hypothesisMatch: t.hypothesisMatch || [],
+        informationGain: t.informationGain ?? 1,
+        domains: t.domains,
+        executionMode: t.executionMode,
+        costClass: t.costClass,
+        outputMode: t.outputMode,
+        riskLevel: t.riskLevel,
+      },
     }))
 
     const resolvedToolDescriptors = toolExposureResolver.resolveDefinitions({

@@ -6,6 +6,7 @@ export interface SolverPortfolioDependencies {
   contextCompiler?: any
   resultNormalizer?: any
   trajectoryRecorder?: any
+  truthfulnessGuard?: import('../runtimeGuard/productionTruthfulnessGuard.js').ProductionTruthfulnessGuard
   adapters?: ExternalSolverAdapter[]
 }
 
