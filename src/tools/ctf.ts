@@ -29,8 +29,12 @@ interface BinaryToolOptions {
   requiredBinaries: string[]
   domains: ('image' | 'crypto' | 'forensics' | 'network' | 'reverse' | 'pwn' | 'web')[]
   riskLevel?: 'low' | 'medium' | 'high'
-  /** Build the bash command line from tool input. */
-  buildCommand: (input: Record<string, unknown>) => string
+  /** §audit-fix — argv-array form prevents shell-metacharacter
+   *  injection. PREFERRED over buildCommand. */
+  buildArgv?: (input: Record<string, unknown>) => string[]
+  /** Legacy: build a single argv entry containing the full command
+   *  string. Used only as a fallback when buildArgv is missing. */
+  buildCommand?: (input: Record<string, unknown>) => string
   /** Convert raw output (stdout) into the tool result content. */
   formatOutput?: (stdout: string, stderr: string) => string
 }
@@ -110,20 +114,34 @@ class BinaryTool implements Tool {
       }
     }
 
-    let cmd = this.opts.buildCommand(input)
+    // §audit-fix — Build the argv explicitly so user-controlled
+    // `command` / `args` cannot inject shell metacharacters via
+    // string interpolation. Each argv entry is a literal argument;
+    // shell:false below prevents /bin/sh -c interpretation.
+    const argv = this.opts.buildArgv
+      ? this.opts.buildArgv(input)
+      : (() => {
+          const cmd = this.opts.buildCommand!(input)
+          // shlex.split would be ideal; here we accept the legacy
+          // string as a single argv entry, which is shell-metachar-safe
+          // under shell:false.
+          return [cmd]
+        })()
     const userCmd = typeof input.command === 'string' ? input.command : null
-    if (userCmd) cmd = `${cmd} ${userCmd}`
+    if (userCmd) argv.push(userCmd)
     const extraArgs = Array.isArray(input.args)
       ? input.args.filter((v): v is string => typeof v === 'string')
       : []
-    if (extraArgs.length > 0) cmd = `${cmd} ${extraArgs.join(' ')}`
+    if (extraArgs.length > 0) argv.push(...extraArgs)
 
     const timeoutMs = typeof input.timeout === 'number' ? Math.max(1000, input.timeout) : 60_000
 
     return await new Promise<ToolResult>((resolve) => {
       let settled = false
-      const proc = spawn(cmd, {
-        shell: '/bin/bash',
+      // §audit-fix — Use shell:false so each argv entry is a literal
+      // argv element; no shell metacharacter interpretation.
+      const proc = spawn(argv[0], argv.slice(1), {
+        shell: false,
         cwd: context.cwd,
         env: process.env,
         signal: context.signal,

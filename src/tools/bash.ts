@@ -196,7 +196,14 @@ export class BashTool implements Tool {
         detached: true,
         stdio: 'ignore',
         cwd: context.cwd,
-        env: process.env,
+        // §audit-fix — explicit allow-list of safe env keys; do NOT pass
+        // full process.env (which leaks OPENAI_API_KEY, secrets, ...).
+        env: {
+          PATH: process.env['PATH'] ?? '',
+          HOME: process.env['HOME'] ?? '',
+          LANG: process.env['LANG'] ?? '',
+          TMPDIR: process.env['TMPDIR'] ?? '',
+        },
       })
       child.unref()
 

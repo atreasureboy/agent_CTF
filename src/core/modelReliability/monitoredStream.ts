@@ -40,7 +40,13 @@ export class MonitoredAgentTurnStream implements AsyncIterable<OpenAI.Chat.ChatC
     try {
       while (true) {
         const { value, done } = await iterator.next()
-        if (value) console.log('MONITORED CHUNK:', JSON.stringify(value))
+        // §audit-fix — chunk bodies may contain tool calls, model
+        // responses, or challenge secrets. Logging them by default
+        // would leak PII / API responses into process logs. We gate
+        // on an explicit env flag (default OFF).
+        if (value && process.env['AGENT_CTF_DEBUG_MODEL_CHUNKS'] === '1') {
+          console.log('MONITORED CHUNK:', JSON.stringify(value))
+        }
         if (done) {
           this.isFinished = true
           if (!this.hasContent && this.chunkCount === 0) {

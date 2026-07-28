@@ -48,7 +48,11 @@ export function shouldThrottle(
 }
 
 export function hashValue(value: string): string {
-  return value
+  // §audit — return a SHA-256 hex digest of the raw value so the
+  // store never persists the actual flag string. The raw value is
+  // recoverable only by callers that keep the original locally.
+  if (typeof value !== 'string') return ''
+  return require('crypto').createHash('sha256').update(value, 'utf8').digest('hex')
 }
 
 /** A builder helper that returns a new attempt record with a

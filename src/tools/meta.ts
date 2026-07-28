@@ -24,6 +24,7 @@ import type { BackgroundJobManager } from '../core/backgroundJobs.js'
 import type { FindingCategory, FindingConfidence } from '../core/findings.js'
 import { formatFindingForPrompt } from '../core/findings.js'
 import type { ArtifactMeta } from '../core/artifacts.js'
+import type { ContestScopeChecker } from '../core/contestScope.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
 import type { CTFToolMetadata, RegisteredTool } from '../core/toolDefinition.js'
 
@@ -531,16 +532,36 @@ function extractArtifactTool(): Tool {
     async (input, svc) => {
       if (!svc.artifactStore) return missingService('artifactStore')
       const fs = await import('fs/promises')
+      const path = await import('path')
+
+      // §audit-fix — file-scope gate. Mirrors fileRead.ts: refuse
+      // any path that escapes the contest's allowedFilesRoot before
+      // opening the file.
+      const requestedPath = String(input.path ?? '')
+      const ctfCtx = (
+        svc as unknown as {
+          __ctf?: { contestScope?: ContestScopeChecker }
+        }
+      ).__ctf
+      const scope = ctfCtx?.contestScope
+      if (scope && typeof scope.assertFile === 'function') {
+        try {
+          scope.assertFile(path.resolve(requestedPath))
+        } catch (err) {
+          return { isError: true, content: `Read refused: ${(err as Error).message}` }
+        }
+      }
+
       const meta: ArtifactMeta | null = await (async () => {
         try {
-          const buf = await fs.readFile(String(input.path ?? ''))
+          const buf = await fs.readFile(requestedPath)
           return svc.artifactStore!.writeSync(
             {
               taskId: svc.taskId,
               producerAgentId: svc.agentId,
               type: String(input.type),
               mimeType: typeof input.mimeType === 'string' ? input.mimeType : undefined,
-              source: { toolId: 'extract_artifact', inputSummary: String(input.path) },
+              source: { toolId: 'extract_artifact', inputSummary: requestedPath },
             },
             buf,
             String(input.type)
@@ -551,7 +572,7 @@ function extractArtifactTool(): Tool {
           return null
         }
       })()
-      if (!meta) return { isError: true, content: `Failed to read or record ${input.path}` }
+      if (!meta) return { isError: true, content: `Failed to read or record ${requestedPath}` }
       return {
         isError: false,
         content: `Artifact ${meta.id} (${meta.size}B, sha256=${meta.sha256}) recorded at ${meta.path}.`,
