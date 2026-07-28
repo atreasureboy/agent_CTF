@@ -63,8 +63,8 @@ export class ReflectionModule implements AgentModule {
     try {
       if (!this.gateway) return
 
-      const conversationSummary = this.serializeForReflection(ctx.messages as any)
-      const schema = z.object({ knowledge: z.array(z.any()).optional() }).passthrough()
+      const conversationSummary = this.serializeForReflection(ctx.messages as Parameters<typeof this.serializeForReflection>[0])
+      const schema = z.object({ knowledge: z.array(z.unknown()).optional() }).passthrough()
 
       const res = await this.gateway.executeStructured({
         role: 'reporter',

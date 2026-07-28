@@ -261,7 +261,7 @@ export async function maybeCompact(
       taskId: 'compact',
       signal,
     })
-    summaryText = (res.value as any)?.summary || JSON.stringify(res.value)
+    summaryText = (res.value as { summary?: string })?.summary || JSON.stringify(res.value)
   } catch {
     // If summarization fails, return original messages unchanged
     return { compacted: false, messages, summaryTokens: 0, originalTokens }
