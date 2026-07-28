@@ -42,7 +42,6 @@ import type { AgentModule, ModuleBootResult, ModuleBootContext } from './module.
 import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
 import { createLinkedAbortController } from './ctfRuntime/linkedAbortController.js'
-import { profileAllowsTool } from './capabilityProfile.js'
 import type { ModelCapabilityProfile, ModelRole } from './modelReliability/modelCapability.js'
 import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
 import { MissingModelInvocationGatewayError } from './modelReliability/errors.js'

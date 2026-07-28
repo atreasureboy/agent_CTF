@@ -159,9 +159,11 @@ async function googleSearch(
   engineId: string,
   context: ToolContext,
 ): Promise<SearchResult[]> {
+  // §audit-fix — API key via header (X-Goog-Api-Key) so the key
+  // never appears in URL query (logs, proxies, browser history).
   const url =
-    `https://www.googleapis.com/customsearch/v1?key=${apiKey}` +
-    `&cx=${engineId}&q=${encodeURIComponent(query)}&num=${Math.min(numResults, 10)}`
+    `https://www.googleapis.com/customsearch/v1` +
+    `?cx=${engineId}&q=${encodeURIComponent(query)}&num=${Math.min(numResults, 10)}`
 
   const assertNet = getAssertNetwork(context)
   if (assertNet) {
@@ -177,7 +179,11 @@ async function googleSearch(
   const { controller, clearTimer } = composeAbort(context, SEARCH_TIMEOUT_MS)
 
   try {
-    const resp = await fetch(url, { signal: controller.signal })
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { 'X-Goog-Api-Key': apiKey },
+      signal: controller.signal,
+    })
     clearTimer()
     if (!resp.ok) return []
 
@@ -204,9 +210,11 @@ async function serpApiSearch(
   apiKey: string,
   context: ToolContext,
 ): Promise<SearchResult[]> {
+  // §audit-fix — API key via header (X-Api-Key) so it never appears
+  // in URL query (logs, proxies, browser history).
   const url =
-    `https://serpapi.com/search.json?api_key=${apiKey}` +
-    `&q=${encodeURIComponent(query)}&num=${Math.min(numResults, 10)}&engine=google`
+    `https://serpapi.com/search.json` +
+    `?q=${encodeURIComponent(query)}&num=${Math.min(numResults, 10)}&engine=google`
 
   const assertNet = getAssertNetwork(context)
   if (assertNet) {
@@ -222,7 +230,11 @@ async function serpApiSearch(
   const { controller, clearTimer } = composeAbort(context, SEARCH_TIMEOUT_MS)
 
   try {
-    const resp = await fetch(url, { signal: controller.signal })
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { 'X-Api-Key': apiKey },
+      signal: controller.signal,
+    })
     clearTimer()
     if (!resp.ok) return []
 
