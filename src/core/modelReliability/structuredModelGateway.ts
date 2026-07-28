@@ -111,7 +111,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
           this.providers.set(k, v)
         }
       } else if (Array.isArray(deps.providers)) {
-        for (const p of deps.providers as ModelProvider[]) {
+        for (const p of deps.providers) {
           this.providers.set(p.id, p)
         }
       }

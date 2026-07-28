@@ -97,7 +97,7 @@ describe('cancellation', () => {
             summary: '',
           }
         },
-      } as OneShotRunner)
+      })
       const promise = dispatcher.runOne('demo', {
         argv: [],
         evidenceRoot: root,

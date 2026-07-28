@@ -1,5 +1,5 @@
 import { CrossSolverKnowledgeView } from './crossSolverKnowledgeView.js'
-import { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
+import type { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface SolverEvidenceCursor {

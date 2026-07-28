@@ -80,7 +80,7 @@ describe('loadContestConfig — file discovery + validation', () => {
   })
 
   it('throws on malformed JSON with the path in the message', () => {
-    const path = writeConfig('.ovogo/contest.json', { broken: true } as object)
+    const path = writeConfig('.ovogo/contest.json', { broken: true })
     // overwrite with malformed
     require('fs').writeFileSync(path, '{ "allowedFilesRoot": ')
     expect(() => loadContestConfig({ cwd: root })).toThrow(/Failed to parse/)

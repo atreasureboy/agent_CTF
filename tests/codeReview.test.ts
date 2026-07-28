@@ -349,7 +349,7 @@ describe('Code Review — HandoffRequest creates a discoverable event', () => {
     }
     const r = await metaTool!.execute(
       { suggestedAgent: 'file-forensics', reason: 'png has zip', objective: 'extract and submit finding' },
-      ctx as never,
+      ctx,
     )
     expect(r.isError).not.toBe(true)
 

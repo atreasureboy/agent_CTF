@@ -132,7 +132,7 @@ export class MockOpenAIClient {
     return {
       [Symbol.asyncIterator]() {
         let consumed = false
-        let idx = 0
+        const idx = 0
         return {
           async next(): Promise<{ value: unknown; done: boolean }> {
             // We synthesise one turn at a time, freezing stream consumption

@@ -40,7 +40,7 @@ describe('ContextCompactor (G)', () => {
     const after = applyCompaction(state, d, 1234)
     expect(after.observations.length).toBe(DEFAULT_COMPACTION_POLICY.maxObservations + 1)
     // The +1 is the summary observation.
-    const summary = after.observations[after.observations.length - 1]!
+    const summary = after.observations[after.observations.length - 1]
     expect(summary.summary).toContain('compaction token')
     expect(summary.id).toContain('obs_compact_')
     expect(after.findings.length).toBe(0) // no findings were compacted

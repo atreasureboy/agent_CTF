@@ -48,7 +48,7 @@ describe('MCP (C)', () => {
       action: {
         type: 'call_tool', toolId: mcpToolId('echo', 'echo'),
         input: { x: 1, y: 'two' }, reason: 'r', priority: 1, costTier: 'cheap',
-      } as SuggestedAction,
+      },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
     }
@@ -56,7 +56,7 @@ describe('MCP (C)', () => {
     expect(r.status).toBe('executed')
     if (r.status === 'executed') {
       expect(r.materializedResult.observations.length).toBe(1)
-      expect(r.materializedResult.observations[0]!.summary).toContain('ECHO')
+      expect(r.materializedResult.observations[0].summary).toContain('ECHO')
     }
   })
 
@@ -80,7 +80,7 @@ describe('MCP (C)', () => {
       action: {
         type: 'call_tool', toolId: mcpToolId('x', 'y'),
         input: {}, reason: 'r', priority: 1, costTier: 'cheap',
-      } as SuggestedAction,
+      },
       attempt: makeAttempt('att1'),
       signal: ac.signal,
     })
@@ -99,7 +99,7 @@ describe('MCP (C)', () => {
       action: {
         type: 'call_tool', toolId: mcpToolId('echo', 'echo'),
         input: {}, reason: 'r', priority: 1, costTier: 'cheap',
-      } as SuggestedAction,
+      },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
     })
@@ -113,7 +113,7 @@ describe('MCP (C)', () => {
     const executor = createMcpExecutor(makeStubClient({}))
     const r = await executor.execute({
       taskState: createTestTaskState({ taskId: 't1' }),
-      action: { type: 'request_handoff', capability: 'x', objective: 'o', artifactIds: [], reason: 'r', priority: 1, costTier: 'cheap' } as SuggestedAction,
+      action: { type: 'request_handoff', capability: 'x', objective: 'o', artifactIds: [], reason: 'r', priority: 1, costTier: 'cheap' },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
     })
@@ -127,7 +127,7 @@ describe('MCP (C)', () => {
       action: {
         type: 'call_tool', toolId: 'mcp:other-server:foo',
         input: {}, reason: 'r', priority: 1, costTier: 'cheap',
-      } as SuggestedAction,
+      },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
     })

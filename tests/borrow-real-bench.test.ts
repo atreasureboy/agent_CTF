@@ -41,7 +41,7 @@ describe('LiveBenchRunner (real D2)', () => {
     const cyclingProvider = {
       ...provider,
       async generateToolUse() {
-        const r = responses[idx] ?? responses[responses.length - 1]!
+        const r = responses[idx] ?? responses[responses.length - 1]
         idx += 1
         return r
       },
@@ -81,7 +81,7 @@ describe('LiveBenchRunner (real D2)', () => {
     const cyclingProvider = {
       ...provider,
       async generateToolUse() {
-        return responses[idx++] ?? responses[responses.length - 1]!
+        return responses[idx++] ?? responses[responses.length - 1]
       },
     }
     const r = await runLiveChallenge(challenge, {

@@ -15,7 +15,7 @@ import { CrossSolverEvidenceBus } from '../src/core/solverPortfolio/crossSolverE
 import { FlagDiscriminator } from '../src/core/solverPortfolio/flagDiscriminator.js'
 import { SubmissionController } from '../src/core/solverPortfolio/submissionController.js'
 import { TrajectoryRecorder } from '../src/core/trajectory/trajectoryRecorder.js'
-import { ModelProvider } from '../src/core/modelReliability/providers/modelProvider.js'
+import type { ModelProvider } from '../src/core/modelReliability/providers/modelProvider.js'
 import { NoEligibleModelError, MissingModelProviderError } from '../src/core/modelReliability/errors.js'
 import { ArtifactStore } from '../src/core/artifacts.js'
 import { FindingStore } from '../src/core/findings.js'

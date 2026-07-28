@@ -22,7 +22,7 @@ interface MockResponse {
 function makeFetch(responses: MockResponse[]): typeof fetch {
   let i = 0
   const fn = async (_url: string | URL | Request, _init?: RequestInit): Promise<Response> => {
-    const r = responses[i] ?? responses[responses.length - 1]!
+    const r = responses[i] ?? responses[responses.length - 1]
     i += 1
     return new Response(JSON.stringify(r.body), {
       status: r.status ?? 200,
@@ -30,7 +30,7 @@ function makeFetch(responses: MockResponse[]): typeof fetch {
       headers: { 'content-type': 'application/json' },
     })
   }
-  return fn as unknown as typeof fetch
+  return fn
 }
 
 function cfgWith(responses: MockResponse[]): OpenAiCompatibleConfig {
@@ -116,9 +116,9 @@ describe('OpenAiCompatibleProvider (real D3)', () => {
   })
 
   it('returns null on HTTP error', async () => {
-    const failingFetch: typeof fetch = (async () => {
+    const failingFetch: typeof fetch = async () => {
       return new Response('{"error":"bad gateway"}', { status: 502, statusText: 'Bad Gateway' })
-    }) as unknown as typeof fetch
+    }
     const provider = createOpenAiCompatibleProvider({
       id: 'x', baseUrl: 'http://x/v1', fetchImpl: failingFetch,
     })

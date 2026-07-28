@@ -36,17 +36,17 @@ const fixture: BenchChallenge[] = [
 
 describe('BenchRunner (E)', () => {
   it('buildStateForChallenge produces a usable initial state', () => {
-    const s = buildStateForChallenge(fixture[0]!, 't1')
+    const s = buildStateForChallenge(fixture[0], 't1')
     expect(s.taskId).toBe('t1')
     expect(s.observations.length).toBe(0)
     // A flag candidate is pre-seeded so the verify_flag action finds it.
     expect(s.flagCandidates.length).toBe(1)
-    expect(s.flagCandidates[0]!.value).toBe('flag{test_basic_1}')
+    expect(s.flagCandidates[0].value).toBe('flag{test_basic_1}')
   })
 
   it('runChallenge wins a fixture with the correct flag', async () => {
     const executor = createFixtureExecutor({ expectedFlag: 'flag{test_basic_1}' })
-    const r = await runChallenge(fixture[0]!, {
+    const r = await runChallenge(fixture[0], {
       executor,
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
     })
@@ -57,7 +57,7 @@ describe('BenchRunner (E)', () => {
   it('runBenchSuite aggregates per category', async () => {
     const dir = join(tmpdir(), 'agent_CTF-bench-' + Date.now())
     const executor = createFixtureExecutor({ expectedFlag: 'flag{test_basic_1}' })
-    const { results, summaryPath } = await runBenchSuite('smoke', [fixture[0]!, fixture[1]!], {
+    const { results, summaryPath } = await runBenchSuite('smoke', [fixture[0], fixture[1]], {
       executor,
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
       outDir: dir,

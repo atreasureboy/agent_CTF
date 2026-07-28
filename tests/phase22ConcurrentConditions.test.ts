@@ -45,7 +45,7 @@ describe('Phase 2.2 §二十五 — concurrent run conditions', () => {
       ...stateA,
       artifactIds: ['art-old', 'art-new'],
       artifacts: new Map([
-        ['art-old', stateA.artifacts!.get('art-old')!],
+        ['art-old', stateA.artifacts.get('art-old')!],
         ['art-new', {
           id: 'art-new',
           producedByStepId: 'binwalk-extract',

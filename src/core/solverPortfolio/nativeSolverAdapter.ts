@@ -121,7 +121,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
       }
 
       if (this.delegate?.run) {
-        const out = await this.delegate.run(input as any)
+        const out = await this.delegate.run(input)
         record.status = 'completed'
         record.completedAt = Date.now()
         emitEvent({ type: 'status', status: 'completed', timestamp: Date.now() })

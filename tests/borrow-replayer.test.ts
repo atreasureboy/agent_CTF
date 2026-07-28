@@ -26,8 +26,8 @@ describe('Replayer (D)', () => {
     const out = replayFromEvents(events)
     expect(out.taskId).toBe('rp-1')
     expect(out.cycles.length).toBeGreaterThan(0)
-    expect(out.cycles[0]!.attempts.length).toBe(1)
-    expect(out.cycles[0]!.attempts[0]!.status).toBe('succeeded')
+    expect(out.cycles[0].attempts.length).toBe(1)
+    expect(out.cycles[0].attempts[0].status).toBe('succeeded')
     expect(out.stoppedReason).toBe('done')
   })
 

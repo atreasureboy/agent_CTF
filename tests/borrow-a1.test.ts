@@ -28,7 +28,7 @@ describe('TaskEventLogger (A1)', () => {
       const content = await readFile(log.path, 'utf-8')
       const lines = content.split('\n').filter((l) => l.length > 0)
       expect(lines.length).toBe(2)
-      const parsed = JSON.parse(lines[0]!)
+      const parsed = JSON.parse(lines[0])
       expect(parsed.type).toBe('STRATEGY_DECISION_RECORDED')
     } finally {
       await rm(dir, { recursive: true, force: true })

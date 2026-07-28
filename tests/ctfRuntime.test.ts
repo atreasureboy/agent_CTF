@@ -728,7 +728,7 @@ describe('§十 — WorkflowRunner uses TaskExecutionContext', () => {
       ctx: { cwd: string; taskId: string; agentId: string },
     ) => {
       if (toolId === 'Bash') seen.push(ctx.cwd)
-      return orig(toolId, input, ctx as Parameters<typeof orig>[2])
+      return orig(toolId, input, ctx)
     }
     const wf = h.workflowRegistry.get('unknown_file_triage')!
     await h.runWorkflow(wf, {})

@@ -71,10 +71,7 @@ describe('redactSecretsDeep', () => {
     const r = redactSecretsDeep({
       outer: { inner: 'AKIAIOSFODNN7EXAMPLE' },
       list: ['ghp_abc123def456ghi789jkl012mno345pqr678stu', 'plain', { x: 'AKIAIOSFODNN7EXAMPLE' }],
-    }) as {
-      outer: { inner: string }
-      list: (string | { x: string })[]
-    }
+    })
     expect(r.outer.inner).toBe('<redacted>')
     expect(r.list[0]).toBe('<redacted>')
     expect(r.list[1]).toBe('plain')
