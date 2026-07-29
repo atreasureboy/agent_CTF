@@ -1,0 +1,6 @@
+A web server is running on localhost:8765.
+The server has a vulnerability that allows directory traversal.
+Find and read the flag file.
+
+Hint: The flag is at /secret/flag.txt but direct access might be blocked.
+Try using directory traversal to access it.

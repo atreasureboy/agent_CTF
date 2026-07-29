@@ -1,0 +1,17 @@
+{
+  "id": "encoding1",
+  "title": "Base64 Inception",
+  "category": "encoding",
+  "description": "This file contains a secret message encoded multiple times with Base64.\nDecode it to find the flag.\n\nHint: The message has been Base64 encoded 3 times.\n",
+  "flagPattern": "flag{...}",
+  "expectedFlagSha256": "5e19ee72564b8c4bfb2209c349ab4099958e710b2ba18ff0caa4c1a9cbcc2508",
+  "attachmentPaths": [
+    "encoded.txt"
+  ],
+  "timeoutMs": 60000,
+  "allowedTools": [
+    "Bash",
+    "Read",
+    "base64_decode"
+  ]
+}

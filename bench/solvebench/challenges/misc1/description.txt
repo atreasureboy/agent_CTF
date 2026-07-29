@@ -1,0 +1,4 @@
+An image contains a hidden message using LSB steganography.
+Extract the hidden bits from the least significant bits of the pixel values.
+
+Hint: Read the LSB of each pixel to reconstruct the hidden message.

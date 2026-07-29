@@ -283,6 +283,14 @@ ONEShot COMMANDS (six_goal §十四)
     const { runBenchmarkCommand } = await import('../src/ctf/cli/benchmarkCli.js')
     return runBenchmarkCommand(argv.slice(3), { stdout, stderr })
   }
+  if (argv[2] === 'solve') {
+    if (!argv[3]) {
+      stderr.write(`${RED}error:${RESET} solve requires a challenge.json path\n`)
+      return 1
+    }
+    const { runSolveCommand } = await import('../src/ctf/cli/solve.js')
+    return runSolveCommand(argv[3], { stdout, stderr })
+  }
 
   // §十四 — parseArgs inside the try block so missing-value / unknown-flag
   // errors become a clean exit 1 instead of an unhandled throw.

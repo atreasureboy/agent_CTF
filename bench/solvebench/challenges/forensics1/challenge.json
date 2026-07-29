@@ -1,0 +1,18 @@
+{
+  "id": "forensics1",
+  "title": "PNG Hidden Message",
+  "category": "forensics",
+  "description": "This PNG image looks normal, but there's something hidden inside.\nFind the secret message to get the flag.\n\nHint: Look beyond the image data.\n",
+  "flagPattern": "flag{...}",
+  "expectedFlagSha256": "b5916c714ca7851368592f793c54a1ca92315da581ed5e9a351666ba8bb6ebf2",
+  "attachmentPaths": [
+    "image.png"
+  ],
+  "timeoutMs": 120000,
+  "allowedTools": [
+    "Bash",
+    "Read",
+    "strings",
+    "xxd"
+  ]
+}
