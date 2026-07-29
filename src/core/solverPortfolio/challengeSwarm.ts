@@ -80,6 +80,7 @@ export class ChallengeSwarm {
 
       // Start consuming live events if available
       if (handle.events) {
+        // eslint-disable-next-line
         ;(async () => {
           try {
             for await (const event of handle.events!()) {
@@ -128,15 +129,19 @@ export class ChallengeSwarm {
       // Apply observations to CTFTaskStateStore FIRST before publishing knowledge
       if (this.stateStore) {
         for (const obs of finished.result.observations) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const obsId = (obs as any).id || `obs_${finished.handle.runId}_${Date.now()}`
           try {
             this.stateStore.apply({
               type: 'OBSERVATION_ADDED',
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               observation: {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 id: obsId,
                 taskId: input.taskId,
                 sourceSolverRunId: finished.handle.runId,
                 summary: obs.summary,
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 data: (obs as any).data ?? {},
                 createdAt: Date.now(),
               } as any,
@@ -147,13 +152,14 @@ export class ChallengeSwarm {
               taskId: input.taskId,
               sourceSolverRunId: finished.handle.runId,
               evidenceIds: [],
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               observationIds: [obsId],
               artifactIds: [],
               summary: obs.summary,
               priority: 'normal',
               createdAt: Date.now(),
             })
-          } catch (err) {
+          } catch {
             // State apply error must be handled
           }
         }

@@ -106,18 +106,21 @@ export async function collectEvidence(
   try {
     realSrc = await fsp.realpath(item.srcPath)
   } catch (err) {
+    // eslint-disable-next-line
     throw new Error(`evidence source unresolvable: ${(err as Error).message}`)
   }
   const candidateRoots: string[] = []
   try {
     candidateRoots.push(await fsp.realpath(workspaceDir))
   } catch (err) {
+    // eslint-disable-next-line
     throw new Error(`workspace unresolvable: ${(err as Error).message}`)
   }
   if (allowedFilesRoot) {
     try {
       candidateRoots.push(await fsp.realpath(allowedFilesRoot))
     } catch (err) {
+      // eslint-disable-next-line
       throw new Error(`allowedFilesRoot unresolvable: ${(err as Error).message}`)
     }
   }

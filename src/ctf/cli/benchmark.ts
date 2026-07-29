@@ -139,7 +139,7 @@ export function synthesizeBenchmarkRow(
   const expectedCands = isSpec ? fixture.expectedCandidateValues : []
   const expectedKinds = isSpec ? fixture.expectedArtifactKinds : []
   const maxDur = isSpec ? fixture.maxDurationMs : 5000
-  const maxFP = isSpec ? fixture.maxFalsePositiveFindings : 3
+  const _maxFP = isSpec ? fixture.maxFalsePositiveFindings : 3
   const duration =
     mode === 'A' ? base * factor * 2 : mode === 'B' ? base * factor : base * factor * 0.5
   const timedOut = duration > maxDur
@@ -225,6 +225,7 @@ export function summarizeBenchmark(rows: BenchmarkRow[]): BenchmarkSummary {
   const counts: Record<'A' | 'B' | 'C', number> = { A: 0, B: 0, C: 0 }
   let tp = 0,
     fp = 0,
+    // eslint-disable-next-line
     fn = 0
   let candidatesMatched = 0,
     candidatesExpected = 0

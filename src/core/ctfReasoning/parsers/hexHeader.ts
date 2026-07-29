@@ -63,6 +63,7 @@ export const hexHeaderParser: ResultParser = {
       input.toolId === 'hex' || input.manifestId === 'hex_header' || input.stepId === 'hex_header'
     )
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
       return {

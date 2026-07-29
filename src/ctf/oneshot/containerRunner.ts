@@ -354,6 +354,7 @@ export class ContainerRunner implements OneShotRunner {
         if (e) e.cleanupNetwork = cleanupNetwork
       }
 
+      // eslint-disable-next-line
       child.on('error', async (err) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
@@ -381,6 +382,7 @@ export class ContainerRunner implements OneShotRunner {
         })
       })
 
+      // eslint-disable-next-line
       child.on('close', async (code, sig) => {
         clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
@@ -426,6 +428,7 @@ export class ContainerRunner implements OneShotRunner {
     })
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async cancel(runId: string): Promise<void> {
     const entry = this.children.get(runId)
     if (!entry) return

@@ -251,6 +251,7 @@ export const WORKFLOW_RSA_COMMON_ATTACKS: WorkflowDefinition = {
       kind: 'tool',
       id: 'wiener',
       toolId: 'Bash',
+      // eslint-disable-next-line
       input: { command: 'python3 -c "print(\"wiener: e=$(echo $E)\")"' },
     },
     {

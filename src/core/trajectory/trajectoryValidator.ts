@@ -37,6 +37,7 @@ export class TrajectoryValidator {
         errors.push({
           eventId: env.eventId,
           rule: 'schema_version',
+          // eslint-disable-next-line
           message: `Invalid schemaVersion '${env.schemaVersion}'. Expected '1.0'.`,
         })
       }
@@ -53,7 +54,9 @@ export class TrajectoryValidator {
 
       if (env.eventType === 'tool_call') {
         commandFormatTotal++
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const payload = env.payload as any
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (payload?.toolId && payload?.attemptFingerprint) {
           commandFormatPass++
         } else {
@@ -67,7 +70,9 @@ export class TrajectoryValidator {
 
       if (env.eventType === 'suggested_action') {
         actionConsistencyTotal++
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const payload = env.payload as any
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (payload?.actionName) {
           actionConsistencyPass++
         }

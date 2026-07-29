@@ -26,7 +26,6 @@ import { processNewReasoningInputs } from '../core/ctfReasoning/reasoningCoordin
 import { createNoopStrategyActionExecutor } from '../core/ctfReasoning/runtimeStrategyActionExecutor.js'
 import type {
   ActionExecutionResult,
-  ExecutionRefs,
 } from '../core/ctfReasoning/actionExecutionResult.js'
 import type {
   StrategyActionExecutor,
@@ -66,6 +65,7 @@ export interface FixtureExecutorOptions {
  *  submitting the expected flag at the first verify_flag call. */
 export function createFixtureExecutor(options: FixtureExecutorOptions): StrategyActionExecutor {
   return {
+    // eslint-disable-next-line @typescript-eslint/require-await
     async execute(ctx: StrategyActionExecutorContext): Promise<ActionExecutionResult> {
       const a = ctx.action
       if (a.type === 'verify_flag') {

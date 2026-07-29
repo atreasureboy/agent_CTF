@@ -79,6 +79,7 @@ export class MockLlmProvider implements LlmProvider {
   setNext(req: ToolUseRequest | null): void {
     this.next = req
   }
+  // eslint-disable-next-line @typescript-eslint/require-await
   async generateToolUse(_prompt: string, _defs: ToolDefinition[]): Promise<ToolUseRequest | null> {
     return this.next
   }

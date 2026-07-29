@@ -33,7 +33,18 @@ import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
 import { assertLlmDependencies } from './agentRuntimeDependencies.js'
 import type { CTFTaskState } from './taskState.js'
-import { Dispatcher, BackgroundJobRunnerRegistryImpl } from '../../ctf/oneshot/dispatcher.js'
+import {BackgroundJobRunnerRegistryImpl} from '../../ctf/oneshot/dispatcher.js'
+import type { RuntimeModelConfiguration } from '../modelReliability/modelRegistry.js'
+import type { NativeSolverRuntimeDelegate } from '../solverPortfolio/nativeSolverAdapter.js'
+import type { BackgroundJobRunnerRegistry } from '../../ctf/oneshot/dispatcher.js'
+import type { ModelCapabilityRegistry } from '../modelReliability/modelRegistry.js'
+import type { ModelHealthStore } from '../modelReliability/modelHealth.js'
+import type { ModelCircuitBreaker } from '../modelReliability/modelCircuitBreaker.js'
+import type { ModelRouter } from '../modelReliability/modelRouter.js'
+import type { StructuredModelGateway } from '../modelReliability/structuredModelGateway.js'
+import type { SolverPortfolio } from '../solverPortfolio/solverPortfolio.js'
+import type { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
+import type { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
 
 export type CTFTaskRuntimeMode = 'workflow-only' | 'llm'
 
@@ -71,8 +82,8 @@ export interface CreateCTFTaskRuntimeInput {
 
   jobLimits?: { maxPerAgent?: number; maxPerTask?: number; globalTimeoutMs?: number }
   runtimeMode?: 'production' | 'test'
-  runtimeModelConfig?: import('../modelReliability/modelRegistry.js').RuntimeModelConfiguration
-  nativeRuntimeDelegate?: import('../solverPortfolio/nativeSolverAdapter.js').NativeSolverRuntimeDelegate
+  runtimeModelConfig?: RuntimeModelConfiguration
+  nativeRuntimeDelegate?: NativeSolverRuntimeDelegate
 }
 
 export interface CTFTaskRuntime {
@@ -81,17 +92,17 @@ export interface CTFTaskRuntime {
   abort: LinkedAbortController
   mainHarness: HarnessBundle
   mode: CTFTaskRuntimeMode
-  oneShotRunnerRegistry: import('../../ctf/oneshot/dispatcher.js').BackgroundJobRunnerRegistry
+  oneShotRunnerRegistry: BackgroundJobRunnerRegistry
   modelReliability: {
-    registry: import('../modelReliability/modelRegistry.js').ModelCapabilityRegistry
-    healthStore: import('../modelReliability/modelHealth.js').ModelHealthStore
-    circuitBreaker: import('../modelReliability/modelCircuitBreaker.js').ModelCircuitBreaker
-    router: import('../modelReliability/modelRouter.js').ModelRouter
-    gateway: import('../modelReliability/structuredModelGateway.js').StructuredModelGateway
+    registry: ModelCapabilityRegistry
+    healthStore: ModelHealthStore
+    circuitBreaker: ModelCircuitBreaker
+    router: ModelRouter
+    gateway: StructuredModelGateway
   }
-  solverPortfolio: import('../solverPortfolio/solverPortfolio.js').SolverPortfolio
-  toolVisibilityPolicy: import('../toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
-  trajectoryRecorder: import('../trajectory/trajectoryRecorder.js').TrajectoryRecorder
+  solverPortfolio: SolverPortfolio
+  toolVisibilityPolicy: ToolVisibilityPolicy
+  trajectoryRecorder: TrajectoryRecorder
   getState(): Readonly<CTFTaskState>
   cancel(reason: string): Promise<void>
   dispose(): Promise<void>
@@ -253,7 +264,7 @@ export async function createCTFTaskRuntime(
     providers: providersMap,
     trajectoryRecorder,
     truthfulnessGuard: guard,
-    getStateRevision: (tid) => orchestratorRef?.store?.getState().stateRevision ?? 1,
+    getStateRevision: (_tid) => orchestratorRef?.store?.getState().stateRevision ?? 1,
   })
 
   const toolVisibilityPolicy = new ToolVisibilityPolicy([], 'profile_allowed')

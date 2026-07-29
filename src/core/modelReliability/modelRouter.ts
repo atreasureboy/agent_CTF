@@ -187,7 +187,7 @@ export class ModelRouter {
   private filterEligibleModels(
     modelIds: string[],
     input: ModelRoutingInput,
-    rejectedModels: Array<{ modelId: string; reason: string }>,
+    _rejectedModels: Array<{ modelId: string; reason: string }>,
   ): string[] {
     const valid: string[] = []
     for (const id of modelIds) {

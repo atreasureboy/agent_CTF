@@ -9,7 +9,6 @@ import { createMcpExecutor, mcpToolId, describeMcpTools } from '../src/core/mcp/
 import type { McpCallResult, McpClient } from '../src/core/mcp/mcpClient.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import type { CTFAttempt } from '../src/core/ctfRuntime/taskState.js'
-import type { SuggestedAction } from '../src/core/ctfReasoning/suggestedAction.js'
 import type { StrategyActionExecutorContext } from '../src/core/ctfReasoning/strategyActionExecutor.js'
 
 function makeAttempt(id: string): CTFAttempt {
@@ -29,6 +28,7 @@ function makeStubClient(behaviour: {
     serverName: 'echo',
     start: async () => {},
     stop: async () => {},
+    // eslint-disable-next-line @typescript-eslint/require-await
     listTools: async () => [{ name: 'echo' }],
     callTool: async (_toolName: string, args: Record<string, unknown>) => {
       if (behaviour.delayMs) await new Promise((r) => setTimeout(r, behaviour.delayMs))
@@ -66,6 +66,7 @@ describe('MCP (C)', () => {
       serverName: 'x',
       start: async () => {},
       stop: async () => {},
+      // eslint-disable-next-line @typescript-eslint/require-await
       listTools: async () => [],
       callTool: async (_t, _a, signal) => {
         signal?.addEventListener('abort', () => { abortObserved = true })

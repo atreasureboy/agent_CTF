@@ -23,6 +23,7 @@ describe('LMSummarizer (C3)', () => {
 
   it('custom LanguageModel produces custom output', async () => {
     const customLM: LanguageModel = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async generate(_prompt: string): Promise<string> {
         return '- claim: custom result\n- category: misc\n- question: ?'
       },

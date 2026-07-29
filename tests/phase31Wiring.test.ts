@@ -12,11 +12,10 @@ import { NativeSolverAdapter } from '../src/core/solverPortfolio/nativeSolverAda
 import { GenericProcessSolverAdapter } from '../src/core/solverPortfolio/genericProcessSolverAdapter.js'
 import { ChallengeSwarm } from '../src/core/solverPortfolio/challengeSwarm.js'
 import { CrossSolverEvidenceBus } from '../src/core/solverPortfolio/crossSolverEvidenceBus.js'
-import { FlagDiscriminator } from '../src/core/solverPortfolio/flagDiscriminator.js'
 import { SubmissionController } from '../src/core/solverPortfolio/submissionController.js'
 import { TrajectoryRecorder } from '../src/core/trajectory/trajectoryRecorder.js'
 import type { ModelProvider } from '../src/core/modelReliability/providers/modelProvider.js'
-import { NoEligibleModelError, MissingModelProviderError } from '../src/core/modelReliability/errors.js'
+import {NoEligibleModelError} from '../src/core/modelReliability/errors.js'
 import { ArtifactStore } from '../src/core/artifacts.js'
 import { FindingStore } from '../src/core/findings.js'
 import { ToolRegistry } from '../src/core/toolRegistry.js'
@@ -87,7 +86,9 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
 
     const fakeProvider: ModelProvider = {
       id: 'openai',
+      // eslint-disable-next-line @typescript-eslint/require-await
       async streamAgentTurn() {
+        // eslint-disable-next-line @typescript-eslint/require-await
         return (async function* () {
           yield {
             id: 'chunk_1',
@@ -98,6 +99,7 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
           }
         })()
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async executeStructured() {
         return { rawText: JSON.stringify({ ok: true }) }
       },
@@ -328,6 +330,7 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
     const s1Start = vi.fn().mockResolvedValue({
       runId: 'r1',
       solverId: 's1',
+      // eslint-disable-next-line @typescript-eslint/require-await
       async wait() {
         return {
           runId: 'r1',
@@ -340,12 +343,14 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
         }
       },
       async cancel() {},
+      // eslint-disable-next-line @typescript-eslint/require-await
       async inspect() { return {} as any },
     })
 
     const s2Start = vi.fn().mockResolvedValue({
       runId: 'r2',
       solverId: 's2',
+      // eslint-disable-next-line @typescript-eslint/require-await
       async wait() {
         return {
           runId: 'r2',
@@ -358,10 +363,13 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
         }
       },
       async cancel() {},
+      // eslint-disable-next-line @typescript-eslint/require-await
       async inspect() { return {} as any },
     })
 
+    // eslint-disable-next-line @typescript-eslint/require-await
     swarm.registerAdapter({ id: 's1', probe: async () => ({ status: 'ready', capabilities: [] }), start: s1Start })
+    // eslint-disable-next-line @typescript-eslint/require-await
     swarm.registerAdapter({ id: 's2', probe: async () => ({ status: 'ready', capabilities: [] }), start: s2Start })
 
     const outcome = await swarm.runSwarm({

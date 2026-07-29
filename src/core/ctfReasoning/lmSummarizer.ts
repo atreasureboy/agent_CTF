@@ -40,6 +40,7 @@ export interface LanguageModel {
 
 /** Deterministic LMSummarizer for tests / dry-run. */
 export class NoOpLMSummarizer implements LanguageModel {
+  // eslint-disable-next-line @typescript-eslint/require-await
   async generate(prompt: string): Promise<string> {
     // Echo the first 200 chars of the prompt to give the caller
     // something to verify.

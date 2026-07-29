@@ -20,6 +20,7 @@ export const zstegParser: ResultParser = {
   supports(input) {
     return input.toolId === 'zsteg' || input.manifestId === 'zsteg' || input.stepId === 'zsteg'
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content || input.content.trim() === '') {
       return {
@@ -57,7 +58,7 @@ export const zstegParser: ResultParser = {
     const evidence: MaterializedResult['evidence'] = []
     const flagCandidateDrafts: MaterializedResult['flagCandidateDrafts'] = []
     let highQuality = 0
-    let binaryNoise = 0
+    let _binaryNoise = 0
     let fileSig = 0
     for (const row of rows) {
       const m = ROW_RE.exec(row)
@@ -115,7 +116,7 @@ export const zstegParser: ResultParser = {
           })
         }
       } else {
-        binaryNoise++
+        _binaryNoise++
       }
     }
     if (highQuality === 0 && fileSig === 0) {

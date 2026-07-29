@@ -3,10 +3,8 @@ import {
   ChallengeSwarm,
   CrossSolverEvidenceBus,
   FlagDiscriminator,
-  GenericProcessSolverAdapter,
   GuidanceCompiler,
   NativeSolverAdapter,
-  SolverPortfolio,
   SolverResultNormalizer,
   StagnationDetector,
   SubmissionController,
@@ -172,6 +170,7 @@ describe('Solver Portfolio & Swarm Suite', () => {
     const swarm = new ChallengeSwarm(bus, store)
     swarm.registerAdapter(
       new NativeSolverAdapter({
+        // eslint-disable-next-line @typescript-eslint/require-await
         async runMainAgent() {
           return { summary: 'Swarm test done' }
         },

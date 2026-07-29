@@ -30,6 +30,7 @@ import { deriveSubtaskContext } from './taskExecutionContext.js'
 import { createLinkedAbortController, type LinkedAbortController } from './linkedAbortController.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
 import type { HandoffRecord } from './taskState.js'
+import type { Renderer } from '../../ui/renderer.js'
 
 export interface CreateSpecialistHarnessInput {
   parentContext: TaskExecutionContext
@@ -44,7 +45,7 @@ export interface CreateSpecialistHarnessInput {
    * nulled. Phase 1.7 — kept for backward compat with legacy
    * CTFTaskOrchestrator.create() callers.
    */
-  runtimeRenderer?: import('../../ui/renderer.js').Renderer
+  runtimeRenderer?: Renderer
   /**
    * Parent's LinkedAbortController.signal — the Specialist's controller
    * will link to this signal so parent cancel propagates to this
@@ -160,9 +161,13 @@ export class SpecialistHarnessFactory {
       client: input.dependencies.client,
       renderer,
       modelConfig: input.dependencies.modelConfig,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       modelGateway: (input.dependencies as any).modelGateway,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       toolVisibilityPolicy: (input.dependencies as any).toolVisibilityPolicy,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       toolExposureResolver: (input.dependencies as any).toolExposureResolver,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       trajectoryRecorder: (input.dependencies as any).trajectoryRecorder,
       // Independent stores — NOT the parent's. The projector reads both
       // (parent + specialist) to assemble the diff and writes lineage.

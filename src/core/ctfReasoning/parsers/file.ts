@@ -67,7 +67,7 @@ function readFirstBytes(
 ): number[] | null {
   if (stdoutPath) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
       const fs = require('fs') as typeof import('fs')
       const fd = fs.openSync(stdoutPath, 'r')
       try {
@@ -107,6 +107,7 @@ export const fileParser: ResultParser = {
       input.toolId === 'file' || input.manifestId === 'file' || input.stepId === 'file',
     )
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     const bytes = readFirstBytes(input.content, input.stdoutPath)
     const observations: MaterializedResult['observations'] = []

@@ -70,6 +70,7 @@ function getAssertNetwork(
   ).__ctf
   const scope = ctfCtx?.contestScope
   if (!scope || typeof scope.assertNetwork !== 'function') return null
+  // eslint-disable-next-line
   const assertFn = scope.assertNetwork
   // assertNetwork throws on denial — wrap it so callers get a boolean.
   return (host: string) => {

@@ -9,6 +9,7 @@ function mockClient(serverName: string, callTool: (name: string, args: Record<st
 
 describe('wrapMcpTool', () => {
   it('names tools as mcp__<server>__<tool>', () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const client = mockClient('time', async () => [])
     const tool = wrapMcpTool(client, { name: 'now', description: 'current time' })
     expect(tool.name).toBe('mcp__time__now')
@@ -17,6 +18,7 @@ describe('wrapMcpTool', () => {
   })
 
   it('passes the inputSchema through as parameters', () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const client = mockClient('s', async () => [])
     const tool = wrapMcpTool(client, {
       name: 't',
@@ -28,6 +30,7 @@ describe('wrapMcpTool', () => {
   })
 
   it('execute calls the client and flattens text blocks', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const callTool = vi.fn(async () => [
       { type: 'text', text: 'line 1' },
       { type: 'text', text: 'line 2' },
@@ -45,6 +48,7 @@ describe('wrapMcpTool', () => {
   })
 
   it('execute returns an error result when the client throws', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const client = mockClient('srv', async () => { throw new Error('boom') })
     const tool = wrapMcpTool(client, { name: 'do' })
     const res = await tool.execute({}, {} as never)
@@ -53,6 +57,7 @@ describe('wrapMcpTool', () => {
   })
 
   it('execute reports an empty-content result explicitly', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const client = mockClient('srv', async () => [])
     const tool = wrapMcpTool(client, { name: 'do' })
     const res = await tool.execute({}, {} as never)
@@ -60,6 +65,7 @@ describe('wrapMcpTool', () => {
   })
 
   it('represents non-text blocks compactly', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const client = mockClient('srv', async () => [
       { type: 'image', data: 'b64' },
       { type: 'text', text: 'caption' },
@@ -71,6 +77,7 @@ describe('wrapMcpTool', () => {
   })
 
   it('defaults concurrencySafe to false (unknown side effects)', () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const client = mockClient('s', async () => [])
     const tool = wrapMcpTool(client, { name: 't' })
     expect(tool.concurrencySafe).toBe(false)

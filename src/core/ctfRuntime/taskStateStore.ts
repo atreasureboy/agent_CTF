@@ -622,7 +622,7 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'HYPOTHESIS_UPDATED': {
       // §H4 — `status` MUST be changed via HYPOTHESIS_STATUS_CHANGED
       // so the FSM is enforced. Strip it from the patch payload here.
-      const { status: _s, ...safePatch } = event.patch as { status?: unknown } & Record<
+      const { status: __s, ...safePatch } = event.patch as { status?: unknown } & Record<
         string,
         unknown
       >

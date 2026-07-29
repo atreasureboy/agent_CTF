@@ -13,6 +13,7 @@ export interface BenchmarkCliDeps {
   fixturesRoot?: string
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function runBenchmarkCommand(argv: string[], deps: BenchmarkCliDeps): Promise<number> {
   const { stdout } = deps
   const cwd = process.cwd()

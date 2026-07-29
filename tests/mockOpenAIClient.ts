@@ -10,7 +10,6 @@
  * fully wired and that the LLM multi-round loop converges.
  */
 
-import type OpenAI from 'openai'
 
 export type ScriptedAction =
   | { type: 'text'; content: string }
@@ -128,12 +127,14 @@ export class MockOpenAIClient {
     // The shape matches `AsyncIterable<ChatCompletionChunk>` so the engine's
     // consumeStream can iterate it.
     const counter = { i: 0 }
+    // eslint-disable-next-line
     const _self = this
     return {
       [Symbol.asyncIterator]() {
         let consumed = false
         const idx = 0
         return {
+          // eslint-disable-next-line @typescript-eslint/require-await
           async next(): Promise<{ value: unknown; done: boolean }> {
             // We synthesise one turn at a time, freezing stream consumption
             // until the caller iterates a chunk (which the engine does in its
@@ -186,6 +187,7 @@ export class ScriptedClient {
   constructor() {
     this.chat = {
       completions: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         create: async (
           params: { messages?: unknown[] },
           _options?: unknown,
@@ -221,6 +223,7 @@ export class ScriptedClient {
     return this.defaultTurn
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async *_asyncIterable(chunks: unknown[]): AsyncGenerator<unknown> {
     for (const c of chunks) {
       yield c

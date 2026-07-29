@@ -33,6 +33,7 @@ export function makeListOneShotsTool(registry: OneShotRegistry): Tool {
     name: 'list_one_shots',
     definition: LIST_ONE_SHOTS_DEFINITION,
     concurrencySafe: true,
+    // eslint-disable-next-line @typescript-eslint/require-await
     async execute(input: Record<string, unknown>): Promise<ToolResult> {
       const { category, profileId, enabledOnly } = input as {
         category?: string

@@ -27,6 +27,8 @@ import type {
   OneShotJobProjectionEvent,
   OneShotLane,
   OneShotResult,
+  OneShotManifest,
+  OneShotStatus,
 } from './types.js'
 import { normalizeResult } from './resultNormalizer.js'
 import { runnerFor } from './runner.js'
@@ -36,7 +38,6 @@ import type { OneShotRegistry } from './registry.js'
 import type { OneShotCatalog } from './catalog.js'
 import type {
   BackgroundJobManager,
-  BackgroundJobEvent,
   JobRunner,
   JobSpec,
 } from '../../core/backgroundJobs.js'
@@ -349,6 +350,7 @@ export class Dispatcher {
   }
 
   /** Per-run cancellation (§八). */
+  // eslint-disable-next-line @typescript-eslint/require-await
   async cancelRun(
     runId: string,
     reason: string,
@@ -634,7 +636,7 @@ export class Dispatcher {
   private buildSuccessResult(
     runId: string,
     manifestId: string,
-    manifest: import('./types.js').OneShotManifest,
+    manifest: OneShotManifest,
     startedAt: string,
     job: {
       status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
@@ -642,7 +644,7 @@ export class Dispatcher {
     } | null,
   ): OneShotResult {
     const finishedAt = new Date().toISOString()
-    const status: import('./types.js').OneShotStatus =
+    const status: OneShotStatus =
       job?.status === 'failed' ? 'failed' : job?.status === 'cancelled' ? 'cancelled' : 'completed'
     return {
       runId,

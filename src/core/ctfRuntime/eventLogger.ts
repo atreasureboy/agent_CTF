@@ -19,7 +19,6 @@
 
 import { appendFile, mkdir } from 'fs/promises'
 import { dirname } from 'path'
-import type { CTFTaskEvent } from './taskEvents.js'
 import type { CTFTaskStateStore } from './taskStateStore.js'
 import type { Unsubscribe } from './taskEvents.js'
 

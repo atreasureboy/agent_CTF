@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import {mkdtempSync, rmSync, readFileSync, existsSync} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   ProcessRunner,
   ContainerRunner,
   ServiceRunner,
-  setRunnerOverride,
-  clearRunnerOverrides,
 } from '../../src/ctf/oneshot/index.js'
 import type { OneShotManifest } from '../../src/ctf/oneshot/index.js'
 
@@ -101,6 +99,7 @@ describe('runners', () => {
         method: string,
         body: unknown,
         _signal: AbortSignal,
+      // eslint-disable-next-line @typescript-eslint/require-await
       ): Promise<{ status: number; body: unknown }> => {
         if (method === 'POST' && url.endsWith('/submit')) {
           submitCalls.push(JSON.stringify(body))

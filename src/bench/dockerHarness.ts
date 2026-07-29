@@ -105,7 +105,9 @@ export async function runDockerChallenge(
   const host = opts.host ?? '127.0.0.1'
   const timeoutMs = (challenge.startupTimeoutSec ?? 60) * 1000
   const startedAt = Date.now()
+  // eslint-disable-next-line
   let containerReady = false
+  // eslint-disable-next-line
   let detectedFlag: string | null = null
   let stdout = ''
   let stderr = ''

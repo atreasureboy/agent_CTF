@@ -19,7 +19,7 @@ import type { CTFAttempt } from '../ctfRuntime/taskState.js'
 
 const SENSITIVE_KEY_RE = /api[_-]?key|token|secret|private|password|credential|passwd|flag|answer/i
 
-function redactValue(v: unknown): unknown {
+function redactValue(_v: unknown): unknown {
   // Stable redaction — every secret value becomes the SAME marker
   // string so different secrets with the same key produce the same
   // fingerprint. This is what we want for dedup.

@@ -132,7 +132,7 @@ interface Rule {
 
 function ruleFor(
   e: Evidence,
-  obs: ReadonlyArray<{ summary: string; attributes: Record<string, unknown> }>,
+  _obs: ReadonlyArray<{ summary: string; attributes: Record<string, unknown> }>,
 ): Rule | undefined {
   const claim = (e.claim ?? '').toLowerCase()
   switch (e.kind) {

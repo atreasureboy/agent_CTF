@@ -8,6 +8,12 @@ import type { PermissionChecker } from './permission.js'
 import type { ToolBroker } from './toolBroker.js'
 import type { PricingConfig } from '../config/agentConfig.js'
 import type OpenAI from 'openai'
+import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
+import type { CapabilityProfile } from './capabilityProfile.js'
+import type { ToolVisibilityPolicy } from './toolVisibility/toolVisibilityPolicy.js'
+import type { ModelInvocationGateway } from './modelReliability/structuredModelGateway.js'
+import type { ToolExposureResolver } from './toolVisibility/toolExposureResolver.js'
+import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
 
 // OpenAI-compatible tool call format
 export interface ToolCall {
@@ -92,7 +98,7 @@ export interface ToolContext {
    * evidenceRoot, scope, taskId, profileId, artifactDir, abortSignal
    * from this — never from model-supplied input.
    */
-  taskContext?: import('./ctfRuntime/taskExecutionContext.js').TaskExecutionContext
+  taskContext?: TaskExecutionContext
 }
 
 /**
@@ -127,7 +133,7 @@ export interface EngineConfig {
    * so the LLM never sees tools the profile rejects. Without this, the
    * LLM wastes turns retrying denied tools.
    */
-  profile?: import('./capabilityProfile.js').CapabilityProfile
+  profile?: CapabilityProfile
   /**
    * Audit rounds 6-10 — run-id association so emitted findings /
    * artifacts can be attributed to the producing run. Optional —
@@ -149,7 +155,7 @@ export interface EngineConfig {
   systemPrompt?: string
   /** Extra tools to inject (e.g. MCP tools) */
   extraTools?: Tool[]
-  toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
+  toolVisibilityPolicy?: ToolVisibilityPolicy
   /**
    * Plan mode: restrict tools to read-only (Read, Glob, Grep, WebFetch, WebSearch).
    * The agent analyzes and plans but cannot write, edit, or execute.
@@ -216,11 +222,11 @@ export interface EngineConfig {
    * ToolContext.taskContext. Tools use this for workspace/evidenceRoot/
    * scope/taskId/profileId; model-supplied equivalents are ignored.
    */
-  taskContext?: import('./ctfRuntime/taskExecutionContext.js').TaskExecutionContext
+  taskContext?: TaskExecutionContext
   /** Model Invocation Gateway — Phase 3.1 requirement for routing/health/circuit/reliability */
-  modelGateway?: import('./modelReliability/structuredModelGateway.js').ModelInvocationGateway
-  toolExposureResolver?: import('./toolVisibility/toolExposureResolver.js').ToolExposureResolver
-  identity?: import('./modelReliability/modelExecutionIdentity.js').ModelExecutionIdentity
+  modelGateway?: ModelInvocationGateway
+  toolExposureResolver?: ToolExposureResolver
+  identity?: ModelExecutionIdentity
 }
 
 /** Cumulative token usage across one or more turns, for cost observability. */

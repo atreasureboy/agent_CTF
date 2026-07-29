@@ -10,7 +10,6 @@
  * either a typed value or a list of validation errors.
  */
 
-import type { SuggestedAction } from './suggestedAction.js'
 
 export interface ValidationError {
   path: string

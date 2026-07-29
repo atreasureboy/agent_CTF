@@ -44,6 +44,7 @@ export class ModelRolePolicy {
    * Enforces non-bypassable code checks based on trust level or profile capability.
    */
   public static validateRolePermission(
+    // eslint-disable-next-line
     modelOrTrust: string | ModelCapabilityProfile | ModelTrustLevel,
     role: ModelRole,
     actionType: string,

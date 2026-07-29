@@ -29,6 +29,7 @@ function makeRunner(delays: Record<string, number>): {
       endOrder.push(step.id)
       return { content: `out:${step.id}`, isError: false, artifactIds: [] }
     },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async emitFinding(_step, _ctx) {
       return
     },
@@ -140,6 +141,7 @@ describe('WorkflowEngine — executionMode "dag" runs top-level steps concurrent
     }
     const startOrder: string[] = []
     const runner: WorkflowRunner = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async runStep(step) {
         startOrder.push(step.id)
         if (step.id === 'bad') {
@@ -147,6 +149,7 @@ describe('WorkflowEngine — executionMode "dag" runs top-level steps concurrent
         }
         return { content: 'ok', isError: false, artifactIds: [] }
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async emitFinding() {
         return
       },

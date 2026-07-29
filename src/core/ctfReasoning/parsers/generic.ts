@@ -23,6 +23,7 @@ export const genericParser: ResultParser = {
   supports() {
     return true
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     const observations: MaterializedResult['observations'] = []
     const evidence: MaterializedResult['evidence'] = []

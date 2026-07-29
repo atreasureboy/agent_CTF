@@ -81,6 +81,7 @@ export function createMcpClient(config: McpServerConfig): McpClient {
           stdio: ['pipe', 'pipe', 'pipe'],
         })
       } catch (err) {
+        // eslint-disable-next-line
         reject(err)
         return
       }
@@ -216,6 +217,7 @@ export function createMcpClient(config: McpServerConfig): McpClient {
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
       } catch (err) {
         pending.delete(id)
+        // eslint-disable-next-line
         reject(err)
       }
     })
@@ -291,6 +293,7 @@ export function createMcpClient(config: McpServerConfig): McpClient {
       } catch (err) {
         pending.delete(id)
         signal?.removeEventListener('abort', onAbort)
+        // eslint-disable-next-line
         reject(err)
       }
     }).finally(() => {

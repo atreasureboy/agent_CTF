@@ -21,6 +21,7 @@ interface MockResponse {
 
 function makeFetch(responses: MockResponse[]): typeof fetch {
   let i = 0
+  // eslint-disable-next-line @typescript-eslint/require-await
   const fn = async (_url: string | URL | Request, _init?: RequestInit): Promise<Response> => {
     const r = responses[i] ?? responses[responses.length - 1]
     i += 1
@@ -116,6 +117,7 @@ describe('OpenAiCompatibleProvider (real D3)', () => {
   })
 
   it('returns null on HTTP error', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const failingFetch: typeof fetch = async () => {
       return new Response('{"error":"bad gateway"}', { status: 502, statusText: 'Bad Gateway' })
     }

@@ -65,6 +65,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async start(input: SolverChallengeInput): Promise<SolverRunHandle> {
     if (!this.delegate) {
       throw new SolverUnavailableError(this.id, 'NativeSolverRuntimeDelegate not configured')
@@ -219,6 +220,7 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
           await delegate.cancel(reason)
         }
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async inspect() {
         return record
       },

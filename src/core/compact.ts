@@ -44,7 +44,7 @@ function keepRecentFor(strategy: CompressionStrategy): number {
 }
 
 // Reserve tokens for the summary output itself
-const SUMMARY_OUTPUT_RESERVE = 4_000
+const _SUMMARY_OUTPUT_RESERVE = 4_000
 
 // ── Context state ────────────────────────────────────────────────────────────
 

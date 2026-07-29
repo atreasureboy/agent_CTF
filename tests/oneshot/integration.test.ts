@@ -75,6 +75,7 @@ describe('oneshot integration', () => {
     })
     const jobManager = new BackgroundJobManager(
       { taskWorkspaceDir: workRoot },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async () => ({}),
     )
     const dispatcher = new Dispatcher({

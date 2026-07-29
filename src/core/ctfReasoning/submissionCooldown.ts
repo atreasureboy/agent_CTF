@@ -52,6 +52,7 @@ export function hashValue(value: string): string {
   // store never persists the actual flag string. The raw value is
   // recoverable only by callers that keep the original locally.
   if (typeof value !== 'string') return ''
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
   return require('crypto').createHash('sha256').update(value, 'utf8').digest('hex')
 }
 

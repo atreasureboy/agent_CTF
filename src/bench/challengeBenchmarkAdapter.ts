@@ -29,6 +29,7 @@ export class LocalFixtureBenchmarkAdapter implements ChallengeBenchmarkAdapter {
     timeoutMs: 10000,
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async load(path: string): Promise<BenchmarkChallenge> {
     if (path) {
       // Use the requested path as the artifact path so the actual
@@ -46,6 +47,7 @@ export class LocalFixtureBenchmarkAdapter implements ChallengeBenchmarkAdapter {
     // No-op for offline local fixture
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async verifyCandidate(challenge: BenchmarkChallenge, candidate: string): Promise<boolean> {
     if (challenge.expectedFlagPattern) {
       const regex = new RegExp(challenge.expectedFlagPattern)

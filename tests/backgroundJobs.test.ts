@@ -17,6 +17,7 @@ describe('BackgroundJobManager', () => {
   it('spawns and resolves a successful job', async () => {
     const root = tmpRoot()
     try {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const runner: JobRunner = async () => ({ summary: 'done', artifactId: 'art_x' })
       const m = new BackgroundJobManager({ taskWorkspaceDir: root }, runner)
       const job = await m.spawn({
@@ -36,6 +37,7 @@ describe('BackgroundJobManager', () => {
   it('marks job as failed when the runner throws', async () => {
     const root = tmpRoot()
     try {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const runner: JobRunner = async () => { throw new Error('boom') }
       const m = new BackgroundJobManager({ taskWorkspaceDir: root }, runner)
       const job = await m.spawn({ taskId: 't1', agentId: 'web', toolId: 'nmap', input: {}, timeoutMs: 1000 })

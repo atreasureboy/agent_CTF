@@ -50,7 +50,9 @@ function stableStringify(obj: any): string {
   if (Array.isArray(obj)) {
     return '[' + obj.map(stableStringify).join(',') + ']'
   }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const keys = Object.keys(obj).sort()
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   return '{' + keys.map((k) => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}'
 }
 

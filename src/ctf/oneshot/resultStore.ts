@@ -63,6 +63,7 @@ export class OneShotResultStore {
   }
 
   /** Save a result. Atomic write via temp + rename. */
+  // eslint-disable-next-line @typescript-eslint/require-await
   async save(result: OneShotResult): Promise<void> {
     if (!result.taskId) {
       throw new Error('OneShotResultStore.save: result.taskId is required')
@@ -118,6 +119,7 @@ export class OneShotResultStore {
   }
 
   /** Get a single result. Reads from cache first, then disk. */
+  // eslint-disable-next-line @typescript-eslint/require-await
   async get(runId: string): Promise<OneShotResult | null> {
     const cached = this.cache.get(runId)
     if (cached) {
@@ -136,6 +138,7 @@ export class OneShotResultStore {
   }
 
   /** List every persisted result for the given task. */
+  // eslint-disable-next-line @typescript-eslint/require-await
   async listByTask(taskId: string): Promise<OneShotResult[]> {
     const out: OneShotResult[] = []
     for (const file of readdirSync(this.resultsRoot)) {
@@ -153,6 +156,7 @@ export class OneShotResultStore {
   }
 
   /** Delete a single result. Returns true on success, false if not present. */
+  // eslint-disable-next-line @typescript-eslint/require-await
   async delete(runId: string): Promise<boolean> {
     const file = join(this.resultsRoot, `${runId}.json`)
     if (!existsSync(file)) return false

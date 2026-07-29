@@ -59,11 +59,14 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
     const router = new ModelRouter(registry, healthStore, circuitBreaker)
     const fakeProvider = {
       id: 'test-provider',
+      // eslint-disable-next-line @typescript-eslint/require-await
       async streamAgentTurn() {
+        // eslint-disable-next-line @typescript-eslint/require-await
         return (async function* () {
           yield { choices: [{ delta: { content: 'chunk' } }] } as any
         })()
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async executeStructured() { return { rawText: 'ok' } },
     }
     const gateway = new StructuredModelGateway({
@@ -76,6 +79,7 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
 
     const schema = z.object({ result: z.string() })
 
+    // eslint-disable-next-line @typescript-eslint/require-await
     const mockLlmExecutor = async (modelId: string) => {
       if (modelId.includes('m3')) {
         return { rawText: '{ invalid_json }' }
@@ -137,6 +141,7 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
       hypothesisProgressDelta: 0,
     })
     expect(stag.action).toBe('switch_model')
+    // eslint-disable-next-line
     if (stag.action === 'switch_model') {
     }
   })

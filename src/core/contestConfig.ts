@@ -93,6 +93,7 @@ export function loadContestConfig(opts: LoadContestConfigOptions = {}): LoadCont
   try {
     raw = JSON.parse(readFileSync(candidate, 'utf8'))
   } catch (err) {
+    // eslint-disable-next-line
     throw new Error(`Failed to parse ${candidate}: ${(err as Error).message}`)
   }
   const parsed = contestConfigSchema.parse(raw)

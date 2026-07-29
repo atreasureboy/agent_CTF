@@ -14,7 +14,7 @@
  *   // StrategyPlanner picks a `call_tool` action with the right toolId.
  */
 
-import type { ActionExecutionResult, ExecutionRefs } from '../ctfReasoning/actionExecutionResult.js'
+import type {ActionExecutionResult} from '../ctfReasoning/actionExecutionResult.js'
 import type { MaterializedResult } from '../ctfReasoning/parserRegistry.js'
 import type {
   StrategyActionExecutor,

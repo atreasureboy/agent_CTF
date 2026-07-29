@@ -46,8 +46,8 @@ import type { AgentRuntimeDependencies } from '../src/core/ctfRuntime/agentRunti
 import type { HarnessBundle } from '../src/core/harness.js'
 import type OpenAI from 'openai'
 type OpenAIClient = OpenAI
-import { parseContestScope } from '../src/core/contestScope.js'
-import { createDefaultContestConfig } from '../src/core/contestConfig.js'
+import type { FindingStore } from '../src/core/findings.js'
+import type { ArtifactStore } from '../src/core/artifacts.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import type { Renderer } from '../src/ui/renderer.js'
 import { getBuiltinProfile } from '../src/capabilityProfiles/index.js'
@@ -178,6 +178,7 @@ describe('§1 — CLI', () => {
     // full runCtfCli because it disposes before the signal can land; instead
     // we install the same signal handler directly and confirm it routes to
     // cancel() correctly.
+    // eslint-disable-next-line
     let signalHandler: ((sig: string) => void) | null = null
     const orch = await createCTFTaskRuntime({
       cwd: root,
@@ -189,9 +190,11 @@ describe('§1 — CLI', () => {
       // Mimic installSignalHandlers(deps, runtime). cancel() is async; the
       // real CLI uses `void runtime.cancel(...)` so the handler is sync, but
       // here we await to observe state.
+      // eslint-disable-next-line
       signalHandler = (sig) => orch.cancel(`cli_${sig.toLowerCase()}`)
       expect(orch.getState().completion).toBeUndefined()
       // Trigger the (mock) signal — handler calls orch.cancel.
+      // eslint-disable-next-line
       await signalHandler('SIGINT')
       const state = orch.getState()
       expect(state.completion).toBeDefined()
@@ -428,6 +431,7 @@ describe('§4 — Abort chain', () => {
     }
   })
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   it('After Orchestrator.cancel(), an in-flight WorkflowRun is no longer running', async () => {
     // §十七.4 — verify the WORKFLOW_CANCELLED reducer path. We construct
     // a TaskState manually, register a WorkflowRun, apply the cancel event
@@ -554,6 +558,7 @@ describe('§4 — Abort chain', () => {
     }
   })
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   it('§8.4 — Workflow failed status emits WORKFLOW_FAILED (not WORKFLOW_COMPLETED)', async () => {
     // §8.4 — explicit failure must NOT be marked completed.
     // Tested via the reducer: when a workflow run is in failed status the
@@ -618,10 +623,10 @@ describe('§4 — Abort chain', () => {
     // exercise the error path (filesystem races are flaky in CI).
     const brokenFindingStore = {
       list: () => { throw new Error('simulated finding-store read failure') },
-    } as unknown as import('../src/core/findings.js').FindingStore
+    } as unknown as FindingStore
     const okArtifactStore = {
       list: () => [],
-    } as unknown as import('../src/core/artifacts.js').ArtifactStore
+    } as unknown as ArtifactStore
     const projector = new TaskStateProjector({
       findingStore: brokenFindingStore,
       artifactStore: okArtifactStore,
@@ -699,7 +704,7 @@ describe('§4 — Abort chain', () => {
 
   it('§14 — CLI -- separator passes leading-dash positional as task', async () => {
     const writes: string[] = []
-    const code = await runCtfCli(
+    const _code = await runCtfCli(
       ['node', 'ovogogogo-ctf', '--profile', 'triage', '--', '--literal-flag'],
       {
         stdout: makeCollector(writes),
@@ -1272,7 +1277,7 @@ describe('§15 — Profile propagation', () => {
       // would build by directly invoking runTurn with a fake client and
       // confirming the engine is built with the new profile's id.
       const script = [{ id: 'echo', args: { text: 'hello' } }]
-      const fakeClient = makeStreamingScriptedClient(script)
+      const _fakeClient = makeStreamingScriptedClient(script)
       // Replace the runtime's mainHarness client via a fresh runTurn call —
       // it should build the engine with agentId='crypto', not 'triage'.
       // The engine is constructed inside runTurn so we cannot directly

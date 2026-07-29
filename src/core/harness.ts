@@ -46,9 +46,14 @@ import {
 } from './contestConfig.js'
 import type { TaskExecutionContext } from './ctfRuntime/taskExecutionContext.js'
 import type { ProfileStore } from './ctfRuntime/profileStore.js'
+import type { ModelInvocationGateway } from './modelReliability/structuredModelGateway.js'
+import type { ToolVisibilityPolicy } from './toolVisibility/toolVisibilityPolicy.js'
+import type { ToolExposureResolver } from './toolVisibility/toolExposureResolver.js'
+import type { TrajectoryRecorder } from './trajectory/trajectoryRecorder.js'
+import type { OpenAIMessage, TurnResult } from './types.js'
 
 import { WorkflowRegistry } from './workflowRegistry.js'
-import { WorkflowEngine, type RunContext, type WorkflowRunner } from './workflowEngine.js'
+import {WorkflowEngine} from './workflowEngine.js'
 import { ensureWorkflowsRegistered } from '../workflows/index.js'
 import {
   ensureProfilesRegistered,
@@ -58,14 +63,7 @@ import {
 import { WorkflowBrokerRunner } from './workflowRunner.js'
 
 import { TaskWorkspace, makeContestId, makeTaskId } from '../modules/taskWorkspace.js'
-import { ModelCapabilityRegistry } from './modelReliability/modelRegistry.js'
-import { ModelHealthStore } from './modelReliability/modelHealth.js'
-import { ModelCircuitBreaker } from './modelReliability/modelCircuitBreaker.js'
-import { ModelRouter } from './modelReliability/modelRouter.js'
-import { StructuredModelGateway } from './modelReliability/structuredModelGateway.js'
-import { OpenAICompatibleProvider } from './modelReliability/providers/openAICompatibleProvider.js'
 import type { WorkflowDefinition, WorkflowRunResult } from './workflowDefinition.js'
-import type { Finding } from './findings.js'
 import type { HandoffRequest } from './handoff.js'
 import type { CapabilityProfile as Profile } from './capabilityProfile.js'
 
@@ -129,10 +127,10 @@ export interface CreateHarnessInput {
   /** Override the finding store used by this harness. */
   findingStore?: FindingStore
   /** Phase 3.1 — Model Gateway, Visibility Policy, Trajectory Recorder */
-  modelGateway?: import('./modelReliability/structuredModelGateway.js').ModelInvocationGateway
-  toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
-  toolExposureResolver?: import('./toolVisibility/toolExposureResolver.js').ToolExposureResolver
-  trajectoryRecorder?: import('./trajectory/trajectoryRecorder.js').TrajectoryRecorder
+  modelGateway?: ModelInvocationGateway
+  toolVisibilityPolicy?: ToolVisibilityPolicy
+  toolExposureResolver?: ToolExposureResolver
+  trajectoryRecorder?: TrajectoryRecorder
 }
 
 export interface HarnessBundle {
@@ -163,7 +161,7 @@ export interface HarnessBundle {
    * prompt and a fresh `history`. */
   runTurn(
     userMessage: string,
-    history: import('./types.js').OpenAIMessage[],
+    history: OpenAIMessage[],
     options?: {
       systemPromptAddon?: string
       inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
@@ -172,8 +170,8 @@ export interface HarnessBundle {
       agentRunId?: string
     },
   ): Promise<{
-    result: import('./types.js').TurnResult
-    newHistory: import('./types.js').OpenAIMessage[]
+    result: TurnResult
+    newHistory: OpenAIMessage[]
   }>
   /** Switch the active profile — re-routes the broker. */
   switchProfile(next: string | Profile): void
@@ -431,7 +429,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
   // re-analyse the original input.
   function runTurn(
     userMessage: string,
-    history: import('./types.js').OpenAIMessage[],
+    history: OpenAIMessage[],
     options: {
       systemPromptAddon?: string
       inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
@@ -440,8 +438,8 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       agentRunId?: string
     } = {},
   ): Promise<{
-    result: import('./types.js').TurnResult
-    newHistory: import('./types.js').OpenAIMessage[]
+    result: TurnResult
+    newHistory: OpenAIMessage[]
   }> {
     if (!renderer) throw new Error('Harness.runTurn requires a renderer; pass one to createHarness')
     // §十三.3 — issue an agent run id at the start of each main turn so

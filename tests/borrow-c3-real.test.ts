@@ -9,7 +9,6 @@ import { createNoopStrategyActionExecutor } from '../src/core/ctfReasoning/runti
 import { NoOpLMSummarizer, LMSummarizer, type LanguageModel } from '../src/core/ctfReasoning/lmSummarizer.js'
 import { createObservation } from '../src/core/ctfReasoning/observation.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
-import { createLlmToolActionExecutor } from '../src/bench/liveBenchRunner.js'
 
 function stateWithManyObs(taskId: string, n: number) {
   let cur = createTestTaskState({ taskId })
@@ -28,6 +27,7 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
     const initial = stateWithManyObs('c3r-1', 80)
     const store = new CTFTaskStateStore(initial)
     const mockLM: LanguageModel = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async generate(_p: string): Promise<string> {
         return 'live summary text'
       },
@@ -65,6 +65,7 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
     const store = new CTFTaskStateStore(initial)
     const calls: string[] = []
     const mockLM: LanguageModel = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async generate(p: string): Promise<string> {
         calls.push(p)
         return 'unwanted summary'
@@ -97,6 +98,7 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
     const initial = stateWithManyObs('c3r-3', 80)
     const store = new CTFTaskStateStore(initial)
     const failingLM: LanguageModel = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async generate(): Promise<string> {
         throw new Error('LLM offline')
       },

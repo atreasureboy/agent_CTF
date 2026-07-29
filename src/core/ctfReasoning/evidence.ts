@@ -14,7 +14,7 @@
  * Evidence.
  */
 
-import { createHash, randomBytes } from 'crypto'
+import {createHash} from 'crypto'
 
 export type EvidenceKind =
   | 'file_signature'
@@ -67,6 +67,7 @@ export interface EvidenceSourceDraft {
   createdAt: number
 }
 
+// eslint-disable-next-line
 export interface EvidenceSource extends EvidenceSourceDraft {}
 
 export interface Evidence {
@@ -101,7 +102,7 @@ export interface EvidenceDraft {
   source: EvidenceSourceDraft
 }
 
-function dedupeStrings(arr: string[]): string[] {
+function _dedupeStrings(arr: string[]): string[] {
   return [...new Set(arr)]
 }
 

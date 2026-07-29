@@ -29,7 +29,6 @@ import {
 import type { CapabilityProfile } from '../capabilityProfile.js'
 import type { ContestScope } from '../contestScope.js'
 import type { ContestConfig } from '../contestConfig.js'
-import { createDefaultContestConfig } from '../contestConfig.js'
 import type { OpenAIMessage } from '../types.js'
 import type { Finding } from '../findings.js'
 import type { ArtifactMeta } from '../artifacts.js'
@@ -38,14 +37,13 @@ import type { HarnessBundle } from '../harness.js'
 import type { Renderer } from '../../ui/renderer.js'
 import type OpenAI from 'openai'
 
-import type { TaskExecutionContext } from './taskExecutionContext.js'
 import { CTFTaskStateStore, TaskAlreadyCompletedError } from './taskStateStore.js'
 import type { CTFProfileStore } from './profileStore.js'
-import { type ProfileStore, resolveProfileById } from './profileStore.js'
+import {resolveProfileById} from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
-import { createLinkedAbortController, type LinkedAbortController } from './linkedAbortController.js'
+import {type LinkedAbortController} from './linkedAbortController.js'
 
 import type {
   CTFTaskState,
@@ -58,7 +56,10 @@ import type {
   CTFHypothesis,
   CTFAttempt,
   JobRecord,
+  OneShotRunRecord,
 } from './taskState.js'
+import type { ProcessReasoningInputsInput } from '../ctfReasoning/reasoningCoordinator.js'
+import type { ReasoningResult } from '../ctfReasoning/actionExecutionResult.js'
 
 export interface CreateCTFTaskInput {
   cwd: string
@@ -228,7 +229,7 @@ export class CTFTaskOrchestrator {
             },
           },
         },
-      } as unknown as import('openai').default)
+      } as unknown as OpenAI)
     // Phase 1.7 — keep the legacy "no renderer → runMainAgent fails" contract.
     // If the caller did not supply a renderer, we synthesise one BUT
     // remember it is a default-fake so runMainAgent can short-circuit.
@@ -328,7 +329,7 @@ export class CTFTaskOrchestrator {
   }
 
   // ── Phase 2.0 OneShot lifecycle (§四) ─────────────────────────────────
-  recordOneShotQueued(run: import('./taskState.js').OneShotRunRecord): void {
+  recordOneShotQueued(run: OneShotRunRecord): void {
     this.safeApply({ type: 'ONESHOT_RUN_QUEUED', run })
   }
 
@@ -371,7 +372,7 @@ export class CTFTaskOrchestrator {
     this.safeApply({ type: 'ONESHOT_RUN_CANCELLED', runId, reason, completedAt })
   }
 
-  updateOneShot(runId: string, patch: Partial<import('./taskState.js').OneShotRunRecord>): void {
+  updateOneShot(runId: string, patch: Partial<OneShotRunRecord>): void {
     this.safeApply({ type: 'ONESHOT_RUN_UPDATED', runId, patch })
   }
 
@@ -382,8 +383,8 @@ export class CTFTaskOrchestrator {
    * reasoning loop. Returns the ReasoningResult.
    */
   async processReasoningInput(
-    input: import('../ctfReasoning/reasoningCoordinator.js').ProcessReasoningInputsInput,
-  ): Promise<import('../ctfReasoning/actionExecutionResult.js').ReasoningResult> {
+    input: ProcessReasoningInputsInput,
+  ): Promise<ReasoningResult> {
     const { processNewReasoningInputs } = await import('../ctfReasoning/reasoningCoordinator.js')
     const { createRuntimeStrategyActionExecutor } =
       await import('../ctfReasoning/runtimeStrategyActionExecutor.js')
@@ -466,7 +467,7 @@ export class CTFTaskOrchestrator {
         const r = await this.approveHandoff(h.id)
         return { handoffId: h.id, agentRunId: r?.agentRunId }
       },
-      verifyFlag: async ({ candidateId, value }) => {
+      verifyFlag: async ({ candidateId: _candidateId, value }) => {
         const { validateFlag } = await import('../ctfReasoning/flagCandidateValidator.js')
         const d = validateFlag({
           pattern: 'flag\\{[^}]+\\}',

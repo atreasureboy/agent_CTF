@@ -86,6 +86,7 @@ describe('SemanticMemory', () => {
     // After the rewrite the temp file must be renamed away.
     mem.write({ content: 'override target', tags: [], source: 'agent_inferred', confidence: 0.5, timestamp: '' })
     mem.write({ content: 'override target', tags: [], source: 'user_stated', confidence: 0.9, timestamp: '' })
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
     const fs = require('fs') as typeof import('fs')
     const tmpFiles = fs.readdirSync(join(tmpDir, 'memory')).filter((f) => f.startsWith('semantic.jsonl.tmp.'))
     expect(tmpFiles).toEqual([])
@@ -136,6 +137,7 @@ describe('EpisodicMemory', () => {
     // Audit P0 deferred — Phase 1.7 audit documented that a mid-write crash
     // left a half-written line. Atomic write + trim-partial must drop the
     // dangling line and keep going.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
     const fs = require('fs') as typeof import('fs')
     const filePath = join(tmpDir, 'memory', 'episodes.jsonl')
     mem.write({ turn: 1, toolName: 'Bash', inputSummary: 'a', resultSummary: 'b', outcome: 'success', timestamp: '' })

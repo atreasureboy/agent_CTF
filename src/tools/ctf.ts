@@ -162,9 +162,11 @@ class BinaryTool implements Tool {
         })
       }, timeoutMs)
       proc.stdout.on('data', (chunk) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         stdout += chunk.toString()
       })
       proc.stderr.on('data', (chunk) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         stderr += chunk.toString()
       })
       proc.on('error', (err) => {

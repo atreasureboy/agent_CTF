@@ -10,7 +10,7 @@ import {
   clearRunnerOverrides,
 } from '../../src/ctf/oneshot/index.js'
 import { BackgroundJobManager } from '../../src/core/backgroundJobs.js'
-import type { OneShotRunner, RunnerInputs } from '../../src/ctf/oneshot/index.js'
+import type {RunnerInputs} from '../../src/ctf/oneshot/index.js'
 import type { OneShotManifest, OneShotResult } from '../../src/ctf/oneshot/index.js'
 import type { TaskExecutionContext } from '../../src/core/ctfRuntime/taskExecutionContext.js'
 
@@ -62,6 +62,7 @@ describe('cancellation', () => {
       registry.register(raw())
       const jobManager = new BackgroundJobManager(
         { taskWorkspaceDir: root },
+        // eslint-disable-next-line @typescript-eslint/require-await
         async () => ({}),
       )
       const ctrl = new AbortController()

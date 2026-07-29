@@ -281,7 +281,9 @@ builtInParsers['jsonl'] = (_m, files, runId) => {
         })
       }
       findings.push({
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         category: String(obj['category'] ?? 'tool-output'),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         title: String(obj['title'] ?? `record ${i}`),
         summary: typeof obj['summary'] === 'string' ? obj['summary'] : '',
         confidence:

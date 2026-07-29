@@ -71,6 +71,7 @@ function makeEngine(
   const eventLog = new EventLog(workDir)
   const client = createMockClient(scripts)
   const fakeGateway = {
+    // eslint-disable-next-line @typescript-eslint/require-await
     async streamAgentTurn(input: any) {
       return client.chat.completions.create({
         model: input.preferredModelId,
@@ -258,6 +259,7 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       textResponse('done'),
     ])
     const fakeGateway = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async streamAgentTurn(input: any) {
         return client.chat.completions.create({
           model: input.preferredModelId,
@@ -267,6 +269,7 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
           stream: true,
         }) as any
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async executeStructured() { return { rawText: 'ok' } },
     }
     const config: EngineConfig = {
@@ -305,6 +308,7 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
     }
     const client = createMockClient([textResponse('hello')])
     const fakeGateway = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async streamAgentTurn(input: any) {
         return client.chat.completions.create({
           model: input.preferredModelId,
@@ -314,6 +318,7 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
           stream: true,
         }) as any
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async executeStructured() { return { rawText: 'ok' } },
     }
     const config: EngineConfig = {

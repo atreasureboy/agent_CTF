@@ -67,13 +67,17 @@ const defaultFetcher: ServiceFetcher = async (url, method, body, signal, maxResp
   const chunks: Uint8Array[] = []
   if (reader) {
     while (true) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { done, value } = await reader.read()
       if (done) break
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       if (total + value.byteLength > maxResponseBytes) {
         await reader.cancel()
         throw new Error(`response exceeded ${maxResponseBytes} bytes`)
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       total += value.byteLength
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       chunks.push(value)
     }
   }
@@ -251,6 +255,7 @@ export class ServiceRunner implements OneShotRunner {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async cancel(runId: string): Promise<void> {
     const ctrl = this.runSignals.get(runId)
     if (ctrl) {

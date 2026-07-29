@@ -26,7 +26,7 @@ import { formatFindingForPrompt } from '../core/findings.js'
 import type { ArtifactMeta } from '../core/artifacts.js'
 import type { ContestScopeChecker } from '../core/contestScope.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
-import type { CTFToolMetadata, RegisteredTool } from '../core/toolDefinition.js'
+import type {CTFToolMetadata} from '../core/toolDefinition.js'
 
 /**
  * Service handle exposed through ToolContext — every meta tool resolves to
@@ -71,7 +71,7 @@ function makeMetaTool(
     input: Record<string, unknown>,
     services: CTFMetaServices,
   ) => Promise<ToolResult> | ToolResult,
-  metadata: CTFToolMetadata,
+  _metadata: CTFToolMetadata,
 ): Tool {
   return {
     name,
@@ -130,7 +130,9 @@ export function makeEmitFindingTool(): Tool {
         taskId: svc.taskId,
         producerAgentId: svc.agentId,
         category: (input.category ?? 'triage') as FindingCategory,
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         title: String(input.title ?? ''),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         summary: String(input.summary ?? ''),
         confidence: (input.confidence ?? 'medium') as FindingConfidence,
         evidence: Array.isArray(input.evidence)
@@ -201,8 +203,11 @@ export function makeRequestHandoffTool(): Tool {
       const req = svc.handoffStore.submit({
         taskId: svc.taskId,
         fromAgent: svc.agentId,
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         suggestedAgent: String(input.suggestedAgent ?? ''),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         reason: String(input.reason ?? ''),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         objective: String(input.objective ?? ''),
         artifactIds: Array.isArray(input.artifactIds)
           ? input.artifactIds.filter((v): v is string => typeof v === 'string')
@@ -373,6 +378,7 @@ function queryBackgroundJobTool(): Tool {
     },
     (input, svc) => {
       if (!svc.jobManager) return missingService('jobManager')
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const jobId = String(input.jobId ?? '')
       const job = svc.jobManager.status(jobId)
       if (!job) return { isError: true, content: `Job not found: ${jobId}` }
@@ -405,8 +411,10 @@ function collectBackgroundResultTool(): Tool {
       properties: { jobId: { type: 'string' } },
       required: ['jobId'],
     },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async (input, svc) => {
       if (!svc.jobManager) return missingService('jobManager')
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const jobId = String(input.jobId ?? '')
       const job = svc.jobManager.status(jobId)
       if (!job) return { isError: true, content: `Job not found: ${jobId}` }
@@ -454,6 +462,7 @@ function inspectArtifactSummaryTool(): Tool {
     },
     (input, svc) => {
       if (!svc.artifactStore) return missingService('artifactStore')
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const id = String(input.artifactId ?? '')
       const meta = svc.artifactStore.read(id)
       if (!meta) return { isError: true, content: `Artifact not found: ${id}` }
@@ -491,6 +500,7 @@ function inspectFindingTool(): Tool {
     },
     (input, svc) => {
       if (!svc.findingStore) return missingService('findingStore')
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const id = String(input.findingId ?? '')
       const all = svc.findingStore.list((f) => f.id === id)
       if (all.length === 0) return { isError: true, content: `Finding not found: ${id}` }
@@ -537,6 +547,7 @@ function extractArtifactTool(): Tool {
       // §audit-fix — file-scope gate. Mirrors fileRead.ts: refuse
       // any path that escapes the contest's allowedFilesRoot before
       // opening the file.
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const requestedPath = String(input.path ?? '')
       const ctfCtx = (
         svc as unknown as {
@@ -568,7 +579,7 @@ function extractArtifactTool(): Tool {
               .replace(/[^a-zA-Z0-9._-]/g, '_')
               .slice(0, 32) || 'bin',
           )
-        } catch (err) {
+        } catch {
           return null
         }
       })()

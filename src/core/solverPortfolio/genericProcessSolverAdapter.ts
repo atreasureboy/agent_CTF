@@ -70,6 +70,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async start(input: SolverChallengeInput): Promise<SolverRunHandle> {
     const runId = `run_proc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
     const timeoutMs = this.options.timeoutMs || 30000
@@ -260,6 +261,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
       async wait() {
         return waitPromise
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async sendGuidance(msg: OperatorMessage) {
         if (childProcess && childProcess.stdin && childProcess.stdin.writable) {
           const packet = JSON.stringify({
@@ -271,6 +273,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
           childProcess.stdin.write(packet + '\n')
         }
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async cancel(reason: string) {
         isCancelled = true
         cancelReason = reason
@@ -285,6 +288,7 @@ export class GenericProcessSolverAdapter implements ExternalSolverAdapter {
           }, 2000)
         }
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async inspect() {
         return record
       },

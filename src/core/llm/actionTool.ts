@@ -8,7 +8,7 @@
 
 import type { ToolDefinition } from './llmToolUse.js'
 
-export function buildActionTool(toolDefs: ReadonlyArray<ToolDefinition>): {
+export function buildActionTool(_toolDefs: ReadonlyArray<ToolDefinition>): {
   type: 'function'
   function: {
     name: string

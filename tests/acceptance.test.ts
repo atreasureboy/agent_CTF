@@ -185,7 +185,7 @@ describe('场景 3: 工具优先策略', () => {
 // ──────────────────────────────────────────────────────────────────────────
 describe('场景 4: 工具禁用', () => {
   it('Bash 暴露给 image-stego;但当 profile 把 Bash 列在 denied 时,Bash 被完全屏蔽', () => {
-    const { broker, profile, registry, eventLog, artifactStore, jobManager } = buildSession()
+    const { broker: _broker, profile, registry, eventLog, artifactStore, jobManager } = buildSession()
     const stricterProfile: CapabilityProfile = { ...profile, deniedTools: ['Bash'] }
     const stricter = new ToolBroker({
       registry,
@@ -193,6 +193,7 @@ describe('场景 4: 工具禁用', () => {
       eventLog,
       artifactStore,
       jobManager,
+      // eslint-disable-next-line @typescript-eslint/require-await
       jobRunner: async () => ({ error: 'unused' }),
     })
     return stricter.execute('Bash', { command: 'ls' }, { cwd: sessionDir, taskId: 't1', agentId: 'image-stego' })
@@ -397,6 +398,7 @@ describe('Workflow 集成执行', () => {
     outputs.set('magic', '89504e47') // PNG magic in hex
 
     const runner = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async runStep(step: { id: string }, _ctx: { capturedOutputs: Map<string, string>; taskId: string; agentId: string; workflowId: string; inputs: Record<string, unknown> }) {
         return { content: `mock-${step.id}`, isError: false, artifactIds: [] }
       },

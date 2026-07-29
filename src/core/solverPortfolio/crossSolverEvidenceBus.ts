@@ -1,6 +1,5 @@
 import { CrossSolverKnowledgeView } from './crossSolverKnowledgeView.js'
 import type { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
-import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface SolverEvidenceCursor {
   solverRunId: string
@@ -62,7 +61,9 @@ export class CrossSolverEvidenceBus {
 
     // Verify all grounded IDs actually exist in CTFTaskStateStore
     const state = this.stateStore.getState()
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const validEvIds = msg.evidenceIds.filter((id) => state.evidence.some((e: any) => e.id === id))
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const validObsIds = msg.observationIds.filter((id) => state.observations.some((o: any) => o.id === id))
     const validArtIds = msg.artifactIds.filter((id) => state.artifactIds.includes(id))
 
@@ -111,7 +112,9 @@ export class CrossSolverEvidenceBus {
           cursor.lastSeenStateRevision = m.stateRevision
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
         const ev = state.evidence.find((e: any) => m.evidenceIds.includes(e.id))
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
         const obs = state.observations.find((o: any) => m.observationIds.includes(o.id))
 
         resultMsgs.push({

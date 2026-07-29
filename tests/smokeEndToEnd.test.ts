@@ -9,7 +9,6 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  StructuredModelGateway,
   ModelRouter,
   ModelHealthStore,
   ModelCircuitBreaker,
@@ -29,8 +28,6 @@ import {
 } from '../src/core/toolVisibility/index.js'
 import {
   FlagDiscriminator,
-  ChallengeSwarm,
-  NativeSolverAdapter,
   CrossSolverEvidenceBus,
   StagnationDetector,
 } from '../src/core/solverPortfolio/index.js'
@@ -64,10 +61,10 @@ function profile(id: string, overrides: Partial<ModelCapabilityProfile> = {}): M
     limits: { maxVisibleTools: 10, maxIterations: 10, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
     fallbackModelIds: [],
     ...overrides,
-  } as ModelCapabilityProfile
+  }
 }
 
-class StreamingProvider implements ModelProvider {
+class _StreamingProvider implements ModelProvider {
   public id: string
   public streamCalls = 0
   constructor(
@@ -86,6 +83,7 @@ class StreamingProvider implements ModelProvider {
     const id = this.id
     const toolName = this.toolName
     const toolArgs = this.toolArguments
+    // eslint-disable-next-line @typescript-eslint/require-await
     return (async function* () {
       yield {
         id: `chatcmpl-${id}-1`,
@@ -120,6 +118,7 @@ class StreamingProvider implements ModelProvider {
       } as unknown as OpenAI.Chat.ChatCompletionChunk
     }).bind(this)()
   }
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async executeStructured(): Promise<ProviderStructuredResult> {
     throw new Error('Not implemented')
   }
@@ -181,7 +180,7 @@ describe('Smoke 2 (ele-goal §四十二): M3 Scout limited tool set', () => {
 
     expect(() => resolver.assertExecutable({
       identity: m3Identity,
-      tool: { name: 'gdb' } as never,
+      tool: { name: 'gdb' },
     })).toThrow()
   })
 })

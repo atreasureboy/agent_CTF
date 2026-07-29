@@ -24,7 +24,6 @@ import {
   readFileSync,
   readSync,
   renameSync,
-  statSync,
   writeFileSync,
 } from 'fs'
 import { dirname, join } from 'path'
@@ -109,15 +108,18 @@ function makeId(prefix: 'art'): string {
 
 function summarize(buf: Buffer): string {
   if (buf.length <= SUMMARY_HEAD_BYTES * 2) {
+    // eslint-disable-next-line
     return buf.toString('utf8').replace(/[^\x20-\x7E -￿\n]/g, '.')
   }
   const head = buf
     .subarray(0, SUMMARY_HEAD_BYTES)
     .toString('utf8')
+    // eslint-disable-next-line
     .replace(/[^\x20-\x7E -￿\n]/g, '.')
   const tail = buf
     .subarray(buf.length - SUMMARY_TAIL_BYTES)
     .toString('utf8')
+    // eslint-disable-next-line
     .replace(/[^\x20-\x7E -￿\n]/g, '.')
   return `${head}\n\n[... ${buf.length - SUMMARY_HEAD_BYTES - SUMMARY_TAIL_BYTES} bytes ...]\n\n${tail}`
 }

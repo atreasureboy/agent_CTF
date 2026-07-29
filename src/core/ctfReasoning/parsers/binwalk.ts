@@ -27,6 +27,7 @@ export const binwalkParser: ResultParser = {
       input.toolId === 'binwalk' || input.manifestId === 'binwalk' || input.stepId === 'binwalk'
     )
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
       return {

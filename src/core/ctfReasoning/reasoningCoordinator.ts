@@ -25,23 +25,23 @@
  * `processNewReasoningInputs` for the same task are serialized.
  */
 
-import type { MaterializedResult } from './resultMaterializer.js'
 import { planStrategy } from './strategyPlanner.js'
 import { createStrategyDecision } from './strategyDecision.js'
 import { createObservation, type Observation } from './observation.js'
-import { createEvidence, evidenceFingerprint as _ignore, mergeEvidence } from './evidence.js'
+import {createEvidence, evidenceFingerprint as _ignore, mergeEvidence} from './evidence.js'
+import type { AutoPrompter } from './autoPrompter.js'
+import type { ChallengeCategory } from '../toolBroker/categoryToolset.js'
+import type { LMSummarizer } from './lmSummarizer.js'
 
 function ctxAttemptId(id: string): string {
   return id
 }
 void ctxAttemptId
-import type { Evidence } from './evidence.js'
 import { buildFlagCandidateId, type FlagCandidateDraft } from './flagCandidate.js'
 import type {
   CTFTaskState,
   CTFAttempt,
   FlagCandidate,
-  CTFHypothesis,
 } from '../ctfRuntime/taskState.js'
 import type { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
 import type { BudgetLimits } from '../../ctf/oneshot/types.js'
@@ -49,7 +49,7 @@ import type { SuggestedAction } from './suggestedAction.js'
 import { createAttemptFingerprint } from './attemptFingerprint.js'
 import { randomBytes } from 'crypto'
 import type { ActionExecutionResult, ReasoningResult } from './actionExecutionResult.js'
-import { createCascadeContext, type ReasoningCascadeContext } from './reasoningCascade.js'
+import {type ReasoningCascadeContext} from './reasoningCascade.js'
 import {
   applyReasoningBudgetConsumption,
   consumeCycle,
@@ -60,10 +60,9 @@ import {
   type ReasoningBudgetState,
 } from './reasoningBudget.js'
 import type { StrategyActionExecutor } from './strategyActionExecutor.js'
-import type { MaterializationContext } from './materializationContext.js'
 import { attachAttemptToDrafts, createMaterializationContext } from './materializationContext.js'
 import { createHypothesisUpdater } from './hypothesisUpdater.js'
-import { createPendingActionStore, type PendingSuggestedAction } from './pendingActionStore.js'
+import {createPendingActionStore} from './pendingActionStore.js'
 import { createAttemptDeduplicator } from './attemptDeduplicator.js'
 import {
   DEFAULT_MAX_STRATEGY_CYCLES,
@@ -119,9 +118,9 @@ export interface ProcessReasoningInputsInput {
    *  calls it before the first cycle to generate a category-aware
    *  framing note. Production wires an LLM-driven adapter; tests
    *  supply `TemplateAutoPrompter`. */
-  autoPrompter?: import('./autoPrompter.js').AutoPrompter
+  autoPrompter?: AutoPrompter
   /** Category for the AutoPrompter. */
-  category?: import('../toolBroker/categoryToolset.js').ChallengeCategory
+  category?: ChallengeCategory
   /** Original raw prompt; surfaced to the AutoPrompter for
    *  framing. */
   rawPrompt?: string
@@ -130,7 +129,7 @@ export interface ProcessReasoningInputsInput {
    *  summary is recorded as a diagnostic and the LLM context is
    *  the responsibility of the operator's LLM client. Production
    *  wires a real LMSummarizer; tests omit it. */
-  lmSummarizer?: import('./lmSummarizer.js').LMSummarizer
+  lmSummarizer?: LMSummarizer
   /** When the observation count exceeds this number, the
    *  Coordinator invokes the LMSummarizer. Default 64. */
   compactionThreshold?: number

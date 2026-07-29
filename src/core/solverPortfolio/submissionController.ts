@@ -23,6 +23,7 @@ export class SubmissionController {
     this.isFakeMode = isFakeMode
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async submitFlag(req: SubmissionRequest): Promise<SubmissionResponse> {
     if (req.modelId.includes('m3') || req.modelId.includes('mini')) {
       return {

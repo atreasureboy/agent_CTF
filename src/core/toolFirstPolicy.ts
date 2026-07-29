@@ -167,7 +167,7 @@ const RULES: PolicyRule[] = [
     severity: 'info',
     injectInResult: false,
     workflowId: () => 'rsa_common_attacks',
-    match: ({ toolId, input, profile }) => {
+    match: ({ toolId: _toolId, input, profile }) => {
       const fp = combinedInputFingerprint(input)
       if (!/(rsa|n\s*=\s*\d|p\s*=|q\s*=|phi|euler|totient|public.?key|n,e)/.test(fp)) return false
       // CryptoAgent scope — irrelevant to other profiles.
@@ -283,7 +283,7 @@ export class ToolFirstPolicy {
   ): PolicyVerdict {
     for (const rule of this.rules) {
       try {
-        if (rule.match({ toolId, input, profile })) {
+        if (rule.match({ toolId, input, profile })) { // eslint-disable-line @typescript-eslint/no-unsafe-assignment
           const verdict: PolicyVerdict = {
             advice: rule.advice(),
             severity: rule.severity,
@@ -339,7 +339,7 @@ export type PolicyGateResult =
 
 export function evaluatePolicyGate(args: PolicyGateInput): PolicyGateResult {
   const policy = new ToolFirstPolicy()
-  const verdict = policy.advise(args.toolId, args.input, args.profile)
+  const verdict = policy.advise(args.toolId, args.input, args.profile) // eslint-disable-line @typescript-eslint/no-unsafe-argument
   if (!verdict.suggestedWorkflowId) return { allowed: true }
 
   const suggested = verdict.suggestedWorkflowId

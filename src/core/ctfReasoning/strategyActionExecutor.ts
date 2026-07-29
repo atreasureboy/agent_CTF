@@ -38,6 +38,7 @@ export interface StrategyActionExecutor {
 /** A noop executor — used by tests / dry-runs. Returns
  *  `executed` with an empty materialized result. */
 export const noopStrategyActionExecutor: StrategyActionExecutor = {
+  // eslint-disable-next-line @typescript-eslint/require-await
   async execute(_ctx): Promise<ActionExecutionResult> {
     return {
       status: 'executed',

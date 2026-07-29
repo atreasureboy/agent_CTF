@@ -22,7 +22,7 @@
 
 import type { Dispatcher } from '../oneshot/dispatcher.js'
 import type { OneShotRegistry } from '../oneshot/registry.js'
-import type { OneShotResult } from '../oneshot/types.js'
+import type { OneShotResult, OneShotManifest } from '../oneshot/types.js'
 import { resolveArgumentTemplate } from '../oneshot/argumentResolver.js'
 import type { TaskExecutionContext } from '../../core/ctfRuntime/taskExecutionContext.js'
 
@@ -136,7 +136,7 @@ export class ShotgunCoordinator {
   }
 
   /** Convenience: pick eligible manifests for the active profile. */
-  eligible(): import('../oneshot/types.js').OneShotManifest[] {
+  eligible(): OneShotManifest[] {
     return this.registry
       .list()
       .filter((m) => m.allowedProfiles.includes(this.taskContext.profileId))

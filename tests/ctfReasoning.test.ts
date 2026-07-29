@@ -21,7 +21,7 @@ import { createAttemptDeduplicator } from '../src/core/ctfReasoning/attemptDedup
 import { detectFlag, validateFlag } from '../src/core/ctfReasoning/flagCandidateValidator.js'
 import { evaluateWorkflowCondition } from '../src/core/ctfReasoning/workflowCondition.js'
 import { planStrategy } from '../src/core/ctfReasoning/strategyPlanner.js'
-import { getDefaultParserRegistry, materializeViaRegistry } from '../src/core/ctfReasoning/parserRegistry.js'
+import {materializeViaRegistry} from '../src/core/ctfReasoning/parserRegistry.js'
 import type { CTFTaskState } from '../src/core/ctfRuntime/taskState.js'
 import { processNewReasoningInputs } from '../src/core/ctfReasoning/reasoningCoordinator.js'
 import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
@@ -443,6 +443,7 @@ describe('ReasoningCoordinator — Phase 2.2 §四–§八', () => {
       budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
       heavyApproved: false,
       executor: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         async execute() {
           return {
             status: 'executed',

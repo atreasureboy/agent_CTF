@@ -15,6 +15,7 @@ import type { Tool, ToolContext, ToolDefinition, ToolResult } from '../../core/t
 import type { Dispatcher } from '../oneshot/dispatcher.js'
 import type { OneShotRegistry } from '../oneshot/registry.js'
 import { resolveArgumentTemplate } from '../oneshot/argumentResolver.js'
+import type { TaskExecutionContext } from '../../core/ctfRuntime/taskExecutionContext.js'
 
 export const RUN_ONE_SHOT_DEFINITION: ToolDefinition = {
   type: 'function',
@@ -59,7 +60,7 @@ export interface RunOneShotToolDeps {
    * TaskExecutionContext lookup — used to resolve input artifacts to
    * filesystem paths. Supplied by the Runtime, not the model.
    */
-  taskContext: import('../../core/ctfRuntime/taskExecutionContext.js').TaskExecutionContext
+  taskContext: TaskExecutionContext
   /** Artifact ID → filesystem path resolver. */
   resolveArtifactPath?: (artifactId: string) => string | undefined
 }

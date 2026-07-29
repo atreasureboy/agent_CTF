@@ -18,7 +18,7 @@
  * Codex + Pydantic-AI backends; tests wire a single fake executor.
  */
 
-import type { ActionExecutionResult, ExecutionRefs } from './actionExecutionResult.js'
+import type {ActionExecutionResult} from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,
@@ -243,7 +243,7 @@ function mergeResult(
   }
 }
 
-function combineSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
+function _combineSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
   if (a.aborted) return a
   if (b.aborted) return b
   const ac = new AbortController()

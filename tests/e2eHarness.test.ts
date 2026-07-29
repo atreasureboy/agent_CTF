@@ -9,14 +9,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import {mkdtempSync, rmSync, writeFileSync} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { createHarness } from '../src/core/harness.js'
-import { dispatchNext, inspectNextHandoff } from '../src/core/orchestratorDispatch.js'
-import { ensureWorkflowsRegistered, __resetWorkflowRegistrationForTests } from '../src/workflows/index.js'
+import {inspectNextHandoff} from '../src/core/orchestratorDispatch.js'
+import {__resetWorkflowRegistrationForTests} from '../src/workflows/index.js'
 import { CTFTaskOrchestrator } from '../src/core/ctfRuntime/taskOrchestrator.js'
+import type { ContestScope } from '../src/core/contestScope.js'
 
 let root: string
 
@@ -89,7 +90,7 @@ describe('ToolBroker with real bash — Profile denies tools not on allowlist', 
   })
 })
 
-function harnessHelper() {
+function _harnessHelper() {
   return createHarness({ cwd: root, profile: 'image-stego' })
 }
 
@@ -186,7 +187,7 @@ describe('Bash policy in real Broker flow', () => {
         allowedFilesRoot: root,
         allowPublicNetwork: false,
         allowedHosts: ['safe.example'],
-      } as unknown as import('../src/core/contestScope.js').ContestScope,
+      } as unknown as ContestScope,
       jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
     })
     // Re-bind the broker's contestScope to the checker we built.

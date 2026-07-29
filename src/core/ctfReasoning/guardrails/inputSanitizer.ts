@@ -33,6 +33,7 @@ const INJECTION_PATTERNS: Array<{ name: string; re: RegExp }> = [
   },
   {
     name: 'eval_injection',
+    // eslint-disable-next-line
     re: /[;&\n]\s*eval\s*[\(\s]/i,
   },
   {
@@ -60,6 +61,7 @@ const DANGEROUS_COMMAND_PATTERNS: Array<{ name: string; re: RegExp }> = [
 ]
 
 /** Matches zero-width / bidi-control characters we want to strip. */
+// eslint-disable-next-line
 const ZERO_WIDTH_RE = /[​-‍⁠﻿‎‏‪-‮]/
 
 export function sanitizeInput(

@@ -19,7 +19,6 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { createHarness } from '../src/core/harness.js'
-import { ToolBroker } from '../src/core/toolBroker.js'
 import { ContestScopeChecker, ScopeViolationError } from '../src/core/contestScope.js'
 
 let root: string
@@ -180,7 +179,7 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
     })
 
     // Bash with image extension AND LSB keyword — should trigger image-stego rule.
-    const r = await h.broker.execute(
+    const _r = await h.broker.execute(
       'Bash',
       { command: 'python3 extract_lsb.py logo.png' },
       { cwd: root, taskId: h.taskWorkspace.paths.taskId, agentId: 'image-stego' },

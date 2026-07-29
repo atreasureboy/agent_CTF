@@ -83,6 +83,7 @@ describe('Phase 2.0 — OneShot runtime smoke test', () => {
       registry.register(manifest)
       const jobManager = new BackgroundJobManager(
         { taskWorkspaceDir: runtime.mainHarness.taskWorkspace.paths.root },
+        // eslint-disable-next-line @typescript-eslint/require-await
         async () => ({}),
       )
       const dispatcher = new Dispatcher({
@@ -94,6 +95,7 @@ describe('Phase 2.0 — OneShot runtime smoke test', () => {
         taskContext: runtime.mainHarness.context,
         orchestrator: runtime.orchestrator,
       })
+      // eslint-disable-next-line @typescript-eslint/require-await
       setRunnerOverride('smoke-fake', fakeRunner(async () => ({
         runId: 'osp_smoke',
         manifestId: 'smoke-fake',

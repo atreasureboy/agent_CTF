@@ -1,12 +1,13 @@
 import type { ExternalSolverAdapter } from './solverAdapter.js'
 import type { ExternalSolverResult, SolverChallengeInput } from './solverTypes.js'
+import type { ProductionTruthfulnessGuard } from '../runtimeGuard/productionTruthfulnessGuard.js'
 
 export interface SolverPortfolioDependencies {
   stateStore: any
   contextCompiler?: any
   resultNormalizer?: any
   trajectoryRecorder?: any
-  truthfulnessGuard?: import('../runtimeGuard/productionTruthfulnessGuard.js').ProductionTruthfulnessGuard
+  truthfulnessGuard?: ProductionTruthfulnessGuard
   adapters?: ExternalSolverAdapter[]
 }
 

@@ -30,6 +30,7 @@ export function buildFlagCandidateId(): string {
 /** Normalize a candidate value: trim whitespace, collapse case for
  *  ASCII letters, drop zero-width chars. */
 export function normalizeFlagValue(v: string): string {
+  // eslint-disable-next-line
   return v.replace(/[​‌‍﻿]/g, '').trim()
 }
 

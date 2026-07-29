@@ -15,6 +15,7 @@
  */
 
 import { z } from 'zod'
+import type { RetryConfig } from './typedDagExecutor.js'
 
 export type WorkflowStep =
   | {
@@ -161,7 +162,7 @@ export type TypedWorkflowStep =
       dependsOn?: string[]
       emit_finding?: false
       description?: string
-      retry?: import('./typedDagExecutor.js').RetryConfig
+      retry?: RetryConfig
     }
   | {
       id: string

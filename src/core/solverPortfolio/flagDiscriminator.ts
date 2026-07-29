@@ -108,6 +108,7 @@ export class FlagDiscriminator {
       }
     }
 
+    // eslint-disable-next-line
     const standardCtfRegex = /^[A-Za-z0-9_\-]+{[^{}\s]+}$/
     if (standardCtfRegex.test(val)) {
       if (hasProvenance) {

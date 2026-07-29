@@ -22,7 +22,6 @@
  *   4. Execute and materialize result; long outputs → Artifact + summary
  */
 
-import type OpenAI from 'openai'
 import type { EventLog } from './eventLog.js'
 import type { ArtifactMeta, ArtifactStore } from './artifacts.js'
 import type { FindingStore } from './findings.js'
@@ -32,13 +31,14 @@ import { profileToolDenialReason } from './capabilityProfile.js'
 import { ScopeViolationError } from './contestScope.js'
 import type { ContestScopeChecker } from './contestScope.js'
 import { ToolRegistry } from './toolRegistry.js'
-import type { RegisteredTool } from './toolDefinition.js'
 import type { BackgroundJobManager, JobRunner, BackgroundJob } from './backgroundJobs.js'
 import type { ToolFirstPolicy, PolicyVerdict } from './toolFirstPolicy.js'
 import type { ToolResult } from './types.js'
 
 import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
-import type { ModelRole } from './modelReliability/modelCapability.js'
+import type { ProfileStore } from './ctfRuntime/profileStore.js'
+import type { ToolVisibilityPolicy } from './toolVisibility/toolVisibilityPolicy.js'
+import type { ToolExposureResolver } from './toolVisibility/toolExposureResolver.js'
 
 export interface BrokerToolContext {
   cwd: string
@@ -89,9 +89,9 @@ export interface ToolBrokerOptions {
    * fallback for tests; production code should pass a ProfileStore and call
    * `store.switchTo()` instead.
    */
-  profileStore?: import('./ctfRuntime/profileStore.js').ProfileStore
-  toolVisibilityPolicy?: import('./toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
-  toolExposureResolver?: import('./toolVisibility/toolExposureResolver.js').ToolExposureResolver
+  profileStore?: ProfileStore
+  toolVisibilityPolicy?: ToolVisibilityPolicy
+  toolExposureResolver?: ToolExposureResolver
 }
 
 /**
@@ -223,6 +223,7 @@ export class ToolBroker {
         })
       } catch (err: any) {
         return new BrokerExecutionResult({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           content: `Permission denied: ${err.message}`,
           isError: true,
         })
@@ -275,7 +276,7 @@ export class ToolBroker {
     if (wantsBackground) {
       // ── Background path ─────────────────────────────────────
       const manager = this.opts.jobManager!
-      const runner = this.opts.jobRunner!
+      const _runner = this.opts.jobRunner!
       try {
         const job = await manager.spawn({
           taskId: ctx.taskId,
@@ -473,7 +474,7 @@ interface ToolCtxAdapter {
   __ctf?: {
     taskId: string
     agentId: string
-    profile?: import('./capabilityProfile.js').CapabilityProfile
+    profile?: CapabilityProfile
     contestScope?: ContestScopeChecker
     eventLog?: EventLog
     artifactStore?: ArtifactStore

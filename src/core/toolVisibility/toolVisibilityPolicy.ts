@@ -185,6 +185,7 @@ export class ToolVisibilityPolicy {
   ): T[] {
     const identity: ModelExecutionIdentity = {
       taskId: 'session',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       modelRole: (context.role as any) || 'task_planner',
       modelProfileId: context.modelId || 'default',
       providerId: 'openai-compatible',

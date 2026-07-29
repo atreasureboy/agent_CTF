@@ -63,10 +63,13 @@ describe('ModelReliability & StructuredGateway', () => {
     const router = new ModelRouter(registry, healthStore, circuitBreaker)
     const fakeProvider = {
       id: 'test-provider',
+      // eslint-disable-next-line @typescript-eslint/require-await
       async streamAgentTurn() {
+        // eslint-disable-next-line @typescript-eslint/require-await
         async function* gen() { yield { choices: [{ delta: { content: 'chunk' } }] } as any }
         return gen()
       },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async executeStructured() { return { rawText: 'ok' } },
     }
     const gateway = new StructuredModelGateway({
@@ -83,9 +86,10 @@ describe('ModelReliability & StructuredGateway', () => {
     })
 
     // Mock executor that returns bad JSON for m3-mini, triggering repair & fallback to high-tier-model
-    let attempts = 0
-    const mockLlmExecutor = async (modelId: string, sys: string, user: string) => {
-      attempts++
+    let _attempts = 0
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const mockLlmExecutor = async (modelId: string, _sys: string, _user: string) => {
+      _attempts++
       if (modelId.includes('m3')) {
         return { rawText: 'invalid json string' }
       }

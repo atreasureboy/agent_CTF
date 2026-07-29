@@ -43,6 +43,7 @@ describe('PermissionChecker — modes', () => {
 
   it('ask mode prompts via the approver when no rule matches', async () => {
     let asked = false
+    // eslint-disable-next-line @typescript-eslint/require-await
     const approver: Approver = async () => { asked = true; return true }
     const checker = new PermissionChecker('ask', [], approver)
     const d = await checker.check({ tool: 'Read', input: { file_path: '/a' } })
@@ -54,6 +55,7 @@ describe('PermissionChecker — modes', () => {
 describe('PermissionChecker — rules', () => {
   it('default rule escalates rm -rf to ask even in auto mode', async () => {
     let asked = false
+    // eslint-disable-next-line @typescript-eslint/require-await
     const approver: Approver = async () => { asked = true; return false }
     const checker = new PermissionChecker('auto', [], approver)
     const d = await checker.check({ tool: 'Bash', input: { command: 'rm -rf /tmp/x' } })
@@ -78,6 +80,7 @@ describe('PermissionChecker — rules', () => {
   })
 
   it('approver rejection yields a denied decision', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const approver: Approver = async () => false
     const checker = new PermissionChecker('ask', [], approver)
     const d = await checker.check({ tool: 'Write', input: { file_path: '/a' } })
@@ -102,6 +105,7 @@ describe('PermissionChecker — rules', () => {
     // more-specific rule wins — but only because we re-sort consumer
     // rules ahead of built-in defaults by specificity. Wildcards still
     // rank lowest and cannot override built-ins.
+    // eslint-disable-next-line @typescript-eslint/require-await
     const approver: Approver = async () => true
     const checker = new PermissionChecker('auto', [
       { tool: 'Bash', pattern: 'ls', action: 'allow' },
@@ -131,6 +135,7 @@ describe('PermissionChecker — rules', () => {
   })
 
   it('a thrown approver error is caught and treated as deny', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const approver: Approver = async () => { throw new Error('boom') }
     const checker = new PermissionChecker('ask', [], approver)
     const d = await checker.check({ tool: 'Read', input: { file_path: '/a' } })

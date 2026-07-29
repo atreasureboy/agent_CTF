@@ -29,6 +29,7 @@ export const exifToolParser: ResultParser = {
       input.toolId === 'exiftool' || input.manifestId === 'exiftool' || input.stepId === 'exiftool'
     )
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
       return {

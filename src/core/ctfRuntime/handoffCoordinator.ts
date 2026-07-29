@@ -40,6 +40,7 @@ import type { ToolRegistry } from '../toolRegistry.js'
 import type { TurnResult, OpenAIMessage } from '../types.js'
 import type { ArtifactStore } from '../artifacts.js'
 import type { FindingStore } from '../findings.js'
+import type { Renderer } from '../../ui/renderer.js'
 
 export interface RequestHandoffInput {
   fromAgentRunId: string
@@ -91,7 +92,7 @@ export interface HandoffCoordinatorDeps {
   wrapError(userSummary: string, cause: unknown): Error
   /** Phase 1.7 — runtime-owned Renderer used when the per-handle deps
    *  Renderer was deliberately nulled (legacy CTFTaskOrchestrator.create). */
-  runtimeRenderer?: import('../../ui/renderer.js').Renderer
+  runtimeRenderer?: Renderer
 }
 
 export class HandoffCoordinator {
@@ -415,12 +416,15 @@ export class HandoffCoordinator {
       // map the run to 'cancelled' (not 'completed') regardless of the
       // engine's reported success. The LLM call was actually interrupted.
       if (handle.abort.controller.signal.aborted) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const reason = handle.abort.controller.signal.reason ?? 'specialist_cancelled'
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
         this.cancelAgentRun(agentRunId, handoffId, reason)
         return {
           agentRunId,
           profileId: profile.id,
           status: 'cancelled',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           error: reason,
           producedFindingIds: [],
           producedArtifactIds: [],

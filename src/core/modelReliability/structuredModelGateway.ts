@@ -10,6 +10,7 @@ import type { ModelProvider } from './providers/modelProvider.js'
 import { MissingModelProviderError } from './errors.js'
 import type { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
 import { MonitoredAgentTurnStream } from './monitoredStream.js'
+import type { ProductionTruthfulnessGuard } from '../runtimeGuard/productionTruthfulnessGuard.js'
 
 export interface ModelProfileResolver {
   getRequired(modelId: string): ModelCapabilityProfile
@@ -78,7 +79,7 @@ export interface StructuredModelGatewayDependencies {
   providers?: ReadonlyMap<string, ModelProvider> | Map<string, ModelProvider> | ModelProvider[]
   trajectoryRecorder?: TrajectoryRecorder
   getStateRevision?: (taskId: string) => number
-  truthfulnessGuard?: import('../runtimeGuard/productionTruthfulnessGuard.js').ProductionTruthfulnessGuard
+  truthfulnessGuard?: ProductionTruthfulnessGuard
 }
 
 export class StructuredModelGateway implements ModelInvocationGateway {
@@ -88,7 +89,7 @@ export class StructuredModelGateway implements ModelInvocationGateway {
   private profileResolver: ModelProfileResolver
   private trajectoryRecorder?: TrajectoryRecorder
   private getRevisionFn?: (taskId: string) => number
-  private truthfulnessGuard?: import('../runtimeGuard/productionTruthfulnessGuard.js').ProductionTruthfulnessGuard
+  private truthfulnessGuard?: ProductionTruthfulnessGuard
   private providers = new Map<string, ModelProvider>()
 
   constructor(deps: StructuredModelGatewayDependencies) {

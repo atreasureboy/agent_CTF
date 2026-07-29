@@ -36,6 +36,7 @@ import { ArtifactStore } from '../src/core/artifacts.js'
 import { FindingStore } from '../src/core/findings.js'
 import { TaskStateProjector } from '../src/core/ctfRuntime/taskStateProjector.js'
 import type OpenAI from 'openai'
+import type { Renderer } from '../src/ui/renderer.js'
 
 let parentTaskRoot: string
 
@@ -288,13 +289,13 @@ function makeStreamingScriptedClient(
   }
 }
 
-function makeFakeRenderer(): import('../src/ui/renderer.js').Renderer {
+function makeFakeRenderer(): Renderer {
   // Proxy that swallows every method call as a noop. The engine calls
   // many renderer methods; a Proxy covers them all without enumeration.
   return new Proxy({}, {
     get: () => () => undefined,
     has: () => true,
-  }) as unknown as import('../src/ui/renderer.js').Renderer
+  }) as unknown as Renderer
 }
 
 function makeCollector(buffer: string[]): NodeJS.WritableStream {

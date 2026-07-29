@@ -21,7 +21,6 @@ import type {
   HandoffRecord,
   JobRecord,
   OneShotRunRecord,
-  OneShotRunStatus,
   WorkflowRunRecord,
 } from './taskState.js'
 import type { Finding } from '../findings.js'
@@ -30,6 +29,7 @@ import type { Evidence } from '../ctfReasoning/evidence.js'
 import type { StrategyDecision } from '../ctfReasoning/strategyDecision.js'
 import type { PendingSuggestedAction } from '../ctfReasoning/pendingActionStore.js'
 import type { ReasoningBudgetState } from '../ctfReasoning/reasoningBudget.js'
+import type { SolverRunRecord } from './taskState.js'
 
 export type CTFTaskEvent =
   | { type: 'TASK_CREATED'; taskId: string; initial: CTFTaskState }
@@ -207,7 +207,7 @@ export type CTFTaskEvent =
   | { type: 'FLAG_CANDIDATE_VALIDATED'; candidateId: string; errors: string[] }
   | { type: 'FLAG_CANDIDATE_REJECTED'; candidateId: string; reason: string }
   /* ─── Phase 3.1 — SolverRun events ────────────────────────────────────── */
-  | { type: 'SOLVER_RUN_QUEUED'; run: import('./taskState.js').SolverRunRecord }
+  | { type: 'SOLVER_RUN_QUEUED'; run: SolverRunRecord }
   | { type: 'SOLVER_RUN_STARTED'; runId: string; startedAt: number }
   | { type: 'SOLVER_RUN_GUIDANCE_SENT'; runId: string; message: string }
   | { type: 'SOLVER_RUN_STAGNATING'; runId: string; reason?: string }

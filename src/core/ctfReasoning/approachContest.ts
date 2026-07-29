@@ -17,13 +17,12 @@
  * framer text.
  */
 
-import type { ActionExecutionResult, ExecutionRefs } from './actionExecutionResult.js'
+import type {ActionExecutionResult} from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,
   StrategyActionExecutorContext,
 } from './strategyActionExecutor.js'
-import type { SuggestedAction } from './suggestedAction.js'
 
 export interface ApproachContestFraming {
   /** Stable id (e.g. 'aggressive', 'defensive', 'rsa-first', 'xor-first'). */

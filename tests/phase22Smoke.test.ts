@@ -7,7 +7,6 @@ import { describe, it, expect } from 'vitest'
 import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
 import { processNewReasoningInputs } from '../src/core/ctfReasoning/reasoningCoordinator.js'
 import type { ActionExecutionResult } from '../src/core/ctfReasoning/actionExecutionResult.js'
-import type { SuggestedAction } from '../src/core/ctfReasoning/suggestedAction.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 
 describe('Phase 2.2 §二十九 — smoke tests', () => {
@@ -39,6 +38,7 @@ describe('Phase 2.2 §二十九 — smoke tests', () => {
     const state = createTestTaskState({ taskId: 'smoke-bind' })
     const store = new CTFTaskStateStore(state)
     const executor = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async execute(): Promise<ActionExecutionResult> {
         return {
           status: 'executed',

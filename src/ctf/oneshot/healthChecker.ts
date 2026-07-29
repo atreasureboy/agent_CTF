@@ -32,7 +32,7 @@ export interface HealthOptions {
   outboundReadonlyApproved?: boolean
 }
 
-const HEAVY_MANIFESTS = new Set([
+const _HEAVY_MANIFESTS = new Set([
   'crypto-attacks',
   'angr',
   'mobsf',
@@ -179,7 +179,7 @@ export class HealthChecker {
   }
 
   /** Synchronous best-effort pass — skips network probes. */
-  checkAll(opts: HealthOptions = {}): DoctorRow[] {
+  checkAll(_opts: HealthOptions = {}): DoctorRow[] {
     const rows: DoctorRow[] = []
     for (const m of this.deps.catalog.list()) {
       rows.push(this.checkManifestSync(m))

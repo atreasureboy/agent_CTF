@@ -140,7 +140,7 @@ export function firstExecutableShellSafe(command: string): string | null {
   return firstExecutableSafe(command)
 }
 
-function stripSubshells(s: string): string {
+function _stripSubshells(s: string): string {
   // Replace $(...) and `...` with empty strings so their contents
   // don't introduce a separate first-token into the parent.
   return s

@@ -12,6 +12,8 @@ import {
 import { BashTool } from '../src/tools/bash.js'
 import { PROFILES } from '../src/capabilityProfiles/builtin.js'
 import { ContestScopeChecker, parseContestScope } from '../src/core/contestScope.js'
+import type { EventLog } from '../src/core/eventLog.js'
+import type { ToolContext } from '../src/core/types.js'
 
 describe('firstExecutable', () => {
   it('returns the first binary token from a simple command', () => {
@@ -96,7 +98,7 @@ describe('BashTool integration with policy', () => {
     const profile = { ...PROFILES['image-stego'], deniedCommands: ['ls'] }
     const eventLog = {
       append: () => ({})
-    } as unknown as import('../src/core/eventLog.js').EventLog
+    } as unknown as EventLog
     const ctx = {
       cwd: '/tmp',
       permissionMode: 'auto' as const,
@@ -106,7 +108,7 @@ describe('BashTool integration with policy', () => {
         profile,
         eventLog,
       },
-    } as unknown as import('../src/core/types.js').ToolContext
+    } as unknown as ToolContext
 
     const result = await bash.execute({ command: 'ls -la' }, ctx)
     expect(result.isError).toBe(true)
@@ -116,13 +118,13 @@ describe('BashTool integration with policy', () => {
   it('passes through when policy allows', async () => {
     const bash = new BashTool()
     const profile = PROFILES['image-stego']
-    const eventLog = { append: () => ({}) } as unknown as import('../src/core/eventLog.js').EventLog
+    const eventLog = { append: () => ({}) } as unknown as EventLog
     const ctx = {
       cwd: '/tmp',
       permissionMode: 'auto' as const,
       signal: new AbortController().signal,
       __ctf: { taskId: 't1', agentId: 'image-stego', profile, eventLog },
-    } as unknown as import('../src/core/types.js').ToolContext
+    } as unknown as ToolContext
     const result = await bash.execute({ command: 'echo from-policy-test-OK' }, ctx)
     expect(result.isError).toBe(false)
     expect(result.content).toMatch(/from-policy-test-OK/)

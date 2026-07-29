@@ -20,8 +20,7 @@
  * records calls.
  */
 
-import type { CTFTaskState } from '../ctfRuntime/taskState.js'
-import type { ActionExecutionResult, ExecutionRefs } from './actionExecutionResult.js'
+import type {ActionExecutionResult} from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,
@@ -293,6 +292,7 @@ export class MissingStrategyActionExecutorError extends Error {
 
 export function createNoopStrategyActionExecutor(): StrategyActionExecutor {
   return {
+    // eslint-disable-next-line @typescript-eslint/require-await
     async execute(_ctx: StrategyActionExecutorContext): Promise<ActionExecutionResult> {
       return {
         status: 'executed',

@@ -29,6 +29,7 @@ function classify(s: string): string | null {
   if (RE.base16.test(s)) return 'base16'
   if (RE.base32.test(s) && s.length % 8 === 0) return 'base32'
   if (RE.base64.test(s) && s.length % 4 === 0) {
+    // eslint-disable-next-line
     if (/[\-_]/.test(s)) return 'base64url'
     return 'base64'
   }
@@ -58,6 +59,7 @@ export const encodingParser: ResultParser = {
       input.stepId === 'encoding'
     )
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
       return {

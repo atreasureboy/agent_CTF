@@ -93,7 +93,7 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
 
   for (const action of ranked) {
     const reasons: RejectedAction['reason'][] = []
-    let basedOn: { h: string[]; e: string[]; o: string[] } = {
+    let _basedOn: { h: string[]; e: string[]; o: string[] } = {
       h: [],
       e: [],
       o: input.newObservationIds,
@@ -173,7 +173,7 @@ export function planStrategy(input: StrategyPlanningInput): StrategyDecision {
       // freshness, penalties for cost / duplicate / failures).
       const score = scoreAction(action, input.state, input.newObservationIds)
       const based = basedOnFor(action, input.state, input.newEvidenceIds, input.newObservationIds)
-      basedOn = based
+      _basedOn = based
       if (score > selectedScore) {
         selected = action
         selectedScore = score

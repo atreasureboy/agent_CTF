@@ -74,6 +74,7 @@ describe('Dispatcher', () => {
     registry = new OneShotRegistry(catalog)
     jobManager = new BackgroundJobManager(
       { taskWorkspaceDir: workRoot },
+      // eslint-disable-next-line @typescript-eslint/require-await
       async () => ({}),
     )
     taskContext = makeTaskContext(workRoot)
@@ -99,6 +100,7 @@ describe('Dispatcher', () => {
 
   it('runs a single manifest and applies overrides', async () => {
     registry.register(baseManifest)
+    // eslint-disable-next-line @typescript-eslint/require-await
     setRunnerOverride('demo', fakeRunner(async () => ({
       runId: 'osp_over',
       manifestId: 'demo',
@@ -127,6 +129,7 @@ describe('Dispatcher', () => {
     registry.register(baseManifest)
     const seen: string[] = []
     dispatcher.addProjectionListener((e) => seen.push(e.type))
+    // eslint-disable-next-line @typescript-eslint/require-await
     setRunnerOverride('demo', fakeRunner(async () => ({
       runId: 'osp_e',
       manifestId: 'demo',

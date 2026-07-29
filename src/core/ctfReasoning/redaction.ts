@@ -44,6 +44,7 @@ export function redactSecrets(input: string): string {
         return `${k}=${REDACTED}`
       }
       if (label === 'bearer_token') {
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         const prefix = String(args[0] ?? 'Authorization: ')
         return `${prefix}${REDACTED}`
       }

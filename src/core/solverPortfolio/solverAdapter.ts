@@ -4,6 +4,7 @@ import type {
   SolverChallengeInput,
   SolverHealth,
   SolverRunRecord,
+  SolverEvent,
 } from './solverTypes.js'
 
 export interface SolverRunHandle {
@@ -11,7 +12,7 @@ export interface SolverRunHandle {
   solverId: string
 
   wait(): Promise<ExternalSolverResult>
-  events?(): AsyncIterable<import('./solverTypes.js').SolverEvent>
+  events?(): AsyncIterable<SolverEvent>
   sendGuidance(message: OperatorMessage): Promise<void>
   cancel(reason: string): Promise<void>
   inspect(): Promise<SolverRunRecord>

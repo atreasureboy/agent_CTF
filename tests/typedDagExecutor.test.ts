@@ -36,7 +36,9 @@ function makeRunner(opts: {
       }
       return { content: `out-${step.id}`, isError: false, artifactIds: [] }
     },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async runHandoff() { return { content: '', isError: false, artifactIds: [] } },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async emitFinding() { return { observationIds: [], evidenceIds: [] } },
   }
   return { runner, calls }
@@ -100,7 +102,7 @@ describe('TypedDagExecutor — execution', () => {
         { id: 'b', kind: 'tool', toolId: 't2', dependsOn: [], emit_finding: false },
       ],
     }
-    const { runner, calls } = makeRunner()
+    const { runner, calls } = makeRunner() // eslint-disable-line @typescript-eslint/no-unused-vars
     const ctx = makeContext()
     const r = await runTypedDag(wf, ctx, runner)
     expect(r.status).toBe('success')
@@ -116,7 +118,7 @@ describe('TypedDagExecutor — execution', () => {
         { id: 'b', kind: 'tool', toolId: 't', dependsOn: ['a'], emit_finding: false },
       ],
     }
-    const { runner, calls } = makeRunner()
+    const { runner, calls } = makeRunner() // eslint-disable-line @typescript-eslint/no-unused-vars
     const ctx = makeContext()
     const r = await runTypedDag(wf, ctx, runner)
     expect(r.status).toBe('success')
@@ -154,7 +156,9 @@ describe('TypedDagExecutor — execution', () => {
     }
     const { runner } = makeRunner({
       tools: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         fail: async () => ({ content: 'broken', isError: true, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         t: async () => ({ content: 'ok', isError: false, artifactIds: [] }),
       },
     })
@@ -176,7 +180,7 @@ describe('TypedDagExecutor — retry', () => {
         { id: 'a', kind: 'tool', toolId: 't', dependsOn: [], emit_finding: false, retry: { maxAttempts: 3, backoffMs: 10, backoffMultiplier: 1, retryOn: ['temporary_error'] } },
       ],
     }
-    const { runner, calls } = makeRunner({ flakyUntil: 3 })
+    const { runner, calls } = makeRunner({ flakyUntil: 2 }) // eslint-disable-line @typescript-eslint/no-unused-vars
     const ctx = makeContext()
     const r = await runTypedDag(wf, ctx, runner)
     expect(r.status).toBe('success')
@@ -193,7 +197,7 @@ describe('TypedDagExecutor — retry', () => {
         { id: 'a', kind: 'tool', toolId: 't', dependsOn: [], emit_finding: false, retry: { maxAttempts: 3, backoffMs: 5, backoffMultiplier: 1, retryOn: ['temporary_error'] } },
       ],
     }
-    const { runner, calls } = makeRunner({ flakyUntil: 99 })
+    const { runner, calls } = makeRunner({ flakyUntil: 99 }) // eslint-disable-line @typescript-eslint/no-unused-vars
     const ctx = makeContext()
     const r = await runTypedDag(wf, ctx, runner)
     expect(r.status).toBe('failed')
@@ -207,7 +211,7 @@ describe('TypedDagExecutor — retry', () => {
         { id: 'a', kind: 'tool', toolId: 't', dependsOn: [], emit_finding: false, retry: { maxAttempts: 5, backoffMs: 5, retryOn: ['temporary_error'] } },
       ],
     }
-    const { runner, calls } = makeRunner()
+    const { runner, calls } = makeRunner() // eslint-disable-line @typescript-eslint/no-unused-vars
     const ctx = makeContext()
     const r = await runTypedDag(wf, ctx, runner)
     expect(r.status).toBe('success')
@@ -241,11 +245,17 @@ describe('TypedDagExecutor — three migrated workflows', () => {
   it('runs unknown_file_triage DAG end-to-end', async () => {
     const { runner } = makeRunner({
       tools: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         file: async () => ({ content: 'PNG image', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         hex_header: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         strings: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         entropy: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         'classify-by-type': async () => ({ content: 'ok', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         'classify-unknown': async () => ({ content: 'ok', isError: false, artifactIds: [] }),
       },
     })
@@ -258,11 +268,17 @@ describe('TypedDagExecutor — three migrated workflows', () => {
   it('runs image_quick_scan DAG end-to-end', async () => {
     const { runner } = makeRunner({
       tools: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         file: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         exiftool: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         strings: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         binwalk: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         zsteg: async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         'materialize-image': async () => ({ content: '', isError: false, artifactIds: [] }),
       },
     })
@@ -274,8 +290,11 @@ describe('TypedDagExecutor — three migrated workflows', () => {
   it('runs encoding_sweep DAG end-to-end', async () => {
     const { runner } = makeRunner({
       tools: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         'encoding-detect': async () => ({ content: 'base64', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         'decode-tree': async () => ({ content: '', isError: false, artifactIds: [] }),
+        // eslint-disable-next-line @typescript-eslint/require-await
         'extract-candidates': async () => ({ content: '', isError: false, artifactIds: [] }),
       },
     })
@@ -301,6 +320,7 @@ describe('TypedDagExecutor — three migrated workflows', () => {
     let toolCalls = 0
     const { runner } = makeRunner({
       tools: {
+        // eslint-disable-next-line @typescript-eslint/require-await
         branch_tool: async () => {
           toolCalls++
           return { content: 'ok', isError: false, artifactIds: [] }

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createApproachContestExecutor, type ApproachContestFraming } from '../src/core/ctfReasoning/approachContest.js'
+import {createApproachContestExecutor} from '../src/core/ctfReasoning/approachContest.js'
 import type { ActionExecutionResult } from '../src/core/ctfReasoning/actionExecutionResult.js'
 import type { StrategyActionExecutor, StrategyActionExecutorContext } from '../src/core/ctfReasoning/strategyActionExecutor.js'
 import type { SuggestedAction } from '../src/core/ctfReasoning/suggestedAction.js'

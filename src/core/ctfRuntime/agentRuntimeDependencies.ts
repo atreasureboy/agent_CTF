@@ -22,6 +22,10 @@ import type { Renderer } from '../../ui/renderer.js'
 import type { EventLog } from '../eventLog.js'
 import type { Logger } from '../logger.js'
 import type { BudgetLimits } from '../../ctf/oneshot/types.js'
+import type { ModelInvocationGateway } from '../modelReliability/structuredModelGateway.js'
+import type { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
+import type { ToolExposureResolver } from '../toolVisibility/toolExposureResolver.js'
+import type { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
 
 export interface ModelConfig {
   model: string
@@ -42,10 +46,10 @@ export interface AgentRuntimeDependencies {
   logger?: Logger
   /** §十一 — concurrency budget for tools/oneshots (parallel limit). */
   budgetLimits?: BudgetLimits
-  modelGateway?: import('../modelReliability/structuredModelGateway.js').ModelInvocationGateway
-  toolVisibilityPolicy?: import('../toolVisibility/toolVisibilityPolicy.js').ToolVisibilityPolicy
-  toolExposureResolver?: import('../toolVisibility/toolExposureResolver.js').ToolExposureResolver
-  trajectoryRecorder?: import('../trajectory/trajectoryRecorder.js').TrajectoryRecorder
+  modelGateway?: ModelInvocationGateway
+  toolVisibilityPolicy?: ToolVisibilityPolicy
+  toolExposureResolver?: ToolExposureResolver
+  trajectoryRecorder?: TrajectoryRecorder
 }
 
 /**

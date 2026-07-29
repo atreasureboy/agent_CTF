@@ -44,6 +44,7 @@ export async function runDoctorCommand(argv: string[], deps: DoctorDeps): Promis
   if (showOneshot) {
     const manifestsDir = deps.manifestsDir ?? join(cwd, 'oneshot', 'manifests')
     const catalog = globalOneShotCatalog
+    // eslint-disable-next-line
     catalog.invalidList().length // accessed to suppress unused warning
     const { accepted } = loadManifestsFromDir(manifestsDir, catalog)
     stdout.write(`oneshot: loaded ${accepted.length} manifest(s) from ${manifestsDir}\n`)

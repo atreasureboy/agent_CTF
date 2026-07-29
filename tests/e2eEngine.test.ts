@@ -35,6 +35,7 @@ function makeEngine(opts: {
   cwd: string
 }) {
   const fakeGateway = {
+    // eslint-disable-next-line @typescript-eslint/require-await
     async streamAgentTurn(input: any) {
       return opts.client.chat.completions.create({
         model: input.preferredModelId,
@@ -44,6 +45,7 @@ function makeEngine(opts: {
         stream: true,
       }) as any
     },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async executeStructured() {
       return { rawText: 'ok' }
     },

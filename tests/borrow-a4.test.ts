@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { checkRepeat, fingerprintForHistory, LOOP_DETECTOR_CVE_LIMIT, LOOP_DETECTOR_REPEAT_LIMIT, type LoopDetectorEntry } from '../src/core/ctfReasoning/loopDetector.js'
+import {checkRepeat, LOOP_DETECTOR_CVE_LIMIT, type LoopDetectorEntry} from '../src/core/ctfReasoning/loopDetector.js'
 import type { SuggestedAction } from '../src/core/ctfReasoning/suggestedAction.js'
 
 describe('CVE-aware loop detector (A4)', () => {

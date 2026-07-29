@@ -1,5 +1,4 @@
 import type { ModelCapabilityProfile } from '../modelReliability/modelCapability.js'
-import type { ModelExecutionIdentity } from '../modelReliability/modelExecutionIdentity.js'
 import type { SolverRunRecord, ExternalSolverResult } from '../solverPortfolio/solverTypes.js'
 import type { SolverKnowledgeMessage } from '../solverPortfolio/crossSolverKnowledgeView.js'
 
@@ -93,8 +92,11 @@ export class DefaultProductionTruthfulnessGuard {
       }
 
       if (
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         (input.result as any).isSynthetic ||
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         (input.result as any).mock ||
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         (input.result as any).simulated
       ) {
         throw new ProductionTruthfulnessGuardError(

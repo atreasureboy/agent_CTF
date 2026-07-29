@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { BudgetManager, BudgetExceededError } from '../../src/ctf/oneshot/index.js'
+import {BudgetManager} from '../../src/ctf/oneshot/index.js'
 
 describe('BudgetManager', () => {
   it('acquires and releases fast lanes up to the limit', () => {

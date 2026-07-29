@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-import { CTFTaskStateStore, TaskStateStoreError, IllegalPhaseTransitionError } from '../src/core/ctfRuntime/taskStateStore.js'
+import {CTFTaskStateStore, IllegalPhaseTransitionError} from '../src/core/ctfRuntime/taskStateStore.js'
 import {
   ALLOWED_PHASE_TRANSITIONS,
   isTerminalPhase,
@@ -510,8 +510,10 @@ describe('CTFTaskOrchestrator — wiring', () => {
     const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'orchestrator' })
     try {
       await orch.runWorkflow('unknown_file_triage', {})
+      // eslint-disable-next-line
       orch.cancel('test')
       // Cancel is idempotent; no exception.
+      // eslint-disable-next-line
       orch.cancel('test-again')
       expect(orch.getState().workflowRuns[0].status).toBe('completed')
     } finally {

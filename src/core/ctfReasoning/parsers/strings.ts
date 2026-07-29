@@ -21,6 +21,7 @@ export const stringsParser: ResultParser = {
       input.toolId === 'strings' || input.manifestId === 'strings' || input.stepId === 'strings'
     )
   },
+  // eslint-disable-next-line @typescript-eslint/require-await
   async parse(input: ParserInput): Promise<MaterializedResult> {
     if (!input.content) {
       return {

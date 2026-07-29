@@ -26,6 +26,7 @@ export function inputToString(input: unknown): string {
   try {
     return JSON.stringify(input)
   } catch {
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     return String(input)
   }
 }

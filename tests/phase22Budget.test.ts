@@ -43,7 +43,8 @@ describe('Phase 2.2 §二十七 — cumulative task budget', () => {
   it('budget denial stops the loop and records the reason', async () => {
     const state = createTestTaskState({ taskId: 'bdg' })
     const store = new CTFTaskStateStore(state)
-    const executor = {
+    const _executor = {
+      // eslint-disable-next-line @typescript-eslint/require-await
       async execute(): Promise<ActionExecutionResult> {
         return {
           status: 'executed',

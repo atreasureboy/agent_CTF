@@ -245,6 +245,7 @@ export class BackgroundJobManager {
   /** Spawn a new job. Concurrency limits either succeed immediately or
    * throw ConcurrencyLimitError so the Broker can choose to wait or fallback
    * to inline execution. */
+  // eslint-disable-next-line @typescript-eslint/require-await
   async spawn(spec: JobSpec): Promise<BackgroundJob> {
     const totalForTask = this.reconcileRunningCount(spec.taskId)
     if (totalForTask >= this.maxPerTask) {
@@ -279,6 +280,7 @@ export class BackgroundJobManager {
     this.emit({ type: 'JOB_STARTED', job: { ...job } })
 
     // Fire-and-await execution in next tick so the caller can observe status.
+    // eslint-disable-next-line
     queueMicrotask(() => this.execute(job, spec, controller.signal))
 
     return job
@@ -386,7 +388,7 @@ export class BackgroundJobManager {
   /** Read a job descriptor back from disk (if not in memory). */
   private recoverFromDisk(id: string): BackgroundJob | null {
     // Look up by walking all known task workspaces.
-    for (const [taskId, dir] of this.taskDirs) {
+    for (const [_taskId, dir] of this.taskDirs) {
       const file = join(dir, 'jobs', `${id}.json`)
       if (existsSync(file)) {
         try {

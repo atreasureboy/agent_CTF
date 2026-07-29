@@ -70,6 +70,7 @@ export function decideCompaction(
       summaryObservation: '',
     }
   }
+  // eslint-disable-next-line
   const drop = <T>(arr: T[]): T[] => arr.slice(0, Math.max(0, arr.length - policy.maxObservations))
   const removedObservations = state.observations.slice(
     0,
@@ -153,6 +154,7 @@ export function applyCompaction(
   at: number = Date.now(),
 ): CTFTaskState {
   if (!decision.shouldCompact) return state
+  // eslint-disable-next-line
   const dropSet = new Set([...decision.removedObservationIds, ...decision.removedEvidenceIds])
   return {
     ...state,

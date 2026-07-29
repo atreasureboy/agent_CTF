@@ -35,7 +35,6 @@ import {
 } from './structuredRunOutput.js'
 import type { ReasoningResult } from './actionExecutionResult.js'
 import type { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
-import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface StructuredOutputHandlerDeps {
   store: CTFTaskStateStore

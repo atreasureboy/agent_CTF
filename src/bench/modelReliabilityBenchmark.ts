@@ -1,29 +1,18 @@
 import {
-  ChallengePromptCompiler,
   ProgressCompiler,
   RetryHandoffCompiler,
   SolverBriefCompiler,
 } from '../core/contextCompiler/index.js'
-import {
-  ModelCircuitBreaker,
-  ModelHealthStore,
-  ModelRolePolicy,
-  ModelRouter,
-  StructuredModelGateway,
-} from '../core/modelReliability/index.js'
-
-import { ModelCapabilityRegistry } from '../core/modelReliability/modelRegistry.js'
 import { CTFTaskStateStore } from '../core/ctfRuntime/taskStateStore.js'
 import {
   ChallengeSwarm,
   CrossSolverEvidenceBus,
-  FlagDiscriminator,
   NativeSolverAdapter,
-  SubmissionController,
 } from '../core/solverPortfolio/index.js'
 import { ToolVisibilityPolicy } from '../core/toolVisibility/index.js'
 
 export class ModelReliabilityBenchmarkRunner {
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async runABTests(): Promise<Record<string, any>> {
     const results: Record<string, any> = {}
 

@@ -40,6 +40,7 @@ describe('LiveBenchRunner (real D2)', () => {
     let idx = 0
     const cyclingProvider = {
       ...provider,
+      // eslint-disable-next-line @typescript-eslint/require-await
       async generateToolUse() {
         const r = responses[idx] ?? responses[responses.length - 1]
         idx += 1
@@ -80,6 +81,7 @@ describe('LiveBenchRunner (real D2)', () => {
     let idx = 0
     const cyclingProvider = {
       ...provider,
+      // eslint-disable-next-line @typescript-eslint/require-await
       async generateToolUse() {
         return responses[idx++] ?? responses[responses.length - 1]
       },

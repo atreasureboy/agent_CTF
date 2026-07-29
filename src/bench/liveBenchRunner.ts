@@ -22,13 +22,11 @@
 
 import {
   askLlmForAction,
-  MockLlmProvider,
   type LlmProvider,
   type ToolDefinition,
 } from '../core/llm/llmToolUse.js'
 import type {
   ActionExecutionResult,
-  ExecutionRefs,
 } from '../core/ctfReasoning/actionExecutionResult.js'
 import type {
   StrategyActionExecutor,
@@ -79,6 +77,7 @@ export function createLlmToolActionExecutor(
   },
 ): StrategyActionExecutor {
   return {
+    // eslint-disable-next-line @typescript-eslint/require-await
     async execute(ctx: StrategyActionExecutorContext): Promise<ActionExecutionResult> {
       const a = ctx.action
       if (a.type === 'call_tool') {
@@ -184,7 +183,7 @@ export async function runLiveChallenge(
   options: LiveBenchOptions,
 ): Promise<LiveBenchResult> {
   const toolDefs = options.toolDefs ?? DEFAULT_TOOL_DEFS
-  const toolSetName = `live-bench-${challenge.id}-${Date.now()}`
+  const _toolSetName = `live-bench-${challenge.id}-${Date.now()}`
   const taskId = `live-${challenge.id}-${Date.now()}`
   // For live tests we don't pre-seed a flag candidate — the LLM
   // must discover / generate the flag candidate through the

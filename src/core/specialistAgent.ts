@@ -123,7 +123,7 @@ export function profileToAgentConfig(
   inheritedArtifacts?: ComposeSystemPromptInput['inheritedArtifacts'],
 ): AgentConfig {
   const allowedToolIds = resolver.resolveToolIds()
-  const allowedWorkflowIds = resolver.resolveWorkflowIds()
+  const _allowedWorkflowIds = resolver.resolveWorkflowIds()
 
   const systemPrompt = composeSystemPrompt({
     cwd,
