@@ -12,10 +12,14 @@ import { GrepTool } from './grep.js'
 import { TodoWriteTool } from './todo.js'
 import { WebFetchTool } from './webFetch.js'
 import { WebSearchTool } from './webSearch.js'
+import { WebExplorerTool } from './webExplorer.js'
 import { AgentTool } from './agent.js'
 import { TmuxSessionTool } from './tmuxSession.js'
 import { makeAllMetaTools } from './meta.js'
 import { createCTFTools } from './ctf.js'
+import { createVulnDetectionTools } from './vulnDetection.js'
+import { createCTFUtilTools } from './ctfUtils.js'
+import { createWebExplorerTool } from './webExplorer.js'
 
 export function createTools(extraTools: Tool[] = []): Tool[] {
   return [
@@ -32,6 +36,9 @@ export function createTools(extraTools: Tool[] = []): Tool[] {
     new TmuxSessionTool(),
     ...makeAllMetaTools(),
     ...createCTFTools(),
+    ...createCTFUtilTools(),
+    ...createWebExplorerTool(),
+    ...createVulnDetectionTools(),
     ...extraTools,
   ]
 }
@@ -56,4 +63,5 @@ export {
   WebSearchTool,
   AgentTool,
   TmuxSessionTool,
+  WebExplorerTool,
 }
