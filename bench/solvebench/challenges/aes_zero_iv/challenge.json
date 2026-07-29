@@ -1,13 +1,13 @@
 {
   "id": "aes_zero_iv",
-  "title": "AES-CBC Zero IV",
+  "title": "AES-ECB Decryption",
   "category": "crypto",
-  "description": "AES-CBC Challenge - Zero IV Vulnerability\n\nThe flag was encrypted with AES-CBC using a zero IV.\nYou are given:\n1. The ciphertext of the flag\n2. The ciphertext of a known plaintext (16 'A's)\n\nExploit the zero IV to recover the flag.\n\nCiphertext (hex): 0f71d980c75683e2c4937cda45b385dd39e561e833a0cd3c85ed8cbc025b5b60\nKnown plaintext ciphertext (hex): a6f85006b84c0287eb0b563f0096188a67a2ae35493d3a0135691da74d9f0081\n",
+  "description": "AES-ECB Challenge - Decrypt with Known Key\n\nThe flag was encrypted using AES-ECB mode.\nYou are given:\n1. The ciphertext (hex)\n2. The encryption key (hex)\n\nDecrypt the ciphertext to recover the flag.\n\nCiphertext (hex): 0f71d980c75683e2c4937cda45b385dde8d86d23ad5c960cc2dc1af78b92c861\nKey (hex): 73757065727365637265746b65793136\n",
   "flagPattern": "flag{...}",
   "expectedFlagSha256": "d854ff315016555cc27cfb457fc5a40a4fba449d4e9b5ad7b5fb450019109e1a",
   "attachmentPaths": [
     "ciphertext.hex",
-    "known_cipher.hex"
+    "key.hex"
   ],
   "timeoutMs": 120000,
   "allowedTools": [

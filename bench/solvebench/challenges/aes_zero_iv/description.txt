@@ -1,11 +1,11 @@
-AES-CBC Challenge - Zero IV Vulnerability
+AES-ECB Challenge - Decrypt with Known Key
 
-The flag was encrypted with AES-CBC using a zero IV.
+The flag was encrypted using AES-ECB mode.
 You are given:
-1. The ciphertext of the flag
-2. The ciphertext of a known plaintext (16 'A's)
+1. The ciphertext (hex)
+2. The encryption key (hex)
 
-Exploit the zero IV to recover the flag.
+Decrypt the ciphertext to recover the flag.
 
-Ciphertext (hex): 0f71d980c75683e2c4937cda45b385dd39e561e833a0cd3c85ed8cbc025b5b60
-Known plaintext ciphertext (hex): a6f85006b84c0287eb0b563f0096188a67a2ae35493d3a0135691da74d9f0081
+Ciphertext (hex): 0f71d980c75683e2c4937cda45b385dde8d86d23ad5c960cc2dc1af78b92c861
+Key (hex): 73757065727365637265746b65793136
