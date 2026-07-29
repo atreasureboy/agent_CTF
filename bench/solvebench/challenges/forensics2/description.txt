@@ -1,4 +1,0 @@
-A ZIP file contains a secret message.
-The ZIP file is not password protected, but the contents are compressed.
-
-Extract the contents to find the flag.

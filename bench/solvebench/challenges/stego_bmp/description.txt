@@ -1,0 +1,8 @@
+Steganography Challenge - LSB in BMP
+
+A flag is hidden in this BMP image using LSB steganography.
+The flag is encoded in the least significant bits of the pixel data.
+
+Extract the hidden message to find the flag.
+
+Hint: The flag is hidden starting from the first pixel, using BGR order.

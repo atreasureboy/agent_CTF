@@ -1,0 +1,6 @@
+PCAP Analysis Challenge - HTTP Traffic
+
+Analyze the captured HTTP traffic to find the hidden flag.
+The flag was transmitted in one of the HTTP responses.
+
+Look carefully at all request/response pairs.

@@ -1,0 +1,11 @@
+Reverse Engineering Challenge - Custom Encryption
+
+A binary checks if the input is correct using a custom encryption algorithm.
+Reverse engineer the encryption to find the correct input (the flag).
+
+The encryption involves:
+1. Bit rotation
+2. XOR with a key
+3. Addition
+
+Analyze the binary to understand the algorithm and recover the flag.

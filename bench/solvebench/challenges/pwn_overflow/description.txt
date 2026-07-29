@@ -1,0 +1,12 @@
+Buffer Overflow Challenge - Return to Win
+
+A vulnerable program uses gets() to read input into a 64-byte buffer.
+There's a win() function that prints the flag.
+
+Overflow the buffer to redirect execution to win().
+
+Hints:
+- The buffer is 64 bytes
+- Find the offset to the return address
+- Overwrite with the address of win()
+- ASLR is disabled for this challenge

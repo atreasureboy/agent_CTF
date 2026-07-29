@@ -1,5 +1,0 @@
-A Python script checks if the input is correct.
-The script uses a simple substitution cipher.
-Reverse the logic to find the correct input (the flag).
-
-Hint: The cipher maps a->z, b->y, c->x, etc.

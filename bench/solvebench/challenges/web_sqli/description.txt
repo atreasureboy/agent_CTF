@@ -1,0 +1,8 @@
+Web Challenge - SQL Injection
+
+A login form is vulnerable to SQL injection.
+Bypass authentication as admin to get the flag.
+
+The server is running on http://127.0.0.1:8766
+
+Hint: Try SQL injection in the username field.

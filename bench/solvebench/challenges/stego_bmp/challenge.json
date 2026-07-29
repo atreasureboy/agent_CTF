@@ -1,0 +1,18 @@
+{
+  "id": "stego_bmp",
+  "title": "BMP LSB Steganography",
+  "category": "forensics",
+  "description": "Steganography Challenge - LSB in BMP\n\nA flag is hidden in this BMP image using LSB steganography.\nThe flag is encoded in the least significant bits of the pixel data.\n\nExtract the hidden message to find the flag.\n\nHint: The flag is hidden starting from the first pixel, using BGR order.\n",
+  "flagPattern": "flag{...}",
+  "expectedFlagSha256": "c2c447b6cdb6673f1a7b6a648f7529aed6e2275ae0a0c345c616376fb316b8f0",
+  "attachmentPaths": [
+    "image.bmp"
+  ],
+  "timeoutMs": 120000,
+  "allowedTools": [
+    "Bash",
+    "Read",
+    "xxd",
+    "python3"
+  ]
+}

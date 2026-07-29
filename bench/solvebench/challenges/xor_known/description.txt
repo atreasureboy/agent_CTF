@@ -1,0 +1,11 @@
+XOR Cipher with Known Plaintext
+
+A message was encrypted using XOR with a repeating key.
+You are given:
+1. The encrypted flag (hex): 150902151e0c5b17265a5c03040b3c0209405a0b0d024a470e
+2. A known plaintext and its encryption
+
+Known plaintext: "Hello, World!!!!"
+Known encrypted (hex): 3b000f1e0a584b3216435e5752444253
+
+Use the known plaintext to recover the key, then decrypt the flag.

@@ -1,0 +1,19 @@
+{
+  "id": "forensics_nested",
+  "title": "Nested Files in PNG",
+  "category": "forensics",
+  "description": "Forensics Challenge - Nested Files\n\nA PNG image contains a hidden file embedded after the image data.\nExtract the hidden content to find the flag.\n\nHints:\n- Look beyond the IEND chunk\n- The hidden data might be a compressed archive\n- Use binwalk or manual analysis\n",
+  "flagPattern": "flag{...}",
+  "expectedFlagSha256": "00a950cfc160aa57f4c9274ba78414c281bf8450e1fe9c08cf620ae952cbcdaf",
+  "attachmentPaths": [
+    "image.png"
+  ],
+  "timeoutMs": 120000,
+  "allowedTools": [
+    "Bash",
+    "Read",
+    "xxd",
+    "python3",
+    "unzip"
+  ]
+}

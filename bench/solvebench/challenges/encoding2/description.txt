@@ -1,4 +1,0 @@
-A simple substitution cipher was used to encode the flag.
-The cipher shifts each letter by 13 positions in the alphabet.
-
-Decode the message to reveal the flag.

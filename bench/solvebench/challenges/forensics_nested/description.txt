@@ -1,0 +1,9 @@
+Forensics Challenge - Nested Files
+
+A PNG image contains a hidden file embedded after the image data.
+Extract the hidden content to find the flag.
+
+Hints:
+- Look beyond the IEND chunk
+- The hidden data might be a compressed archive
+- Use binwalk or manual analysis

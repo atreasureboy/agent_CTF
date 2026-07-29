@@ -1,5 +1,0 @@
-A vulnerable program has a buffer overflow.
-The buffer is 32 bytes, but the program doesn't check input length.
-Find a way to reach the win() function and get the flag.
-
-Hint: Overflow the buffer to overwrite the return address.

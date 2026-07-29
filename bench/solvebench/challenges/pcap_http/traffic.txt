@@ -1,0 +1,36 @@
+# HTTP Traffic Capture
+# Timestamp: 2026-07-29 10:00:00
+
+[CLIENT -> SERVER] POST /api/login HTTP/1.1
+Host: target.example.com
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 29
+
+username=admin&password=secret
+
+[SERVER -> CLIENT] HTTP/1.1 200 OK
+Content-Type: application/json
+Set-Cookie: session=abc123def456
+
+{"status": "success", "token": "eyJhbGciOiJIUzI1NiJ9"}
+
+[CLIENT -> SERVER] GET /api/secret HTTP/1.1
+Host: target.example.com
+Cookie: session=abc123def456
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9
+
+[SERVER -> CLIENT] HTTP/1.1 200 OK
+Content-Type: text/plain
+
+Congratulations! You found the secret: flag{pc4p_h77p_4n4lys1s}
+
+[CLIENT -> SERVER] POST /api/data HTTP/1.1
+Host: target.example.com
+Content-Type: application/json
+
+{"data": "VGhpcyBpcyBhIHRlc3Q="}
+
+[SERVER -> CLIENT] HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"received": true}

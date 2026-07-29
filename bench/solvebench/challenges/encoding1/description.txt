@@ -1,4 +1,0 @@
-This file contains a secret message encoded multiple times with Base64.
-Decode it to find the flag.
-
-Hint: The message has been Base64 encoded 3 times.

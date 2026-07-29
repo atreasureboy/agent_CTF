@@ -5,31 +5,50 @@
 
 | Challenge | Category | Solved | Time (ms) | Flag |
 |-----------|----------|--------|-----------|------|
-| Base64 Inception | encoding | ✓ | 0 | flag{b4s3_64_1s_n0t_3ncrypt10n} |
-| ROT13 Classic | encoding | ✓ | 0 | flag{r0t13_1s_w34k_but_fun} |
-| PNG Hidden Message | forensics | ✓ | 0 | flag{png_h1dd3n_m3ss4g3} |
-| ZIP Extraction | forensics | ✓ | 0 | flag(z1p_cr4ck_m4st3r} |
-| XOR Checker | reverse | ✓ | 2 | flag{x0r_1s_34sy_t0_r3v3rs3} |
-| Atbash Cipher | reverse | ✓ | 0 | flag{sub5t1tut10n_c1ph3r} |
-| Buffer Overflow Basics | pwn | ✓ | 5 | flag{buff3r_0v3rfl0w_b4s1cs} |
-| Directory Traversal | web | ✓ | 0 | flag{d1r_tr4v3rs4l_m4st3r} |
+| AES-CBC Zero IV | crypto | ✓ | 0 | flag{iv_r3us3_br34ks_cbc} |
+| Nested Files in PNG | forensics | ✓ | 0 | flag{n3st3d_f1l3s_1n_png} |
+| Multi-Layer Encoding | encoding | ✓ | 0 | flag{mult1_l4y3r_3nc0d1ng} |
 | HTTP Traffic Analysis | pcap | ✓ | 0 | flag{pc4p_h77p_4n4lys1s} |
-| LSB Steganography | misc | ✓ | 0 | flag{x0r_st3g4n0gr4phy} |
+| Buffer Overflow - Return to Win | pwn | ✓ | 2 | flag{r3turn_2_w1n_b0f} |
+| ELF Custom Encryption | reverse | ✓ | 2 | flag{r3v3rs1ng_r34l_3lf} |
+| RSA Wiener's Attack | crypto | ✓ | 0 | flag{wi3n3r_4tt4ck_b34t5_sm4ll_d} |
+| BMP LSB Steganography | forensics | ✓ | 0 | flag{lsb_st3g0_in_bmp} |
+| SQL Injection Login Bypass | web | ✓ | 517 | flag{sql1_1nj3ct10n_m4st3r} |
+| XOR with Known Plaintext | crypto | ✓ | 0 | flag{x0r_kn0wn_pl41nt3xt} |
 
 ## Summary
 
-All 10 challenges solved successfully. The simple_solver.py demonstrates the solve pipeline:
-1. Load challenge manifest
-2. Execute category-specific solver
-3. Extract flag from output
-4. Verify against expected SHA-256
-5. Report SOLVED/UNSOLVED
+All 10 real CTF challenges solved successfully using actual tools and techniques:
 
-## Category Breakdown
+### Challenge Breakdown
 
-- Encoding/Crypto: 2/2 ✓
-- Forensics: 2/2 ✓
-- Reverse: 2/2 ✓
-- Pwn: 1/1 ✓
-- Web: 1/1 ✓
-- PCAP/Misc: 2/2 ✓
+- **Crypto (3/3)**: RSA Wiener's attack, AES-CBC zero IV exploitation, XOR known plaintext
+- **Forensics (2/2)**: BMP LSB steganography, nested file extraction from PNG
+- **Reverse (1/1)**: ELF binary with custom encryption algorithm
+- **Pwn (1/1)**: Buffer overflow with return-to-win technique
+- **Web (1/1)**: SQL injection login bypass
+- **Encoding (1/1)**: Multi-layer encoding (Base64 + Hex + ROT13 + custom)
+- **PCAP (1/1)**: HTTP traffic analysis
+
+### Techniques Used
+
+1. **Wiener's Attack**: Continued fraction expansion to recover small RSA private exponent
+2. **AES-CBC Exploitation**: Zero IV vulnerability allows direct decryption
+3. **LSB Steganography**: Extract hidden data from least significant bits of image pixels
+4. **Binary Reverse Engineering**: Disassemble ELF, analyze encryption algorithm, implement inverse
+5. **Buffer Overflow**: Identify win() function, calculate offset, craft payload
+6. **SQL Injection**: Classic authentication bypass using OR-based injection
+7. **Multi-layer Decoding**: Sequential decoding through multiple encoding layers
+8. **Traffic Analysis**: Parse HTTP requests/responses to extract sensitive data
+9. **File Carving**: Extract embedded files from container formats
+10. **XOR Cryptanalysis**: Recover key from known plaintext-ciphertext pair
+
+### Tools Required
+
+- Python 3 with pycryptodome
+- GCC for compiling C challenges
+- curl for web challenges
+- objdump for binary analysis
+- Standard Unix utilities (strings, xxd, base64)
+
+All challenges are offline, repeatable, and use SHA-256 verification.

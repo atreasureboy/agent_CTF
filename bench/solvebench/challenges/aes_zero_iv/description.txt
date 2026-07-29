@@ -1,0 +1,11 @@
+AES-CBC Challenge - Zero IV Vulnerability
+
+The flag was encrypted with AES-CBC using a zero IV.
+You are given:
+1. The ciphertext of the flag
+2. The ciphertext of a known plaintext (16 'A's)
+
+Exploit the zero IV to recover the flag.
+
+Ciphertext (hex): 0f71d980c75683e2c4937cda45b385dd39e561e833a0cd3c85ed8cbc025b5b60
+Known plaintext ciphertext (hex): a6f85006b84c0287eb0b563f0096188a67a2ae35493d3a0135691da74d9f0081

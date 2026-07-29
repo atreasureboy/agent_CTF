@@ -1,0 +1,18 @@
+{
+  "id": "pcap_http",
+  "title": "HTTP Traffic Analysis",
+  "category": "pcap",
+  "description": "PCAP Analysis Challenge - HTTP Traffic\n\nAnalyze the captured HTTP traffic to find the hidden flag.\nThe flag was transmitted in one of the HTTP responses.\n\nLook carefully at all request/response pairs.\n",
+  "flagPattern": "flag{...}",
+  "expectedFlagSha256": "cf829ae1e69d91f99e0b15c685054c85ae0916b7125a68135048b688dcee9ff3",
+  "attachmentPaths": [
+    "traffic.txt"
+  ],
+  "timeoutMs": 60000,
+  "allowedTools": [
+    "Bash",
+    "Read",
+    "strings",
+    "grep"
+  ]
+}

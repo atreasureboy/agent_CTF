@@ -1,4 +1,0 @@
-A binary program checks if the input is correct.
-Reverse engineer the program to find the correct input (the flag).
-
-Hint: The program uses XOR encryption with a single-byte key.

@@ -1,4 +1,0 @@
-This PNG image looks normal, but there's something hidden inside.
-Find the secret message to get the flag.
-
-Hint: Look beyond the image data.
