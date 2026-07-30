@@ -27,17 +27,6 @@ export interface ResolveVisibleToolsInput<T extends { name: string }> {
   maxVisibleTools?: number
 }
 
-const HIGH_LEVEL_ORCHESTRATOR_TOOLS = new Set([
-  'inspect_task_state',
-  'run_workflow',
-  'run_one_shot',
-  'request_handoff',
-  'inspect_solver',
-  'send_solver_guidance',
-  'validate_candidate',
-  'pause_challenge',
-])
-
 export class ToolVisibilityPolicy {
   private rules = new Map<string, ToolVisibilityRule>()
   private defaultPolicy: VisibilityDefault
@@ -72,10 +61,6 @@ export class ToolVisibilityPolicy {
       isOneShot?: boolean
     },
   ): boolean {
-    if (context.isOrchestrator && HIGH_LEVEL_ORCHESTRATOR_TOOLS.has(toolId)) {
-      return true
-    }
-
     const rule = this.rules.get(toolId)
 
     if (!rule) {
@@ -129,9 +114,14 @@ export class ToolVisibilityPolicy {
     }
 
     if (input.identity.isOrchestrator) {
-      // Fail-closed for Orchestrator: return ONLY high level tools.
-      // If none match, return [] (do NOT fail-open to all tools).
-      return candidateTools.filter((t) => HIGH_LEVEL_ORCHESTRATOR_TOOLS.has(t.name))
+      // §P0-2 fix — fail-closed for Orchestrator: return ONLY
+      // orchestrator-classified tools. The previous hardcoded
+      // HIGH_LEVEL_ORCHESTRATOR_TOOLS list was removed; the Tool
+      // Registry's visibilityClass metadata is the single source of
+      // truth.
+      return candidateTools.filter(
+        (t) => t.metadata?.visibilityClass === 'orchestrator' || t.metadata?.visibilityClass === 'all',
+      )
     }
 
     // Smart ranking & prioritization if maxVisibleTools is specified

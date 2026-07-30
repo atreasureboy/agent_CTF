@@ -35,8 +35,14 @@ export interface ToolExposureResolverInput {
 
 export interface ToolExecutionAssertInput {
   identity: ModelExecutionIdentity
-  tool: ToolDescriptor
+  /** §P0-2 fix — execution-time gate must see the same context as
+   *  resolution-time: ModelCapabilityProfile (maxVisibleTools cap,
+   *  trust level), CapabilityProfile (denied/allowed tool lists),
+   *  TaskState (hypothesis status, scope), and full Tool Metadata. */
+  modelProfile?: import('../modelReliability/modelCapability.js').ModelCapabilityProfile
+  capabilityProfile?: import('../capabilityProfile.js').CapabilityProfile
   taskState?: Readonly<CTFTaskState>
+  tool: ToolDescriptor
 }
 
 export interface ToolExposureResolver {
@@ -110,10 +116,14 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
     const isOrchestrator = input.identity.isOrchestrator || input.identity.modelRole === 'competition_coordinator'
 
     if (isOrchestrator) {
-      const allowed =
-        input.tool.metadata?.visibilityClass === 'orchestrator' ||
-        input.tool.metadata?.visibilityClass === 'all'
-      if (!allowed) {
+      // §P0-2 fix — Orchestrator path now also consults the model's
+      // trustLevel and the capability profile's allowedTools list.
+      // The hardcoded HIGH_LEVEL_ORCHESTRATOR_TOOLS set was removed
+      // (it was a parallel definition that drifted from the Tool
+      // Registry); orchestrator tools are identified solely by
+      // metadata.visibilityClass.
+      const meta = input.tool.metadata
+      if (meta?.visibilityClass !== 'orchestrator' && meta?.visibilityClass !== 'all') {
         throw new Error(
           `ToolExecutionDenied: Orchestrator is not permitted to execute non-orchestrator tool '${input.tool.name}'.`,
         )
@@ -133,6 +143,24 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
       solverId: input.identity.solverId,
       specialistId: input.identity.specialistId,
       isOrchestrator: false,
+    }
+
+    // §P0-2 fix — Cap profile's denied/allowed tool list takes
+    // precedence over the policy rules (a misconfigured policy rule
+    // can no longer bypass a hard deny in the CapabilityProfile).
+    if (input.capabilityProfile?.deniedTools?.includes(input.tool.name)) {
+      throw new Error(
+        `ToolExecutionDenied: Tool '${input.tool.name}' is in capability-profile.deniedTools.`,
+      )
+    }
+    if (
+      input.capabilityProfile?.allowedTools &&
+      input.capabilityProfile.allowedTools.length > 0 &&
+      !input.capabilityProfile.allowedTools.includes(input.tool.name)
+    ) {
+      throw new Error(
+        `ToolExecutionDenied: Tool '${input.tool.name}' is not in capability-profile.allowedTools.`,
+      )
     }
 
     if (!this.policy.isToolVisible(input.tool.name, context)) {
