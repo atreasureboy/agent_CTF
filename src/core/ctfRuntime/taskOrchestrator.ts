@@ -245,10 +245,10 @@ export class CTFTaskOrchestrator {
       sessionsRoot: input.sessionsRoot,
       client,
       renderer,
-      // §七 — no fake 'test-key' fallback in production. If the caller
-      // supplied a real apiKey + modelConfig, use them. Otherwise modelConfig
-      // stays undefined and mode drops to 'workflow-only' so createCTFTaskRuntime
-      // doesn't assert LLM dependencies on a fake key.
+      // §P0-1 fix — ModelConfig requires a non-empty apiKey (string).
+      // Only pass modelConfig when the caller supplied both a config and
+      // a real apiKey. Otherwise modelConfig stays undefined and mode
+      // drops to 'workflow-only'.
       modelConfig: input.apiKey
         ? { model: input.model ?? 'gpt-4o', apiKey: input.apiKey, baseURL: input.baseURL }
         : undefined,
