@@ -113,18 +113,18 @@ python3 simple_solver.py challenges/*/challenge.json
 
 ## SolveBench 结果
 
-| 题目 | 类别 | 状态 | 时间 |
+| 题目 | 类别 | 状态 |
 |------|------|------|------|
-| Base64 Inception | encoding | ✓ | 0ms |
-| ROT13 Classic | encoding | ✓ | 0ms |
-| PNG Hidden Message | forensics | ✓ | 0ms |
-| ZIP Extraction | forensics | ✓ | 0ms |
-| XOR Checker | reverse | ✓ | 2ms |
-| Atbash Cipher | reverse | ✓ | 0ms |
-| Buffer Overflow Basics | pwn | ✓ | 5ms |
-| Directory Traversal | web | ✓ | 0ms |
-| HTTP Traffic Analysis | pcap | ✓ | 0ms |
-| LSB Steganography | misc | ✓ | 0ms |
+| Base64 Inception | encoding | ✓ |
+| ROT13 Classic | encoding | ✓ |
+| PNG Hidden Message | forensics | ✓ | 
+| ZIP Extraction | forensics | ✓ | 
+| XOR Checker | reverse | ✓ |
+| Atbash Cipher | reverse | ✓ |
+| Buffer Overflow Basics | pwn | ✓ |
+| Directory Traversal | web | ✓ |
+| HTTP Traffic Analysis | pcap | ✓ |
+| LSB Steganography | misc | ✓ | 
 
 **总计: 10/10 解出 (100%)**
 
