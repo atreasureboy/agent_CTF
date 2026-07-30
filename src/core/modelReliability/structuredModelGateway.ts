@@ -69,6 +69,13 @@ export interface ModelInvocationGateway {
   ): Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>>
 
   executeStructured<T>(input: StructuredModelRequest<T>): Promise<StructuredModelResponse<T>>
+
+  /**
+   * §P0-1 fix — Resolve a model profile by id from the underlying
+   * Registry. Throws if the profile is not registered. Returns
+   * `undefined` if the gateway does not back a Registry (legacy path).
+   */
+  getProfile(modelId: string): ModelCapabilityProfile | undefined
 }
 
 export interface StructuredModelGatewayDependencies {
@@ -91,6 +98,17 @@ export class StructuredModelGateway implements ModelInvocationGateway {
   private getRevisionFn?: (taskId: string) => number
   private truthfulnessGuard?: ProductionTruthfulnessGuard
   private providers = new Map<string, ModelProvider>()
+
+  /** §P0-1 fix — public lookup of the underlying Registry. The Registry
+   * is the single source of truth for Model Identity. Throws if the
+   * profile is not registered. */
+  public getProfile(modelId: string): ModelCapabilityProfile | undefined {
+    try {
+      return this.profileResolver.getRequired(modelId)
+    } catch {
+      return undefined
+    }
+  }
 
   constructor(deps: StructuredModelGatewayDependencies) {
     if (!deps || !deps.router || !deps.healthStore || !deps.circuitBreaker || !deps.registry) {

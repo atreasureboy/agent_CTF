@@ -288,39 +288,24 @@ export class ExecutionEngine {
     if (this.config.toolExposureResolver) {
       if (!this.config.identity && this.config.taskId) {
         throw new Error(
-          'ExecutionEngine: Mandatory ModelExecutionIdentity missing. Role guessing and dummy profile construction are prohibited.',
+          'ExecutionEngine.getToolDefinitions: Mandatory ModelExecutionIdentity missing. Role guessing and dummy profile construction are prohibited.',
         )
       }
-      const identity: ModelExecutionIdentity = this.config.identity || {
-        taskId: this.config.taskId || 'task',
-        modelRole: 'deep_solver',
-        modelProfileId: this.config.model,
-        providerId: 'openai-compatible',
-        capabilityProfileId: 'default',
-        isOrchestrator: false,
-      }
+      // identity is guaranteed non-null above.
+      const identity: ModelExecutionIdentity = this.config.identity as ModelExecutionIdentity
 
+      // §P0-1 fix — modelProfile comes from the gateway's Registry.
+      // If the requested profile is missing, throw rather than
+      // fabricating a permissive fallback with maxVisibleTools:50.
       let modelProfile: ModelCapabilityProfile | undefined
-      if (this.config.modelGateway && (this.config.modelGateway as any).getRegistry) {
-        modelProfile = (this.config.modelGateway as any).getRegistry().getProfile(identity.modelProfileId)
+      if (this.config.modelGateway) {
+        modelProfile = this.config.modelGateway.getProfile(identity.modelProfileId)
       }
       if (!modelProfile) {
-        modelProfile = {
-          id: identity.modelProfileId,
-          providerId: identity.providerId || 'openai-compatible',
-          providerModelName: identity.modelProfileId,
-          provider: identity.providerId || 'openai-compatible',
-          model: identity.modelProfileId,
-          trustLevel: 'standard',
-          reliabilityClass: 'standard',
-          contextWindow: 128000,
-          capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
-          reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
-          economics: {},
-          allowedRoles: [identity.modelRole],
-          limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
-          fallbackModelIds: [],
-        }
+        throw new Error(
+          `ExecutionEngine.getToolDefinitions: Unknown model profile '${identity.modelProfileId}'. ` +
+            `Register it via ModelCapabilityRegistry.registerProfile() before calling runTurn().`
+        )
       }
 
       const registry = (this.config.broker as any)?.getRegistry?.()
@@ -515,14 +500,8 @@ export class ExecutionEngine {
           'ExecutionEngine.callLLM: Mandatory ModelExecutionIdentity missing. Role guessing is prohibited.',
         )
       }
-      const identity: ModelExecutionIdentity = this.config.identity || {
-        taskId: this.config.taskId ?? 'session',
-        modelRole: 'deep_solver',
-        modelProfileId: this.config.model,
-        providerId: 'openai-compatible',
-        capabilityProfileId: 'default',
-        isOrchestrator: false,
-      }
+      // identity is guaranteed non-null by the check above.
+      const identity: ModelExecutionIdentity = this.config.identity as ModelExecutionIdentity
 
       stream = await this.config.modelGateway.streamAgentTurn({
         taskId: identity.taskId,

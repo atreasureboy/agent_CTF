@@ -109,6 +109,20 @@ function makeEngine(
     modelGateway: fakeGateway as any,
     permissionChecker: opts.permissionChecker,
     maxContextTokens: opts.maxContextTokens,
+    // §P0-1 — tests must supply an explicit Identity, not a default.
+    identity: {
+      taskId: 'session',
+      agentRunId: 'agent-1',
+      modelRole: 'deep_solver' as const,
+      modelProfileId: 'test-model',
+      providerId: 'openai-compatible',
+      capabilityProfileId: 'test-model',
+      modelId: 'test-model',
+      solverId: 'agent-1',
+      isOrchestrator: false,
+      isWorkflow: false,
+      isOneShot: false,
+    },
   }
   const engine = new ExecutionEngine(config, new Renderer())
   return { engine, eventLog }
@@ -283,7 +297,20 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       extraTools: [rec.tool],
       client,
       modelGateway: fakeGateway as any,
-    }
+        identity: {
+      taskId: 'session',
+      agentRunId: 'agent-1',
+      modelRole: 'deep_solver' as const,
+      modelProfileId: 'test-model',
+      providerId: 'openai-compatible',
+      capabilityProfileId: 'test-model',
+      modelId: 'test-model',
+      solverId: 'agent-1',
+      isOrchestrator: false,
+      isWorkflow: false,
+      isOneShot: false,
+    },
+  }
     const engine = new ExecutionEngine(config, new Renderer())
     // Register the faulty module directly on the engine.
     ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]
@@ -331,7 +358,20 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       eventLog,
       client,
       modelGateway: fakeGateway as any,
-    }
+        identity: {
+      taskId: 'session',
+      agentRunId: 'agent-1',
+      modelRole: 'deep_solver' as const,
+      modelProfileId: 'test-model',
+      providerId: 'openai-compatible',
+      capabilityProfileId: 'test-model',
+      modelId: 'test-model',
+      solverId: 'agent-1',
+      isOrchestrator: false,
+      isWorkflow: false,
+      isOneShot: false,
+    },
+  }
     const engine = new ExecutionEngine(config, new Renderer())
     ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]
     const { result } = await engine.runTurn('go', [])
