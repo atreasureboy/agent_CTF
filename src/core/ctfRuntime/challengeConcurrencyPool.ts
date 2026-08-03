@@ -1,5 +1,6 @@
 import { CTFTaskStateStore } from './taskStateStore.js'
 import type { CTFTaskState } from './taskState.js'
+import type { TaskExecutionContext } from './taskExecutionContext.js'
 
 export interface QueuedChallenge {
   id: string
@@ -67,11 +68,11 @@ export class ChallengeConcurrencyPool {
     const spawned: ChallengeTaskHandle[] = []
     while (this.getAvailableSlots() > 0 && this.queue.length > 0) {
       const challenge = this.queue.shift()!
-      const initial: any = {
+      const initial: CTFTaskState = {
         taskId: challenge.id,
         phase: 'created',
         activeProfileId: challenge.category.toLowerCase() || 'default',
-        context: { taskId: challenge.id } as any,
+        context: { taskId: challenge.id } as unknown as TaskExecutionContext,
         challenge: {
           description: challenge.description,
           category: challenge.category,
@@ -92,8 +93,8 @@ export class ChallengeConcurrencyPool {
         evidence: [],
         strategyDecisions: [],
         pendingActions: [],
-        reasoningBudget: {} as any,
-        reasoningBudgetLimits: {} as any,
+        reasoningBudget: {} as unknown as CTFTaskState['reasoningBudget'],
+        reasoningBudgetLimits: {} as unknown as CTFTaskState['reasoningBudgetLimits'],
         activeAgentRunIds: [],
         activeWorkflowRunIds: [],
         activeJobIds: [],
