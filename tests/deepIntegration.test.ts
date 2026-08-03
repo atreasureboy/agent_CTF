@@ -131,7 +131,7 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
             parameters: { type: 'object', properties: {} },
           },
         },
-        execute: async () => ({ content: 'file content', isError: false }),
+        execute: () => Promise.resolve({ content: 'file content', isError: false }),
       }
       registry.register(toolImpl, {
         id: 'Read',
