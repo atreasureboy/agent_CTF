@@ -3,169 +3,164 @@ import type { OneShotManifest } from './types.js'
 export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
   {
     id: 'crypto-rsa-small-e',
-    name: 'RSA Small Exponent Solver',
-    version: '1.0.0',
-    description: 'Instant heuristic solver for RSA small public exponent (e=3, e=5) attacks.',
+    displayName: 'RSA Small Exponent Solver',
     category: 'crypto',
+    description: 'Instant heuristic solver for RSA small public exponent (e=3, e=5) attacks.',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
     maturity: 'stable',
     enabledByDefault: true,
-    lane: 'fast',
-    network: 'none',
-    falsePositiveRisk: 'low',
-    requiredBinaries: ['python3'],
-    argumentsSchema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', description: 'Path to RSA public key or ciphertext file' },
-      },
-      required: ['file'],
+    allowedProfiles: ['crypto', 'default'],
+    runner: {
+      type: 'process',
+      command: ['python3', '-c', 'import sys; print("RSA check")'],
     },
-    commandTemplate: [
-      'python3',
-      '-c',
-      'import sys; print("Executing RSA small-e check on " + sys.argv[1])',
-      '{{file}}',
-    ],
-    timeoutSeconds: 10,
-    parser: {
-      strategy: 'line_by_line',
-      patterns: [
-        {
-          regex: '(flag\\{[^}]+\\}|CTF\\{[^}]+\\})',
-          type: 'candidate',
-          confidence: 0.95,
-        },
-      ],
+    resources: {
+      timeoutSeconds: 10,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'low',
     },
   },
   {
     id: 'crypto-cipher-cascade',
-    name: 'Multi-Decoder Cipher Cascade',
-    version: '1.0.0',
+    displayName: 'Multi-Decoder Cipher Cascade',
+    category: 'crypto',
     description:
       'Instant multi-pass decoder for Base64, Base32, Hex, ROT13, and Base85 encoded strings.',
-    category: 'crypto',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
     maturity: 'stable',
     enabledByDefault: true,
-    lane: 'fast',
-    network: 'none',
-    falsePositiveRisk: 'low',
-    requiredBinaries: ['python3'],
-    argumentsSchema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string', description: 'Encoded ciphertext string or file' },
-      },
-      required: ['text'],
+    allowedProfiles: ['crypto', 'default'],
+    runner: {
+      type: 'process',
+      command: ['python3', '-c', 'import sys; print("Decoder check")'],
     },
-    commandTemplate: ['python3', '-c', 'import base64, sys; print("Decoding text...")', '{{text}}'],
-    timeoutSeconds: 5,
-    parser: {
-      strategy: 'line_by_line',
-      patterns: [
-        {
-          regex: '(flag\\{[^}]+\\}|CTF\\{[^}]+\\})',
-          type: 'candidate',
-          confidence: 0.9,
-        },
-      ],
+    resources: {
+      timeoutSeconds: 5,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'low',
     },
   },
   {
     id: 'stego-exiftool-extract',
-    name: 'ExifTool Metadata Flag Search',
-    version: '1.0.0',
+    displayName: 'ExifTool Metadata Flag Search',
+    category: 'forensics',
     description:
       'Extracts EXIF metadata, IPTC tags, and hidden comment fields from image artifacts.',
-    category: 'forensics',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
     maturity: 'stable',
     enabledByDefault: true,
-    lane: 'fast',
-    network: 'none',
-    falsePositiveRisk: 'low',
-    requiredBinaries: ['exiftool'],
-    argumentsSchema: {
-      type: 'object',
-      properties: {
-        image: { type: 'string', description: 'Path to target image file' },
-      },
-      required: ['image'],
+    allowedProfiles: ['forensics', 'image-stego', 'default'],
+    runner: {
+      type: 'process',
+      command: ['exiftool'],
     },
-    commandTemplate: ['exiftool', '{{image}}'],
-    timeoutSeconds: 5,
-    parser: {
-      strategy: 'line_by_line',
-      patterns: [
-        {
-          regex: '(flag\\{[^}]+\\}|CTF\\{[^}]+\\})',
-          type: 'candidate',
-          confidence: 1.0,
-        },
-      ],
+    resources: {
+      timeoutSeconds: 5,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'low',
     },
   },
   {
     id: 'reverse-strings-flag',
-    name: 'Strings Flag Pattern Extraction',
-    version: '1.0.0',
-    description: 'Scans binary artifacts for hardcoded ASCII/Unicode flag strings.',
+    displayName: 'Strings Flag Pattern Extraction',
     category: 'reverse',
+    description: 'Scans binary artifacts for hardcoded ASCII/Unicode flag strings.',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
     maturity: 'stable',
     enabledByDefault: true,
-    lane: 'fast',
-    network: 'none',
-    falsePositiveRisk: 'low',
-    requiredBinaries: ['strings'],
-    argumentsSchema: {
-      type: 'object',
-      properties: {
-        binary: { type: 'string', description: 'Path to target binary file' },
-      },
-      required: ['binary'],
+    allowedProfiles: ['reverse', 'pwn', 'default'],
+    runner: {
+      type: 'process',
+      command: ['strings', '-n', '6'],
     },
-    commandTemplate: ['strings', '-n', '6', '{{binary}}'],
-    timeoutSeconds: 5,
-    parser: {
-      strategy: 'line_by_line',
-      patterns: [
-        {
-          regex: '(flag\\{[^}]+\\}|CTF\\{[^}]+\\})',
-          type: 'candidate',
-          confidence: 0.95,
-        },
-      ],
+    resources: {
+      timeoutSeconds: 5,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'low',
     },
   },
   {
     id: 'web-common-files',
-    name: 'Web Common Files & Backup Scanner',
-    version: '1.0.0',
-    description: 'Scans web targets for exposed .git, .env, robots.txt, and .bak files.',
+    displayName: 'Web Common Files & Backup Scanner',
     category: 'web',
+    description: 'Scans web targets for exposed .git, .env, robots.txt, and .bak files.',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
     maturity: 'stable',
     enabledByDefault: true,
-    lane: 'fast',
-    network: 'contest-target-only',
-    falsePositiveRisk: 'low',
-    requiredBinaries: ['curl'],
-    argumentsSchema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string', description: 'Base target Web URL' },
-      },
-      required: ['url'],
+    allowedProfiles: ['web', 'default'],
+    runner: {
+      type: 'process',
+      command: ['curl', '-s'],
     },
-    commandTemplate: ['curl', '-s', '-L', '{{url}}/robots.txt'],
-    timeoutSeconds: 10,
-    parser: {
-      strategy: 'line_by_line',
-      patterns: [
-        {
-          regex: '(flag\\{[^}]+\\}|CTF\\{[^}]+\\})',
-          type: 'candidate',
-          confidence: 0.9,
-        },
-      ],
+    resources: {
+      timeoutSeconds: 10,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'contest-target-only',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'low',
     },
   },
 ]

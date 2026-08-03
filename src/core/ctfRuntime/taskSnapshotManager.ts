@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { CTFTaskState } from './taskState.js'
@@ -11,6 +12,7 @@ export interface TaskSnapshotMetadata {
   timestamp: string
   activeProfileId: string
   version: string
+  checksum: string
 }
 
 export interface TaskSnapshotBundle {
@@ -27,6 +29,9 @@ export class TaskSnapshotManager {
   public static exportSnapshotJSON(store: CTFTaskStateStore): string {
     const state = store.getState()
     const revision = store.getRevision()
+    const rawContent = JSON.stringify(state)
+    const checksum = createHash('sha256').update(rawContent).digest('hex')
+
     const bundle: TaskSnapshotBundle = {
       metadata: {
         snapshotId: `snap_${state.taskId}_rev${revision}_${Date.now()}`,
@@ -36,6 +41,7 @@ export class TaskSnapshotManager {
         timestamp: new Date().toISOString(),
         activeProfileId: state.activeProfileId,
         version: TaskSnapshotManager.SNAPSHOT_VERSION,
+        checksum,
       },
       state,
     }
@@ -43,12 +49,22 @@ export class TaskSnapshotManager {
   }
 
   /**
-   * Restore a new CTFTaskStateStore instance from a JSON snapshot string.
+   * Restore a new CTFTaskStateStore instance from a JSON snapshot string with SHA-256 checksum verification.
    */
   public static restoreStoreFromJSON(json: string): CTFTaskStateStore {
     const bundle = JSON.parse(json) as TaskSnapshotBundle
     if (!bundle.metadata || !bundle.state) {
       throw new Error('[TaskSnapshotManager] Invalid snapshot bundle: missing metadata or state.')
+    }
+    if (bundle.metadata.checksum) {
+      const computedChecksum = createHash('sha256')
+        .update(JSON.stringify(bundle.state))
+        .digest('hex')
+      if (computedChecksum !== bundle.metadata.checksum) {
+        throw new Error(
+          `[TaskSnapshotManager] Snapshot Checksum Verification Failed! Computed: ${computedChecksum}, Metadata: ${bundle.metadata.checksum}`,
+        )
+      }
     }
     return new CTFTaskStateStore(bundle.state)
   }
