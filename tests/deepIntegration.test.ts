@@ -78,7 +78,7 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
       })
 
       const fp = createAttemptFingerprint({
-        kind: 'tool_call',
+        kind: 'tool',
         targetId: 'Read',
         parameters: { path: 'secret.txt' },
       })
@@ -87,7 +87,7 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
         type: 'ATTEMPT_STARTED',
         attempt: {
           id: 'attempt_1',
-          kind: 'tool_call',
+          kind: 'tool',
           targetId: 'Read',
           parameters: { path: 'secret.txt' },
           fingerprint: fp,
@@ -156,7 +156,7 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
         type: 'ATTEMPT_STARTED',
         attempt: {
           id: 'attempt_1',
-          kind: 'tool_call',
+          kind: 'tool',
           targetId: 'Read',
           parameters: { path: 'secret.txt' },
           status: 'running',

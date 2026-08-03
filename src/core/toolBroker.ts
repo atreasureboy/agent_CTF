@@ -39,6 +39,8 @@ import type { ModelExecutionIdentity } from './modelReliability/modelExecutionId
 import type { ProfileStore } from './ctfRuntime/profileStore.js'
 import type { ToolVisibilityPolicy } from './toolVisibility/toolVisibilityPolicy.js'
 import type { ToolExposureResolver } from './toolVisibility/toolExposureResolver.js'
+import type { AttemptDeduplicator } from './ctfReasoning/attemptDeduplicator.js'
+import type { CTFTaskStateStore } from './ctfRuntime/taskStateStore.js'
 
 export interface BrokerToolContext {
   cwd: string
@@ -93,8 +95,8 @@ export interface ToolBrokerOptions {
   toolVisibilityPolicy?: ToolVisibilityPolicy
   toolExposureResolver?: ToolExposureResolver
   /** Real Deep Integration: Hard-gated anti-stagnation interceptor */
-  attemptDeduplicator?: import('./ctfReasoning/attemptDeduplicator.js').AttemptDeduplicator
-  taskStateStore?: import('./ctfRuntime/taskStateStore.js').CTFTaskStateStore
+  attemptDeduplicator?: AttemptDeduplicator
+  taskStateStore?: CTFTaskStateStore
 }
 
 /**
@@ -252,7 +254,7 @@ export class ToolBroker {
       const state = this.opts.taskStateStore.getState()
       const decision = this.opts.attemptDeduplicator.check(
         {
-          kind: 'tool_call',
+          kind: 'tool',
           targetId: toolId,
           input,
         },
