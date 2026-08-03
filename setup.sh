@@ -1,9 +1,9 @@
 #!/bin/bash
 # ================================================================
-#  ovolv999 一键安装 (macOS / Linux)
+#  ovogogogo 一键安装 (macOS / Linux)
 #
 #  用法: ./setup.sh
-#  安装后: 终端输入 ovolv999 即可启动
+#  安装后: 终端输入 ovogogogo 即可启动
 # ================================================================
 
 set -e
@@ -16,7 +16,7 @@ NC='\033[0m'
 
 echo ""
 echo "  ======================================="
-echo "    ovolv999 Agent Base — Setup"
+echo "    ovogogogo Agent Base — Setup"
 echo "  ======================================="
 echo ""
 
@@ -87,31 +87,31 @@ fi
 
 # ── 7. Global command ──
 echo ""
-echo -e "${CYAN}[4/4]${NC} Creating global command \"ovolv999\"..."
+echo -e "${CYAN}[4/4]${NC} Creating global command \"ovogogogo\"..."
 if [ "$PKG" = "pnpm" ]; then
     pnpm link --global 2>/dev/null && echo -e "${GREEN}[OK]${NC} Linked via pnpm" || {
         # Fallback: manual symlink
         GLOBAL_BIN="$(npm prefix -g)/bin"
         mkdir -p "$GLOBAL_BIN"
-        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovolv999"
-        chmod +x "$GLOBAL_BIN/ovolv999"
-        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovolv999"
+        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovogogogo"
+        chmod +x "$GLOBAL_BIN/ovogogogo"
+        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovogogogo"
     }
 elif [ "$PKG" = "yarn" ]; then
     yarn global add file:"$PROJECT_DIR" 2>/dev/null && echo -e "${GREEN}[OK]${NC} Linked via yarn" || {
         GLOBAL_BIN="$(npm prefix -g)/bin"
         mkdir -p "$GLOBAL_BIN"
-        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovolv999"
-        chmod +x "$GLOBAL_BIN/ovolv999"
-        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovolv999"
+        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovogogogo"
+        chmod +x "$GLOBAL_BIN/ovogogogo"
+        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovogogogo"
     }
 else
     npm link 2>/dev/null && echo -e "${GREEN}[OK]${NC} Linked via npm" || {
         GLOBAL_BIN="$(npm prefix -g)/bin"
         mkdir -p "$GLOBAL_BIN"
-        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovolv999"
-        chmod +x "$GLOBAL_BIN/ovolv999"
-        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovolv999"
+        ln -sf "$PROJECT_DIR/dist/bin/ovogogogo.js" "$GLOBAL_BIN/ovogogogo"
+        chmod +x "$GLOBAL_BIN/ovogogogo"
+        echo -e "${GREEN}[OK]${NC} Created $GLOBAL_BIN/ovogogogo"
     }
 fi
 
@@ -121,9 +121,9 @@ echo "  ======================================="
 echo "    Verification"
 echo "  ======================================="
 echo ""
-if command -v ovolv999 &> /dev/null; then
-    ovolv999 --version
-    echo -e "${GREEN}[OK]${NC} ovolv999 is ready!"
+if command -v ovogogogo &> /dev/null; then
+    ovogogogo --version
+    echo -e "${GREEN}[OK]${NC} ovogogogo is ready!"
 else
     echo -e "${YELLOW}[!]${NC} Not in PATH yet — restart terminal or run:"
     echo "    node $PROJECT_DIR/dist/bin/ovogogogo.js"
@@ -135,9 +135,9 @@ echo "    Done!"
 echo "  ======================================="
 echo ""
 echo -e "  Usage:"
-echo -e "    ${CYAN}ovolv999${NC}                         Interactive REPL"
-echo -e "    ${CYAN}ovolv999 \"fix type errors\"${NC}        Single task"
-echo -e "    ${CYAN}ovolv999 --help${NC}                   Show help"
+echo -e "    ${CYAN}ovogogogo${NC}                         Interactive REPL"
+echo -e "    ${CYAN}ovogogogo \"fix type errors\"${NC}        Single task"
+echo -e "    ${CYAN}ovogogogo --help${NC}                   Show help"
 echo ""
 echo -e "  Config (.env or environment vars):"
 echo -e "    OPENAI_API_KEY=sk-...             Required"

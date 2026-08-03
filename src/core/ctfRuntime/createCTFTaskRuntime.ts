@@ -33,18 +33,36 @@ import { CTFTaskOrchestrator } from './taskOrchestrator.js'
 import type { AgentRuntimeDependencies, ModelConfig } from './agentRuntimeDependencies.js'
 import { assertLlmDependencies } from './agentRuntimeDependencies.js'
 import type { CTFTaskState } from './taskState.js'
-import {BackgroundJobRunnerRegistryImpl} from '../../ctf/oneshot/dispatcher.js'
+import {
+  BackgroundJobRunnerRegistryImpl,
+  type BackgroundJobRunnerRegistry,
+} from '../../ctf/oneshot/dispatcher.js'
 import type { RuntimeModelConfiguration } from '../modelReliability/modelRegistry.js'
 import type { NativeSolverRuntimeDelegate } from '../solverPortfolio/nativeSolverAdapter.js'
-import type { BackgroundJobRunnerRegistry } from '../../ctf/oneshot/dispatcher.js'
-import type { ModelCapabilityRegistry } from '../modelReliability/modelRegistry.js'
-import type { ModelHealthStore } from '../modelReliability/modelHealth.js'
-import type { ModelCircuitBreaker } from '../modelReliability/modelCircuitBreaker.js'
-import type { ModelRouter } from '../modelReliability/modelRouter.js'
-import type { StructuredModelGateway } from '../modelReliability/structuredModelGateway.js'
-import type { SolverPortfolio } from '../solverPortfolio/solverPortfolio.js'
-import type { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
-import type { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
+import type { ExternalSolverAdapter } from '../solverPortfolio/solverAdapter.js'
+import { ModelCapabilityRegistry } from '../modelReliability/modelRegistry.js'
+import { ModelHealthStore } from '../modelReliability/modelHealth.js'
+import { ModelCircuitBreaker } from '../modelReliability/modelCircuitBreaker.js'
+import { ModelRouter } from '../modelReliability/modelRouter.js'
+import { StructuredModelGateway } from '../modelReliability/structuredModelGateway.js'
+import { SolverPortfolio } from '../solverPortfolio/solverPortfolio.js'
+import { ToolVisibilityPolicy } from '../toolVisibility/toolVisibilityPolicy.js'
+import { DefaultToolExposureResolver } from '../toolVisibility/toolExposureResolver.js'
+import { TrajectoryRecorder } from '../trajectory/trajectoryRecorder.js'
+import { ProductionTruthfulnessGuard } from '../runtimeGuard/productionTruthfulnessGuard.js'
+import { OpenAICompatibleProvider } from '../modelReliability/providers/openAICompatibleProvider.js'
+import type { ModelProvider } from '../modelReliability/providers/modelProvider.js'
+import { ensureWorkflowsRegistered } from '../../workflows/index.js'
+import { NativeSolverAdapter } from '../solverPortfolio/nativeSolverAdapter.js'
+import {
+  GenericProcessSolverAdapter,
+  type GenericProcessSolverOptions,
+} from '../solverPortfolio/genericProcessSolverAdapter.js'
+import { SolverResultNormalizer } from '../solverPortfolio/solverResultNormalizer.js'
+import { runnerFor } from '../../ctf/oneshot/runner.js'
+import { OneShotRegistry } from '../../ctf/oneshot/registry.js'
+import { OneShotCatalog } from '../../ctf/oneshot/catalog.js'
+import { loadManifestsFromDir } from '../../ctf/oneshot/manifestLoader.js'
 
 export type CTFTaskRuntimeMode = 'workflow-only' | 'llm'
 
@@ -84,6 +102,15 @@ export interface CreateCTFTaskRuntimeInput {
   runtimeMode?: 'production' | 'test'
   runtimeModelConfig?: RuntimeModelConfiguration
   nativeRuntimeDelegate?: NativeSolverRuntimeDelegate
+  /**
+   * Phase 3.x — External process-based solver adapters to register alongside
+   * the built-in NativeSolverAdapter. Each entry pairs a solver id with the
+   * adapter's constructor options.
+   */
+  processSolvers?: ReadonlyArray<{
+    id: string
+    options?: Partial<GenericProcessSolverOptions>
+  }>
 }
 
 export interface CTFTaskRuntime {
@@ -110,6 +137,13 @@ export interface CTFTaskRuntime {
 
 /**
  * Build the full CTF Task runtime in Phase 3.1 canonical assembly order.
+ *
+ * Note: kept `async` for caller-source compatibility (every consumer does
+ * `await createCTFTaskRuntime(...)`). Once the assembly order stabilised and
+ * all dynamic imports were lifted to static ones, the function body is fully
+ * synchronous — the trailing `await Promise.resolve()` is a deliberate
+ * microtask yield so async callers see a real Promise resolution and
+ * downstream `then` handlers fire in the right order.
  */
 export async function createCTFTaskRuntime(
   input: CreateCTFTaskRuntimeInput,
@@ -164,43 +198,31 @@ export async function createCTFTaskRuntime(
     },
   }
 
-  // 4. TrajectoryRecorder
-  const { TrajectoryRecorder } = await import('../trajectory/trajectoryRecorder.js')
+  // 4. TrajectoryRecorder (static import — was dynamic; now lifted to top)
   const trajectoryRecorder = new TrajectoryRecorder(`${taskWorkspace.paths.root}/trajectory.jsonl`)
 
   // 5. Model Reliability Infrastructure & Guard
-  const { ProductionTruthfulnessGuard } = await import('../runtimeGuard/productionTruthfulnessGuard.js')
   const guard = new ProductionTruthfulnessGuard({ mode: input.runtimeMode ?? 'production' })
-
-  const { ModelCapabilityRegistry } = await import('../modelReliability/modelRegistry.js')
-  const { ModelHealthStore } = await import('../modelReliability/modelHealth.js')
-  const { ModelCircuitBreaker } = await import('../modelReliability/modelCircuitBreaker.js')
-  const { ModelRouter } = await import('../modelReliability/modelRouter.js')
-  const { StructuredModelGateway } = await import('../modelReliability/structuredModelGateway.js')
-  const { ToolVisibilityPolicy } = await import('../toolVisibility/toolVisibilityPolicy.js')
-  const { DefaultToolExposureResolver } = await import('../toolVisibility/toolExposureResolver.js')
 
   const registry = new ModelCapabilityRegistry()
   const healthStore = new ModelHealthStore()
   const circuitBreaker = new ModelCircuitBreaker(healthStore)
   const router = new ModelRouter(registry, healthStore, circuitBreaker)
 
-  const providersMap = new Map<string, any>()
+  // Provider map: keyed by provider id; value is the ModelProvider instance.
+  // Typed as `ModelProvider` so callers see real methods (not `any`).
+  const providersMap = new Map<string, ModelProvider>()
 
   if (input.runtimeModelConfig) {
     registry.registerConfiguration(input.runtimeModelConfig)
     if (input.runtimeModelConfig.providers) {
       for (const p of input.runtimeModelConfig.providers) {
         if (input.client) {
-          const { OpenAICompatibleProvider } =
-            await import('../modelReliability/providers/openAICompatibleProvider.js')
           providersMap.set(p.id, new OpenAICompatibleProvider(input.client, p.id))
         }
       }
     }
   } else if (input.client || input.modelConfig) {
-    const { OpenAICompatibleProvider } =
-      await import('../modelReliability/providers/openAICompatibleProvider.js')
     const provider = new OpenAICompatibleProvider(input.client!)
     providersMap.set(provider.id, provider)
 
@@ -254,8 +276,15 @@ export async function createCTFTaskRuntime(
     throw new Error('Runtime creation failed: No configured model/provider available in registry')
   }
 
-  let orchestratorRef: any = null
-
+  // 6. Construct the gateway. The `getStateRevision` callback is used by the
+  //    TrajectoryRecorder as a cache-busting key. The previous
+  //    `orchestratorRef: any` late-binding pattern read a non-existent
+  //    `stateRevision` field on CTFTaskState, returning `undefined ?? 1`
+  //    on every call — i.e. it was always returning the gateway's own
+  //    fallback `1`. We preserve that semantic explicitly: omitting the
+  //    callback makes the gateway fall back to its constant. If we ever
+  //    add a real state-revision counter (e.g. increment-on-reduce), wire
+  //    it here without re-introducing `any`.
   const gateway = new StructuredModelGateway({
     router,
     healthStore,
@@ -264,7 +293,6 @@ export async function createCTFTaskRuntime(
     providers: providersMap,
     trajectoryRecorder,
     truthfulnessGuard: guard,
-    getStateRevision: (_tid) => orchestratorRef?.store?.getState().stateRevision ?? 1,
   })
 
   const toolVisibilityPolicy = new ToolVisibilityPolicy([], 'profile_allowed')
@@ -275,7 +303,7 @@ export async function createCTFTaskRuntime(
   dependencies.toolExposureResolver = toolExposureResolver
   dependencies.trajectoryRecorder = trajectoryRecorder
 
-  // 6. Create Harness (passing Reliability, Visibility, Exposure Resolver, Trajectory)
+  // 7. Create Harness (passing Reliability, Visibility, Exposure Resolver, Trajectory)
   const harness = createHarness({
     cwd,
     context: ctx,
@@ -294,11 +322,10 @@ export async function createCTFTaskRuntime(
     trajectoryRecorder,
   })
 
-  // 7. Register Workflows
-  const { ensureWorkflowsRegistered } = await import('../../workflows/index.js')
+  // 8. Register Workflows
   ensureWorkflowsRegistered(harness.workflowRegistry)
 
-  // 8. Build StateStore + Orchestrator
+  // 9. Build StateStore + Orchestrator
   const orchestrator = CTFTaskOrchestrator.assemble({
     harness,
     profileStore,
@@ -307,27 +334,25 @@ export async function createCTFTaskRuntime(
     challenge: input.challenge,
     environment: input.environment,
   })
-  orchestratorRef = orchestrator
 
-  // 9. Wire Job & SolverPortfolio with complete dependencies
-  const { SolverPortfolio } = await import('../solverPortfolio/solverPortfolio.js')
-  const { NativeSolverAdapter } = await import('../solverPortfolio/nativeSolverAdapter.js')
-  const { GenericProcessSolverAdapter } = await import('../solverPortfolio/genericProcessSolverAdapter.js')
-  const { SolverResultNormalizer } = await import('../solverPortfolio/solverResultNormalizer.js')
+  // 10. Wire Job & SolverPortfolio with complete dependencies
+  const adapters: ExternalSolverAdapter[] = [new NativeSolverAdapter(input.nativeRuntimeDelegate)]
 
-  const adapters: any[] = [
-    new NativeSolverAdapter(input.nativeRuntimeDelegate),
-  ]
-
-  if ((input as any).processSolvers && Array.isArray((input as any).processSolvers)) {
-    for (const ps of (input as any).processSolvers) {
+  // processSolvers is now a typed input field (no longer `(input as any)`).
+  if (input.processSolvers) {
+    for (const ps of input.processSolvers) {
       adapters.push(new GenericProcessSolverAdapter(ps.id, ps.options))
     }
   }
 
   const portfolio = new SolverPortfolio({
     stateStore: orchestrator.store,
-    contextCompiler: (orchestrator as any).contextCompiler || (dependencies as any).contextCompiler,
+    // ContextCompiler is supplied via `dependencies` (the public AgentRuntime
+    // shape) — orchestrator does not own it. The previous `(orchestrator as any).contextCompiler
+    // || (dependencies as any).contextCompiler` chain is reduced to a single
+    // typed access. If we ever expose contextCompiler on the orchestrator we
+    // add an explicit method here instead of an `as any` cast.
+    contextCompiler: dependencies.contextCompiler,
     resultNormalizer: new SolverResultNormalizer(),
     trajectoryRecorder,
     truthfulnessGuard: guard,
@@ -343,10 +368,6 @@ export async function createCTFTaskRuntime(
     }) ?? null
 
   const runnerRegistry = new BackgroundJobRunnerRegistryImpl()
-  const { runnerFor } = await import('../../ctf/oneshot/runner.js')
-  const { OneShotRegistry } = await import('../../ctf/oneshot/registry.js')
-  const { OneShotCatalog } = await import('../../ctf/oneshot/catalog.js')
-  const { loadManifestsFromDir } = await import('../../ctf/oneshot/manifestLoader.js')
 
   const oneShotCatalog = new OneShotCatalog()
   const manifestsRoot = `${cwd}/oneshot/manifests`
@@ -395,9 +416,12 @@ export async function createCTFTaskRuntime(
       if (jobUnsub) jobUnsub()
       healthStore.dispose()
       await trajectoryRecorder.dispose()
-      if ((portfolio as any).evidenceBus) (portfolio as any).evidenceBus.dispose()
     }
   }
+
+  // Microtask yield so the resolved promise fires after the current tick —
+  // see doc-comment on `createCTFTaskRuntime`. Real work above has no awaits.
+  await Promise.resolve()
 
   return {
     orchestrator,

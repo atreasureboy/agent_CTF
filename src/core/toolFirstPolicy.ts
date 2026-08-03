@@ -283,7 +283,7 @@ export class ToolFirstPolicy {
   ): PolicyVerdict {
     for (const rule of this.rules) {
       try {
-        if (rule.match({ toolId, input, profile })) { // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+        if (rule.match({ toolId, input, profile })) {
           const verdict: PolicyVerdict = {
             advice: rule.advice(),
             severity: rule.severity,
@@ -339,7 +339,7 @@ export type PolicyGateResult =
 
 export function evaluatePolicyGate(args: PolicyGateInput): PolicyGateResult {
   const policy = new ToolFirstPolicy()
-  const verdict = policy.advise(args.toolId, args.input, args.profile) // eslint-disable-line @typescript-eslint/no-unsafe-argument
+  const verdict = policy.advise(args.toolId, args.input, args.profile)
   if (!verdict.suggestedWorkflowId) return { allowed: true }
 
   const suggested = verdict.suggestedWorkflowId

@@ -56,20 +56,28 @@ export class CrossSolverEvidenceBus {
       (msg.artifactIds && msg.artifactIds.length > 0)
 
     if (!hasGroundedId) {
-      return { accepted: false, reason: 'Ungrounded message: lacks evidenceIds, observationIds, and artifactIds.' }
+      return {
+        accepted: false,
+        reason: 'Ungrounded message: lacks evidenceIds, observationIds, and artifactIds.',
+      }
     }
 
     // Verify all grounded IDs actually exist in CTFTaskStateStore
     const state = this.stateStore.getState()
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const validEvIds = msg.evidenceIds.filter((id) => state.evidence.some((e: any) => e.id === id))
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const validObsIds = msg.observationIds.filter((id) => state.observations.some((o: any) => o.id === id))
+    const validEvIds = msg.evidenceIds.filter((id) =>
+      state.evidence.some((e: { id: string }) => e.id === id),
+    )
+    const validObsIds = msg.observationIds.filter((id) =>
+      state.observations.some((o: { id: string }) => o.id === id),
+    )
     const validArtIds = msg.artifactIds.filter((id) => state.artifactIds.includes(id))
 
     if (validEvIds.length === 0 && validObsIds.length === 0 && validArtIds.length === 0) {
       // IDs provided do not exist in physical TaskStateStore yet. Reject ungrounded broadcast.
-      return { accepted: false, reason: 'Provided IDs do not exist in physical TaskStateStore yet.' }
+      return {
+        accepted: false,
+        reason: 'Provided IDs do not exist in physical TaskStateStore yet.',
+      }
     }
 
     return { accepted: true }

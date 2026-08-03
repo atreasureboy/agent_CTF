@@ -1,5 +1,5 @@
 /**
- * Tool registry — ovolv999 agent base tools
+ * Tool registry — ovogogogo agent base tools
  */
 
 import type { Tool } from '../core/types.js'

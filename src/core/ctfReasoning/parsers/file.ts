@@ -6,6 +6,7 @@
  * pointing to a type-specific workflow.
  */
 
+import { closeSync, openSync, readSync } from 'node:fs'
 import type { ResultParser, ParserInput, MaterializedResult } from '../parserRegistry.js'
 
 interface MagicEntry {
@@ -67,15 +68,13 @@ function readFirstBytes(
 ): number[] | null {
   if (stdoutPath) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
-      const fs = require('fs') as typeof import('fs')
-      const fd = fs.openSync(stdoutPath, 'r')
+      const fd = openSync(stdoutPath, 'r')
       try {
         const buf = Buffer.alloc(16)
-        const n = fs.readSync(fd, buf, 0, 16, 0)
+        const n = readSync(fd, buf, 0, 16, 0)
         return Array.from(buf.subarray(0, n))
       } finally {
-        fs.closeSync(fd)
+        closeSync(fd)
       }
     } catch {
       return null

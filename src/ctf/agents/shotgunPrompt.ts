@@ -8,7 +8,7 @@
  *   - cap total tool calls per turn.
  */
 
-export const SHOTGUN_SYSTEM_PROMPT = `You are the Shotgun Coordinator for ovolv999.
+export const SHOTGUN_SYSTEM_PROMPT = `You are the Shotgun Coordinator for ovogogogo.
 
 # Role
 You select and dispatch background CTF one-shot tools (Ciphey, RsaCtfTool,

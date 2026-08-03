@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel previous runs on the same ref to avoid wasted compute.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-lint:
+    name: Build · Test · Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # pnpm-lock.yaml is committed but package-lock.json is also present;
+        # prefer npm to match the .gitignore contract that excludes
+        # package-lock.json (i.e. npm is the package manager in use).
+        run: npm ci
+
+      - name: TypeScript type-check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify no require() in ESM source
+        # Belt-and-braces for the C2 fix: assert no CommonJS require() in
+        # compiled ESM source. Should always pass after fix; flags any future
+        # regression immediately.
+        run: |
+          if grep -rn "^\s*\(const\|let\|var\)\s.*=\s*require(" src/ tests/ bin/ 2>/dev/null; then
+            echo "::error::CommonJS require() detected in ESM TypeScript source"
+            exit 1
+          fi
+          # Also catch inline-style require("...")
+          if grep -rn 'return require(' src/ 2>/dev/null; then
+            echo "::error::inline require() detected in src/"
+            exit 1
+          fi

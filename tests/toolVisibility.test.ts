@@ -5,8 +5,8 @@ describe('ToolVisibilityPolicy & MCPVisibility', () => {
   it('restricts Orchestrator to high-level orchestrator tools only', () => {
     const policy = new ToolVisibilityPolicy()
     const tools = [
-      { name: 'inspect_task_state' },
-      { name: 'run_workflow' },
+      { name: 'inspect_task_state', metadata: { visibilityClass: 'orchestrator' } },
+      { name: 'run_workflow', metadata: { visibilityClass: 'orchestrator' } },
       { name: 'exiftool' },
       { name: 'binwalk' },
     ]

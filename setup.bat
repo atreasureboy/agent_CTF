@@ -1,15 +1,15 @@
 @echo off
 chcp 65001 >nul 2>nul
 REM ================================================================
-REM  ovolv999 一键安装 (Windows)
+REM  ovogogogo 一键安装 (Windows)
 REM
 REM  用法: 双击运行 或 在终端执行 setup.bat
-REM  安装后: 终端输入 ovolv999 即可启动
+REM  安装后: 终端输入 ovogogogo 即可启动
 REM ================================================================
 
 echo.
 echo  =======================================
-echo    ovolv999 Agent Base — Setup (Windows)
+echo    ovogogogo Agent Base — Setup (Windows)
 echo  =======================================
 echo.
 
@@ -82,7 +82,7 @@ if exist ".env" (
         echo  [OK] Wrote .env from current environment
     ) else (
         echo.
-        echo  API Key is required to run ovolv999.
+        echo  API Key is required to run ovogogogo.
         echo  Paste your OpenAI-compatible API key ^(or press Enter to skip^):
         set /p API_KEY="  Key: "
         if not "%API_KEY%"=="" (
@@ -96,7 +96,7 @@ if exist ".env" (
 
 REM ── 7. 全局命令 ──
 echo.
-echo  [4/4] Creating global command "ovolv999"...
+echo  [4/4] Creating global command "ovogogogo"...
 call %PKG% link 2>nul
 if %errorlevel% neq 0 (
     echo  [!] npm link failed, creating wrapper manually...
@@ -104,10 +104,10 @@ if %errorlevel% neq 0 (
     (
         echo @echo off
         echo node "%PROJECT_DIR%\dist\bin\ovogogogo.js" %%*
-    ) > "%GPREFIX%\ovolv999.cmd"
-    echo  [OK] Created %GPREFIX%\ovolv999.cmd
+    ) > "%GPREFIX%\ovogogogo.cmd"
+    echo  [OK] Created %GPREFIX%\ovogogogo.cmd
 ) else (
-    echo  [OK] Global command "ovolv999" linked
+    echo  [OK] Global command "ovogogogo" linked
 )
 
 REM ── 8. 验证 ──
@@ -116,12 +116,12 @@ echo  =======================================
 echo    Verification
 echo  =======================================
 echo.
-ovolv999 --version 2>nul
+ovogogogo --version 2>nul
 if %errorlevel% neq 0 (
     echo  [!] Command not in PATH yet
     echo      Restart your terminal, or run: node dist\bin\ovogogogo.js
 ) else (
-    echo  [OK] ovolv999 is ready!
+    echo  [OK] ovogogogo is ready!
 )
 
 echo.
@@ -130,9 +130,9 @@ echo    Done!
 echo  =======================================
 echo.
 echo  Usage:
-echo    ovolv999                         Interactive REPL
-echo    ovolv999 "fix type errors"        Single task
-echo    ovolv999 --help                   Show help
+echo    ovogogogo                         Interactive REPL
+echo    ovogogogo "fix type errors"        Single task
+echo    ovogogogo --help                   Show help
 echo.
 echo  Config (.env or environment vars):
 echo    OPENAI_API_KEY=sk-...             Required

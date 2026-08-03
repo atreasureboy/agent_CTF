@@ -1,5 +1,5 @@
 #!/bin/bash
-# ovolv999 快速启动 (macOS / Linux)
+# ovogogogo 快速启动 (macOS / Linux)
 # 用法: ./start.sh 或 ./start.sh "your task"
 
 set -e

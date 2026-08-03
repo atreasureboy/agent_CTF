@@ -22,7 +22,9 @@ export class TaskServer {
   constructor(port: number = 3000) {
     this.port = port
     this.tasks = new Map()
-    this.server = http.createServer((req, res) => { void this.handleRequest(req, res) })
+    this.server = http.createServer((req, res) => {
+      void this.handleRequest(req, res)
+    })
   }
 
   start(): Promise<void> {
@@ -37,7 +39,9 @@ export class TaskServer {
     })
   }
 
-  createTask(task: Omit<CTFTask, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'findings'>): CTFTask {
+  createTask(
+    task: Omit<CTFTask, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'findings'>,
+  ): CTFTask {
     const now = Date.now()
     const newTask: CTFTask = {
       id: randomUUID(),
@@ -68,7 +72,10 @@ export class TaskServer {
     task.updatedAt = Date.now()
   }
 
-  addFinding(taskId: string, finding: { title: string; category: string; confidence: string }): void {
+  addFinding(
+    taskId: string,
+    finding: { title: string; category: string; confidence: string },
+  ): void {
     const task = this.tasks.get(taskId)
     if (!task) throw new Error(`Task ${taskId} not found`)
     task.findings.push({ id: randomUUID(), ...finding })
@@ -108,7 +115,10 @@ export class TaskServer {
       }
 
       if (method === 'POST' && path === '/api/tasks') {
-        const body = (await this.readBody(req)) as Omit<CTFTask, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'findings'>
+        const body = (await this.readBody(req)) as Omit<
+          CTFTask,
+          'id' | 'createdAt' | 'updatedAt' | 'status' | 'findings'
+        >
         const task = this.createTask(body)
         this.sendJson(res, 201, task)
         return
@@ -129,7 +139,7 @@ export class TaskServer {
         }
 
         if (method === 'PATCH') {
-          const body = await this.readBody(req) as Record<string, unknown>
+          const body = (await this.readBody(req)) as Record<string, unknown>
           const task = this.getTask(id)
           if (!task) {
             this.sendJson(res, 404, { error: 'Task not found' })

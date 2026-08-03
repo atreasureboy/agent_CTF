@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterAll } from 'vitest'
 import { ModelCapabilityRegistry } from '../src/core/modelReliability/modelRegistry.js'
 import { ModelHealthStore } from '../src/core/modelReliability/modelHealth.js'
 import { ModelCircuitBreaker } from '../src/core/modelReliability/modelCircuitBreaker.js'
@@ -178,7 +178,10 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
     ).toBe(false)
 
     const orchVisible = policy.resolveVisibleTools({
-      tools: [{ name: 'inspect_task_state' }, { name: 'Bash' }],
+      tools: [
+        { name: 'inspect_task_state', metadata: { visibilityClass: 'orchestrator' } },
+        { name: 'Bash' },
+      ],
       identity: {
         taskId: 'task_3',
         modelRole: 'competition_coordinator',
@@ -194,7 +197,10 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
     expect(orchVisible.map((t) => t.name)).toEqual(['inspect_task_state'])
 
     const emptyOrchVisible = policy.resolveVisibleTools({
-      tools: [{ name: 'Bash' }, { name: 'Read' }],
+      tools: [
+        { name: 'Bash' },
+        { name: 'Read' },
+      ],
       identity: {
         taskId: 'task_3',
         modelRole: 'competition_coordinator',
@@ -210,8 +216,24 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
     expect(emptyOrchVisible).toEqual([]) // Fail-closed, no leak to all tools!
   })
 
+  // §H7 fix — Track every `scratch/test_proj_*` directory this suite creates
+  // and clean them up after the suite finishes. The previous implementation
+  // leaked ~80 such directories on disk, accumulating 1.5 MB of test
+  // fixtures with no `afterEach` / `afterAll` hook.
+  const scratchDirs: string[] = []
+  afterAll(() => {
+    for (const d of scratchDirs) {
+      try {
+        rmSync(d, { recursive: true, force: true })
+      } catch {
+        /* best-effort */
+      }
+    }
+  })
+
   it('4. TaskStateProjectionBuilder & CompilerValidator strictly validate TaskState', () => {
     const tmpDir = join(process.cwd(), 'scratch', `test_proj_${Date.now()}`)
+    scratchDirs.push(tmpDir)
     const artifactStore = new ArtifactStore(tmpDir)
     const findingStore = new FindingStore(tmpDir)
     const toolRegistry = new ToolRegistry()
@@ -446,6 +468,7 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   it('10. TrajectoryRecorder handles async queued writing, redaction, and clean dispose flush', async () => {
     const logPath = join(process.cwd(), 'scratch', 'test_trajectory.jsonl')
     if (existsSync(logPath)) rmSync(logPath)
+    scratchDirs.push(join(process.cwd(), 'scratch'))
 
     const recorder = new TrajectoryRecorder(logPath, () => 5)
     recorder.record('task_10', 'model_routing_decision', {

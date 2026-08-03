@@ -17,7 +17,7 @@
  * framer text.
  */
 
-import type {ActionExecutionResult} from './actionExecutionResult.js'
+import type { ActionExecutionResult } from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,

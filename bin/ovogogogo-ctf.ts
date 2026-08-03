@@ -288,8 +288,13 @@ ONEShot COMMANDS (six_goal §十四)
       stderr.write(`${RED}error:${RESET} solve requires a challenge.json path\n`)
       return 1
     }
-    const { runSolveCommand } = await import('../src/ctf/cli/solve.js')
-    return runSolveCommand(argv[3], { stdout, stderr })
+    const solveModule: {
+      runSolveCommand: (
+        path: string,
+        options: { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream },
+      ) => Promise<number>
+    } = await import('../src/ctf/cli/solve.js')
+    return solveModule.runSolveCommand(argv[3], { stdout, stderr })
   }
 
   // §十四 — parseArgs inside the try block so missing-value / unknown-flag

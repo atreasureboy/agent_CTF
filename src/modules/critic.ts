@@ -52,7 +52,9 @@ export class CriticModule implements AgentModule {
     try {
       if (!this.gateway) return
 
-      const schema = z.object({ analysis: z.string().optional(), criticism: z.string().optional() }).passthrough()
+      const schema = z
+        .object({ analysis: z.string().optional(), criticism: z.string().optional() })
+        .passthrough()
       const res = await this.gateway.executeStructured({
         role: 'specialist',
         preferredModelId: this.model,

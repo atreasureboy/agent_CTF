@@ -36,11 +36,7 @@ import { BudgetManager } from './budgetManager.js'
 import { selectManifests, type SelectedRun, type SelectionInput } from './selector.js'
 import type { OneShotRegistry } from './registry.js'
 import type { OneShotCatalog } from './catalog.js'
-import type {
-  BackgroundJobManager,
-  JobRunner,
-  JobSpec,
-} from '../../core/backgroundJobs.js'
+import type { BackgroundJobManager, JobRunner, JobSpec } from '../../core/backgroundJobs.js'
 import { newEvidenceDir } from './evidenceCollector.js'
 import { createOneShotResultStore, type OneShotResultStore } from './resultStore.js'
 import {
@@ -106,20 +102,62 @@ interface ActiveRun {
 export interface BackgroundJobRunnerRegistry {
   register(prefix: string, runner: JobRunner): void
   resolve(toolId: string): JobRunner | null
+  unregister(prefix: string): boolean
+  list(): string[]
 }
 
 export class BackgroundJobRunnerRegistryImpl implements BackgroundJobRunnerRegistry {
   private readonly map = new Map<string, JobRunner>()
+  private readonly emittedOverlapWarnings = new Set<string>()
 
   register(prefix: string, runner: JobRunner): void {
+    if (this.map.has(prefix)) {
+      throw new Error(
+        `BackgroundJobRunnerRegistry: prefix '${prefix}' already registered. ` +
+          `Call unregister() first or pick a different prefix.`,
+      )
+    }
+    for (const existing of this.map.keys()) {
+      if (existing === prefix) continue
+      const warnKey = `${existing}|${prefix}`
+      if (existing.startsWith(prefix) || prefix.startsWith(existing)) {
+        if (!this.emittedOverlapWarnings.has(warnKey)) {
+          this.emittedOverlapWarnings.add(warnKey)
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[BackgroundJobRunnerRegistry] prefix overlap: existing '${existing}' ` +
+              `and new '${prefix}' share a prefix; longer-match wins.`,
+          )
+        }
+      }
+    }
     this.map.set(prefix, runner)
   }
 
   resolve(toolId: string): JobRunner | null {
-    for (const [prefix, runner] of this.map) {
+    // Longest-prefix match: avoid the previous Map-iteration-order bias
+    // where the first registered prefix always won regardless of specificity.
+    const sorted = Array.from(this.map.entries()).sort(([a], [b]) => b.length - a.length)
+    for (const [prefix, runner] of sorted) {
       if (toolId.startsWith(prefix)) return runner
     }
     return null
+  }
+
+  unregister(prefix: string): boolean {
+    const existed = this.map.delete(prefix)
+    if (existed) {
+      for (const key of Array.from(this.emittedOverlapWarnings)) {
+        if (key.includes(`|${prefix}`) || key.includes(`${prefix}|`)) {
+          this.emittedOverlapWarnings.delete(key)
+        }
+      }
+    }
+    return existed
+  }
+
+  list(): string[] {
+    return Array.from(this.map.keys())
   }
 }
 

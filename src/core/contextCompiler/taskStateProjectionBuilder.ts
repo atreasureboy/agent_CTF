@@ -43,9 +43,13 @@ export class TaskStateProjectionBuilder {
       )
     }
 
-    const stateRevision = getRevisionFn ? getRevisionFn(state.taskId) : ((state as any).revision ?? (state as any).stateRevision)
+    const stateRevision = getRevisionFn
+      ? getRevisionFn(state.taskId)
+      : ((state as any).revision ?? (state as any).stateRevision)
     if (stateRevision === undefined || stateRevision === null) {
-      throw new Error(`[TaskStateProjectionBuilder] State revision for task '${state.taskId}' is undefined. Hardcoded fallback is prohibited.`)
+      throw new Error(
+        `[TaskStateProjectionBuilder] State revision for task '${state.taskId}' is undefined. Hardcoded fallback is prohibited.`,
+      )
     }
 
     // Build real tool descriptors from ToolRegistry with authentic metadata
@@ -55,7 +59,11 @@ export class TaskStateProjectionBuilder {
       parameters: (t.impl?.definition?.function?.parameters as Record<string, any>) || {},
       cost: t.costClass === 'expensive' ? 3 : t.costClass === 'medium' ? 2 : 1,
       metadata: {
-        visibilityClass: t.visibilityClass ?? (t.domains.some((d) => d === 'meta' || d === 'workflow' || d === 'agent') ? 'orchestrator' : 'solver'),
+        visibilityClass:
+          t.visibilityClass ??
+          (t.domains.some((d) => d === 'meta' || d === 'workflow' || d === 'agent')
+            ? 'orchestrator'
+            : 'solver'),
         roleMatch: t.roleMatch || [],
         hypothesisMatch: t.hypothesisMatch || [],
         informationGain: t.informationGain ?? 1,
@@ -80,12 +88,16 @@ export class TaskStateProjectionBuilder {
     const compiledArtifacts = state.artifactIds.map((id) => {
       const meta = artifactStore.getMetadata(id)
       if (!meta) {
-        throw new Error(`[TaskStateProjectionBuilder] Artifact metadata for '${id}' not found in ArtifactStore.`)
+        throw new Error(
+          `[TaskStateProjectionBuilder] Artifact metadata for '${id}' not found in ArtifactStore.`,
+        )
       }
 
       const authorizedPath = (meta as any).authorizedPath || meta.path
       if (!authorizedPath) {
-        throw new Error(`[TaskStateProjectionBuilder] Artifact '${id}' has no authorized file path.`)
+        throw new Error(
+          `[TaskStateProjectionBuilder] Artifact '${id}' has no authorized file path.`,
+        )
       }
 
       guard.assertValidArtifactPath(authorizedPath, id)
@@ -103,13 +115,15 @@ export class TaskStateProjectionBuilder {
     })
 
     // Build real findings from FindingStore
-    const taskFindings = findingStore.list((f) => f.taskId === state.taskId).map((f) => ({
-      id: f.id,
-      category: f.category,
-      title: f.title,
-      confidence: f.confidence,
-      summary: f.summary,
-    }))
+    const taskFindings = findingStore
+      .list((f) => f.taskId === state.taskId)
+      .map((f) => ({
+        id: f.id,
+        category: f.category,
+        title: f.title,
+        confidence: f.confidence,
+        summary: f.summary,
+      }))
 
     const stateSnapshotHash = computeCanonicalSnapshotHash({
       taskId: state.taskId,

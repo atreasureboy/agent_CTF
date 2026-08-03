@@ -64,4 +64,3 @@ export class SolverUnavailableError extends Error {
     this.reason = reason
   }
 }
-

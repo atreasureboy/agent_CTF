@@ -1,6 +1,6 @@
 import type { CompiledContext } from './compiledContext.js'
 
-import type { TaskStateProjectionInput } from './contextProjection.js';
+import type { TaskStateProjectionInput } from './contextProjection.js'
 import { ContextProjection } from './contextProjection.js'
 import type { ModelRole } from '../modelReliability/modelCapability.js'
 

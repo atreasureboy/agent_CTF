@@ -5,10 +5,9 @@ import type {
   SolverChallengeInput,
   SolverEvent,
   SolverHealth,
-  SolverRunRecord} from './solverTypes.js';
-import {
-  SolverUnavailableError,
+  SolverRunRecord,
 } from './solverTypes.js'
+import { SolverUnavailableError } from './solverTypes.js'
 import type { CTFTaskState } from '../ctfRuntime/taskState.js'
 
 export interface NativeSolverRuntimeDelegate {
@@ -173,7 +172,8 @@ export class NativeSolverAdapter implements ExternalSolverAdapter {
       }
 
       record.status = 'failed'
-      record.failureReason = 'NativeSolverRuntimeDelegate has no executable method (run/runMainAgent/runWorkflow)'
+      record.failureReason =
+        'NativeSolverRuntimeDelegate has no executable method (run/runMainAgent/runWorkflow)'
       emitEvent({ type: 'status', status: 'failed', timestamp: Date.now() })
       throw new SolverUnavailableError(this.id, record.failureReason)
     })()

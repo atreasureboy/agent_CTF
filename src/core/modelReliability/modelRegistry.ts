@@ -1,8 +1,5 @@
-import type {
-  ModelCapabilityProfile} from './modelCapability.js';
-import {
-  ModelCapabilityProfileSchema,
-} from './modelCapability.js'
+import type { ModelCapabilityProfile } from './modelCapability.js'
+import { ModelCapabilityProfileSchema } from './modelCapability.js'
 import type { ModelProfileResolver } from './structuredModelGateway.js'
 
 export interface ProviderConfiguration {
@@ -81,9 +78,7 @@ export class ModelCapabilityRegistry implements ModelProfileResolver {
   public registerConfiguration(config: RuntimeModelConfiguration): void {
     const validation = validateModelRuntimeConfiguration(config)
     if (!validation.valid) {
-      throw new Error(
-        `Invalid RuntimeModelConfiguration: ${validation.errors.join('; ')}`,
-      )
+      throw new Error(`Invalid RuntimeModelConfiguration: ${validation.errors.join('; ')}`)
     }
     for (const model of config.models) {
       this.registerProfile(model)
@@ -110,4 +105,3 @@ export class ModelCapabilityRegistry implements ModelProfileResolver {
     return Array.from(this.profiles.values())
   }
 }
-

@@ -2,10 +2,75 @@ import { readFileSync, existsSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { createHash } from 'crypto'
 import { exec, spawn } from 'child_process'
+import type { ChildProcess } from 'child_process'
 import { fileURLToPath } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+/**
+ * Minimal typed shape of a SolveBench challenge.json file. The schema mirrors
+ * `ChallengeManifestSchema` in `src/core/challengeManifest.ts` but is kept
+ * inline because the SolveBench CLI doesn't import the CTF runtime types
+ * (it's a thin shim that spawns the agent as a subprocess).
+ */
+interface SolveBenchManifest {
+  id: string
+  title: string
+  category: string
+  description: string
+  expectedFlagSha256: string
+  timeoutMs: number
+  startupCommand?: string
+  shutdownCommand?: string
+  attachmentPaths?: string[]
+}
+
+function parseManifest(json: unknown): SolveBenchManifest {
+  if (typeof json !== 'object' || json === null) {
+    throw new Error('challenge.json must be a JSON object')
+  }
+  const o = json as Record<string, unknown>
+  const required = (k: string): unknown => {
+    if (!(k in o)) throw new Error(`challenge.json missing required field '${k}'`)
+    return o[k]
+  }
+  const str = (k: string): string => {
+    const v = required(k)
+    if (typeof v !== 'string') throw new Error(`challenge.json field '${k}' must be a string`)
+    return v
+  }
+  const num = (k: string): number => {
+    const v = required(k)
+    if (typeof v !== 'number') throw new Error(`challenge.json field '${k}' must be a number`)
+    return v
+  }
+  const optStr = (k: string): string | undefined => {
+    const v = o[k]
+    if (v === undefined) return undefined
+    if (typeof v !== 'string') throw new Error(`challenge.json field '${k}' must be a string`)
+    return v
+  }
+  const optStrArr = (k: string): string[] | undefined => {
+    const v = o[k]
+    if (v === undefined) return undefined
+    if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) {
+      throw new Error(`challenge.json field '${k}' must be a string[]`)
+    }
+    return v as string[]
+  }
+  return {
+    id: str('id'),
+    title: str('title'),
+    category: str('category'),
+    description: str('description'),
+    expectedFlagSha256: str('expectedFlagSha256'),
+    timeoutMs: num('timeoutMs'),
+    startupCommand: optStr('startupCommand'),
+    shutdownCommand: optStr('shutdownCommand'),
+    attachmentPaths: optStrArr('attachmentPaths'),
+  }
+}
 
 export async function runSolveCommand(
   challengePath: string,
@@ -18,7 +83,7 @@ export async function runSolveCommand(
     return 1
   }
 
-  const manifest = JSON.parse(readFileSync(challengePath, 'utf-8'))
+  const manifest = parseManifest(JSON.parse(readFileSync(challengePath, 'utf-8')))
   const challengeDir = dirname(resolve(challengePath))
 
   stdout.write(`\n=== SolveBench Challenge ===\n`)
@@ -30,7 +95,7 @@ export async function runSolveCommand(
   stdout.write(`Timeout: ${manifest.timeoutMs}ms\n\n`)
 
   // Start server if needed
-  let serverProcess: any = null
+  let serverProcess: ChildProcess | null = null
   if (manifest.startupCommand) {
     stdout.write(`Starting server: ${manifest.startupCommand}\n`)
     const [cmd, ...args] = manifest.startupCommand.split(' ')
@@ -47,10 +112,14 @@ export async function runSolveCommand(
     const cliPath = resolve(__dirname, '../../../bin/ovogogogo-ctf.ts')
     // Clean description - remove newlines and extra spaces for CLI arg
     const cleanDesc = manifest.description.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
-    const agentCmd = [
-      'npx', 'tsx', cliPath,
-      '--profile', getProfileForCategory(manifest.category),
-      '--cwd', challengeDir,
+    const agentCmd: string[] = [
+      'npx',
+      'tsx',
+      cliPath,
+      '--profile',
+      getProfileForCategory(manifest.category),
+      '--cwd',
+      challengeDir,
       cleanDesc,
     ]
 
@@ -66,11 +135,7 @@ export async function runSolveCommand(
     stdout.write(`Running agent: ${agentCmd.join(' ')}\n\n`)
 
     // Run agent with timeout
-    const result = await runWithTimeout(
-      agentCmd,
-      challengeDir,
-      manifest.timeoutMs,
-    )
+    const result = await runWithTimeout(agentCmd, challengeDir, manifest.timeoutMs)
 
     stdout.write(`\n=== Agent Output ===\n`)
     stdout.write(result.stdout)
@@ -138,11 +203,11 @@ async function runWithTimeout(
     let stdout = ''
     let stderr = ''
 
-    proc.stdout.on('data', (data) => {
+    proc.stdout.on('data', (data: Buffer) => {
       stdout += data.toString()
     })
 
-    proc.stderr.on('data', (data) => {
+    proc.stderr.on('data', (data: Buffer) => {
       stderr += data.toString()
     })
 

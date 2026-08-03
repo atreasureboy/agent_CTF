@@ -7,7 +7,7 @@
  */
 
 import type { BudgetLimits } from '../../ctf/oneshot/types.js'
-import type {SuggestedAction} from './suggestedAction.js'
+import type { SuggestedAction } from './suggestedAction.js'
 
 export interface CostPolicyInput {
   limits: BudgetLimits

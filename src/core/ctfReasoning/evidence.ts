@@ -14,7 +14,7 @@
  * Evidence.
  */
 
-import {createHash} from 'crypto'
+import { createHash } from 'crypto'
 
 export type EvidenceKind =
   | 'file_signature'

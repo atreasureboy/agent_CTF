@@ -14,7 +14,7 @@
  * planner and event-sourced state.
  */
 
-import type { ChildProcessWithoutNullStreams } from 'child_process';
+import type { ChildProcessWithoutNullStreams } from 'child_process'
 import { spawn } from 'child_process'
 import { randomBytes } from 'crypto'
 import { redactSecrets } from '../ctfReasoning/redaction.js'

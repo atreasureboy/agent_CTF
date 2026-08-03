@@ -39,11 +39,11 @@ import type OpenAI from 'openai'
 
 import { CTFTaskStateStore, TaskAlreadyCompletedError } from './taskStateStore.js'
 import type { CTFProfileStore } from './profileStore.js'
-import {resolveProfileById} from './profileStore.js'
+import { resolveProfileById } from './profileStore.js'
 import { TaskStateProjector } from './taskStateProjector.js'
 import { HandoffCoordinator, type RequestHandoffInput } from './handoffCoordinator.js'
 import type { AgentRuntimeDependencies } from './agentRuntimeDependencies.js'
-import {type LinkedAbortController} from './linkedAbortController.js'
+import { type LinkedAbortController } from './linkedAbortController.js'
 
 import type {
   CTFTaskState,
@@ -109,6 +109,12 @@ export class CTFTaskOrchestrator {
   /** Phase 1.7 §八.1 — proper state machine: active | cancelling | cancelled | disposing | disposed. */
   private lifecycleState: 'active' | 'cancelling' | 'cancelled' | 'disposing' | 'disposed' =
     'active'
+  // In-flight cancel promise — caches the cancel work so concurrent re-entry
+  // (e.g. SIGINT handler + error path both call cancel()) returns the same
+  // settled promise instead of re-running the body. Without this, a second
+  // caller arriving during 'cancelling' repeats abort/cancelAllJobs/Promise
+  // wait and may race the first caller's terminal state assignment.
+  private cancelPromise: Promise<void> | null = null
 
   private constructor(
     store: CTFTaskStateStore,
@@ -382,9 +388,7 @@ export class CTFTaskOrchestrator {
    * Main Agent / Workflow / OneShot / Specialist into the structured
    * reasoning loop. Returns the ReasoningResult.
    */
-  async processReasoningInput(
-    input: ProcessReasoningInputsInput,
-  ): Promise<ReasoningResult> {
+  async processReasoningInput(input: ProcessReasoningInputsInput): Promise<ReasoningResult> {
     const { processNewReasoningInputs } = await import('../ctfReasoning/reasoningCoordinator.js')
     const { createRuntimeStrategyActionExecutor } =
       await import('../ctfReasoning/runtimeStrategyActionExecutor.js')
@@ -417,22 +421,53 @@ export class CTFTaskOrchestrator {
         }
       },
       runOneShot: async ({ manifestId, inputArtifactIds, options }) => {
-        // The dispatcher's real signature is `runOne(manifestId, inputs)`;
-        // we surface a shim through the runtime surface. Tests can inject
-        // their own dispatcher when they want to drive execution.
-        const surfaceDispatcher = (
-          this as unknown as {
-            runOneShot?: (
-              id: string,
-              opts: { inputArtifactIds: string[]; options?: Record<string, unknown> },
-            ) => Promise<{ runId: string; summary?: string; artifactIds: string[] }>
-          }
-        ).runOneShot
-        if (surfaceDispatcher) {
-          const r = await surfaceDispatcher(manifestId, { inputArtifactIds, options })
-          return { runId: r.runId, artifactIds: r.artifactIds }
+        // §F1 fix — dispatch the OneShot through BackgroundJobManager so the
+        // planner's `run_oneshot` action actually has side-effects. The
+        // previous implementation looked up a monkey-patched `runOneShot`
+        // on `this` via `(this as unknown as { runOneShot?: ... })` — which
+        // is never set in production — and silently returned
+        // `{ runId: '', artifactIds: [] }`. Every planner-dispatched
+        // `run_oneshot` was a no-op: audit trail showed STRATEGY_DECISION
+        // and ACTION_EXECUTED but no actual run.
+        //
+        // Real path:
+        //   1. Prefix the toolId with 'oneshot:' so the registered runner in
+        //      BackgroundJobRunnerRegistryImpl is matched (longest-prefix).
+        //   2. BackgroundJobManager.spawn returns a pending job descriptor.
+        //   3. Wait for terminal status (success / failed / cancelled).
+        //   4. Return the real job id as `runId`. Artifact ids are extracted
+        //      from the runner payload (`__oneShotPayload` is the base64-JSON
+        //      envelope set by the runner registered in createCTFTaskRuntime).
+        const taskId = this.store.getState().taskId
+        const job = await this.mainHarness.jobManager.spawn({
+          taskId,
+          agentId: 'reasoning-coordinator',
+          toolId: `oneshot:${manifestId}`,
+          input: {
+            argv: [],
+            workspace: this.mainHarness.context.workspaceDir,
+            logDir: this.mainHarness.context.sessionDir,
+            evidenceRoot: this.mainHarness.context.metadata?.['evidenceRoot'],
+            inputArtifactIds,
+            options: options ?? {},
+          },
+        })
+        const final = await this.mainHarness.jobManager.wait(job.id)
+        // Surface artifact ids from the job's `artifactId` field (set by the
+        // BackgroundJobManager.execute() path from `out.artifactId`).
+        const artifactIds: string[] = final.artifactId ? [final.artifactId] : []
+        const artifactIdStr = artifactIds.join(',')
+        return {
+          runId: final.id,
+          summary:
+            final.summary ??
+            (final.status === 'success'
+              ? `oneshot:${manifestId} completed${artifactIdStr ? ` [${artifactIdStr}]` : ''}`
+              : final.status === 'failed'
+                ? `oneshot:${manifestId} failed: ${final.error ?? 'unknown'}`
+                : `oneshot:${manifestId} ${final.status}`),
+          artifactIds,
         }
-        return { runId: '', artifactIds: [] }
       },
       callTool: async ({ toolId, profileId, cwd, signal, input }) => {
         const r = await this.mainHarness.broker.execute(toolId, input, {
@@ -915,10 +950,25 @@ export class CTFTaskOrchestrator {
    */
   async cancel(reason: string): Promise<void> {
     // Phase 1.7 §八.1 — 5-state lifecycle: active → cancelling → cancelled
-    // (then disposed via dispose()). Idempotent at terminal states; running
-    // states (cancelling, disposing) re-enter the work so callers waiting
-    // for the same settle see the work happen.
+    // (then disposed via dispose()). Idempotent at terminal states.
+    //
+    // Concurrent-safe: cache the in-flight promise so a second caller
+    // arriving during 'cancelling' (e.g. SIGINT racing an error path)
+    // returns the same promise instead of re-running the body. The
+    // previous implementation only guarded against 'cancelled'/'disposed'
+    // and would double-execute abort/cancelAllJobs/Promise.allSettled.
     if (this.lifecycleState === 'cancelled' || this.lifecycleState === 'disposed') return
+    if (this.cancelPromise) return this.cancelPromise
+    this.cancelPromise = this.runCancel(reason)
+    try {
+      await this.cancelPromise
+    } finally {
+      // Keep cancelPromise for terminal idempotency checks; cleared only
+      // on dispose() so post-dispose cancel() (if any) returns cleanly.
+    }
+  }
+
+  private async runCancel(reason: string): Promise<void> {
     if (this.lifecycleState === 'active') this.lifecycleState = 'cancelling'
 
     // 1. Abort the Task-level signal — propagates everywhere.
@@ -973,6 +1023,10 @@ export class CTFTaskOrchestrator {
       ])
     } finally {
       this.lifecycleState = 'disposed'
+      // Drop the cached cancel promise so a stray post-dispose cancel() call
+      // returns synchronously via the 'disposed' early-return rather than
+      // returning a promise for work that will never run.
+      this.cancelPromise = null
     }
   }
 

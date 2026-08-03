@@ -18,7 +18,7 @@
  * Codex + Pydantic-AI backends; tests wire a single fake executor.
  */
 
-import type {ActionExecutionResult} from './actionExecutionResult.js'
+import type { ActionExecutionResult } from './actionExecutionResult.js'
 import type { MaterializedResult } from './parserRegistry.js'
 import type {
   StrategyActionExecutor,
@@ -81,7 +81,7 @@ export function createSolverSwarmExecutor(options: SolverSwarmOptions): Strategy
         const settled = await Promise.allSettled(tasks)
         const partials: MaterializedResult[] = settled
           .filter((s) => s.status === 'fulfilled')
-          .map((s) => (s).value)
+          .map((s) => s.value)
           .filter(
             (
               w,

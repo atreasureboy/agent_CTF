@@ -913,15 +913,22 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
     case 'ATTEMPT_UPDATED': {
       const next = state.attempts.map((a) => {
         if (a.id !== event.attemptId) return a
-        // §H4 — patch cannot move a terminal attempt back to
-        // running/pending. ALL 6 terminal statuses are guarded.
+        // §H4 — patch cannot move a terminal attempt back to a non-terminal
+        // status (running/pending). Guarded against all 6 terminal statuses
+        // plus common typos ('queued' / 'queue') that would otherwise let a
+        // terminal → non-terminal transition slip through.
+        const patchStatus = event.patch.status as
+          CTFAttempt['status'] | 'queued' | 'queue' | undefined
         if (
           ATTEMPT_TERMINAL.has(a.status) &&
-          event.patch.status &&
-          (event.patch.status === 'running' || event.patch.status === 'pending')
+          patchStatus &&
+          (patchStatus === 'running' ||
+            patchStatus === 'pending' ||
+            patchStatus === 'queued' ||
+            patchStatus === 'queue')
         ) {
           throw new IllegalAttemptTransitionError(
-            `Attempt ${a.id} cannot move from ${a.status} to ${event.patch.status}`,
+            `Attempt ${a.id} cannot move from ${a.status} to ${patchStatus}`,
           )
         }
         return { ...a, ...event.patch }

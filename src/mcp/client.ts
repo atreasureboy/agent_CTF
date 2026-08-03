@@ -1,4 +1,10 @@
 /**
+ * @deprecated Prefer `src/core/mcp/mcpClient.ts` (the production CTF runtime
+ * integration via `createMcpExecutor`). This legacy wrapper is kept only so
+ * `bin/ovogogogo.ts` (general autonomous REPL, non-CTF mode) can keep
+ * loading MCP tools. New development should target `core/mcp/`. See AUDIT.md
+ * §3 H4.
+ *
  * MCP client — stdio JSON-RPC 2.0 client for Model Context Protocol servers.
  *
  * Why this exists: MCP is the standard way to extend an agent with external
@@ -126,7 +132,7 @@ export class McpClient {
     const initResult = (await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: 'ovolv999-agent-base', version: '0.1.0' },
+      clientInfo: { name: 'ovogogogo-agent-base', version: '0.1.0' },
     })) as { protocolVersion?: string; serverInfo?: { name?: string; version?: string } }
     this.serverInfo = initResult?.serverInfo ?? {}
     // Notify initialized (no response expected)

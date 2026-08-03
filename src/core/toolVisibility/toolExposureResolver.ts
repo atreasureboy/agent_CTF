@@ -39,8 +39,8 @@ export interface ToolExecutionAssertInput {
    *  resolution-time: ModelCapabilityProfile (maxVisibleTools cap,
    *  trust level), CapabilityProfile (denied/allowed tool lists),
    *  TaskState (hypothesis status, scope), and full Tool Metadata. */
-  modelProfile?: import('../modelReliability/modelCapability.js').ModelCapabilityProfile
-  capabilityProfile?: import('../capabilityProfile.js').CapabilityProfile
+  modelProfile?: ModelCapabilityProfile
+  capabilityProfile?: CapabilityProfile
   taskState?: Readonly<CTFTaskState>
   tool: ToolDescriptor
 }
@@ -58,14 +58,16 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
   }
 
   public resolveDefinitions(input: ToolExposureResolverInput): ToolDescriptor[] {
-    const isOrchestrator = input.identity.isOrchestrator || input.identity.modelRole === 'competition_coordinator'
+    const isOrchestrator =
+      input.identity.isOrchestrator || input.identity.modelRole === 'competition_coordinator'
 
     let candidates = input.allTools
 
     if (isOrchestrator) {
       // Sole source of truth: Tool Metadata visibilityClass === 'orchestrator' or 'all'
       candidates = candidates.filter(
-        (t) => t.metadata?.visibilityClass === 'orchestrator' || t.metadata?.visibilityClass === 'all',
+        (t) =>
+          t.metadata?.visibilityClass === 'orchestrator' || t.metadata?.visibilityClass === 'all',
       )
       if (candidates.length === 0) {
         // Fail-closed for Orchestrator when no orchestrator tools match
@@ -105,15 +107,13 @@ export class DefaultToolExposureResolver implements ToolExposureResolver {
       return a.name.localeCompare(b.name)
     })
 
-    const limit = Math.min(
-      input.modelProfile.limits?.maxVisibleTools ?? 20,
-      50,
-    )
+    const limit = Math.min(input.modelProfile.limits?.maxVisibleTools ?? 20, 50)
     return sorted.slice(0, limit)
   }
 
   public assertExecutable(input: ToolExecutionAssertInput): void {
-    const isOrchestrator = input.identity.isOrchestrator || input.identity.modelRole === 'competition_coordinator'
+    const isOrchestrator =
+      input.identity.isOrchestrator || input.identity.modelRole === 'competition_coordinator'
 
     if (isOrchestrator) {
       // §P0-2 fix — Orchestrator path now also consults the model's

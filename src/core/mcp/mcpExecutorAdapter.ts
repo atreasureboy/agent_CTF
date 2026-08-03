@@ -14,7 +14,7 @@
  *   // StrategyPlanner picks a `call_tool` action with the right toolId.
  */
 
-import type {ActionExecutionResult} from '../ctfReasoning/actionExecutionResult.js'
+import type { ActionExecutionResult } from '../ctfReasoning/actionExecutionResult.js'
 import type { MaterializedResult } from '../ctfReasoning/parserRegistry.js'
 import type {
   StrategyActionExecutor,
@@ -80,11 +80,11 @@ export function createMcpExecutor(client: McpClient): StrategyActionExecutor {
         rawArtifactIds: [],
       }
       return result.isError
-        ? ({
+        ? {
             status: 'failed',
             error: { message: `mcp:${client.serverName}:${toolName} returned isError: ${text}` },
             partialResult: mat,
-          })
+          }
         : {
             status: 'executed',
             materializedResult: mat,

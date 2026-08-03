@@ -28,7 +28,7 @@
 import { planStrategy } from './strategyPlanner.js'
 import { createStrategyDecision } from './strategyDecision.js'
 import { createObservation, type Observation } from './observation.js'
-import {createEvidence, evidenceFingerprint as _ignore, mergeEvidence} from './evidence.js'
+import { createEvidence, evidenceFingerprint as _ignore, mergeEvidence } from './evidence.js'
 import type { AutoPrompter } from './autoPrompter.js'
 import type { ChallengeCategory } from '../toolBroker/categoryToolset.js'
 import type { LMSummarizer } from './lmSummarizer.js'
@@ -38,18 +38,14 @@ function ctxAttemptId(id: string): string {
 }
 void ctxAttemptId
 import { buildFlagCandidateId, type FlagCandidateDraft } from './flagCandidate.js'
-import type {
-  CTFTaskState,
-  CTFAttempt,
-  FlagCandidate,
-} from '../ctfRuntime/taskState.js'
+import type { CTFTaskState, CTFAttempt, FlagCandidate } from '../ctfRuntime/taskState.js'
 import type { CTFTaskStateStore } from '../ctfRuntime/taskStateStore.js'
 import type { BudgetLimits } from '../../ctf/oneshot/types.js'
 import type { SuggestedAction } from './suggestedAction.js'
 import { createAttemptFingerprint } from './attemptFingerprint.js'
 import { randomBytes } from 'crypto'
 import type { ActionExecutionResult, ReasoningResult } from './actionExecutionResult.js'
-import {type ReasoningCascadeContext} from './reasoningCascade.js'
+import { type ReasoningCascadeContext } from './reasoningCascade.js'
 import {
   applyReasoningBudgetConsumption,
   consumeCycle,
@@ -62,7 +58,7 @@ import {
 import type { StrategyActionExecutor } from './strategyActionExecutor.js'
 import { attachAttemptToDrafts, createMaterializationContext } from './materializationContext.js'
 import { createHypothesisUpdater } from './hypothesisUpdater.js'
-import {createPendingActionStore} from './pendingActionStore.js'
+import { createPendingActionStore } from './pendingActionStore.js'
 import { createAttemptDeduplicator } from './attemptDeduplicator.js'
 import {
   DEFAULT_MAX_STRATEGY_CYCLES,

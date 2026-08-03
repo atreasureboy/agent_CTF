@@ -63,7 +63,8 @@ export class AgentManager {
   assignTask(agentId: string, taskId: string): void {
     const agent = this.agents.get(agentId)
     if (!agent) throw new Error(`Agent ${agentId} not found`)
-    if (agent.status !== 'idle') throw new Error(`Agent ${agentId} is not idle (status: ${agent.status})`)
+    if (agent.status !== 'idle')
+      throw new Error(`Agent ${agentId} is not idle (status: ${agent.status})`)
     agent.currentTaskId = taskId
     agent.status = 'running'
     agent.lastHeartbeat = Date.now()

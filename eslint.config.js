@@ -65,6 +65,20 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      // Vendored reference repos — gitignored from the source tree, but
+      // eslint should not try to type-check them. They each have their
+      // own toolchain (CAI / swe-agent / HackSynth / etc.) and pulling
+      // them into our lint surface causes long scans and false positives.
+      'CAI/',
+      'HackSynth/',
+      'cyber-zero/',
+      'nyuctf_agents/',
+      'swe-agent/',
+      'BUUCTF_Agent/',
+      'scratch/',
+    ],
   },
 )

@@ -31,7 +31,7 @@ export async function runDoctorCommand(argv: string[], deps: DoctorDeps): Promis
   const showOneshot = argv.includes('--oneshot')
   const cwd = process.cwd()
 
-  stdout.write(`ovolv999-ctf doctor (cwd=${cwd})\n\n`)
+  stdout.write(`ovogogogo-ctf doctor (cwd=${cwd})\n\n`)
 
   // 1. Tools.
   const tools = ['file', 'strings', 'binwalk', 'docker']

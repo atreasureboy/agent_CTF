@@ -53,7 +53,7 @@ import type { TrajectoryRecorder } from './trajectory/trajectoryRecorder.js'
 import type { OpenAIMessage, TurnResult } from './types.js'
 
 import { WorkflowRegistry } from './workflowRegistry.js'
-import {WorkflowEngine} from './workflowEngine.js'
+import { WorkflowEngine } from './workflowEngine.js'
 import { ensureWorkflowsRegistered } from '../workflows/index.js'
 import {
   ensureProfilesRegistered,
@@ -508,12 +508,22 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       identity: {
         taskId,
         agentRunId,
-        handoffId: options.handoffId ?? (taskExecutionContext.metadata?.['fromHandoff'] as string | undefined),
-        modelRole: currentProfile.id === 'orchestrator' ? 'task_planner' : currentProfile.id.includes('scout') ? 'solver_scout' : currentProfile.id === 'triage' ? 'specialist' : 'deep_solver',
+        handoffId:
+          options.handoffId ??
+          (taskExecutionContext.metadata?.['fromHandoff'] as string | undefined),
+        modelRole:
+          currentProfile.id === 'orchestrator'
+            ? 'task_planner'
+            : currentProfile.id.includes('scout')
+              ? 'solver_scout'
+              : currentProfile.id === 'triage'
+                ? 'specialist'
+                : 'deep_solver',
         modelProfileId: input.modelConfig?.model ?? 'gpt-4o',
         providerId: 'openai-compatible',
         capabilityProfileId: currentProfile.id,
-        isOrchestrator: currentProfile.id === 'orchestrator' || currentProfile.id === 'competition_coordinator',
+        isOrchestrator:
+          currentProfile.id === 'orchestrator' || currentProfile.id === 'competition_coordinator',
       },
     }
     const engine = new ExecutionEngine(engineConfig, renderer)

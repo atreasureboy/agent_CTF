@@ -157,7 +157,7 @@ describe('§1 — CLI', () => {
   it('CLI does NOT touch broker.opts or create a Harness directly', () => {
     // Static check — the CLI source must not import createHarness or
     // mutate broker private fields.
-    const cliPath = join(root, '..', '..', 'project', 'agent_CTF', 'ovolv999_pro', 'bin', 'ovogogogo-ctf.ts')
+    const cliPath = join(root, '..', '..', 'project', 'agent_CTF', 'ovogogogo_pro', 'bin', 'ovogogogo-ctf.ts')
     let body: string
     try {
       body = readFileSync(cliPath, 'utf8')

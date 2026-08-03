@@ -5,7 +5,8 @@ const FETCH_TIMEOUT_MS = 30_000
 
 interface WebExplorerInput {
   url: string
-  action: 'extract_js' | 'extract_forms' | 'extract_links' | 'extract_apis' | 'guess_paths' | 'full_scan'
+  action:
+    'extract_js' | 'extract_forms' | 'extract_links' | 'extract_apis' | 'guess_paths' | 'full_scan'
   commonPaths?: string[]
 }
 
@@ -18,10 +19,14 @@ async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<stri
       clearTimeout(timer)
       throw new Error('Request cancelled')
     }
-    signal.addEventListener('abort', () => {
-      clearTimeout(timer)
-      controller.abort('user_cancelled')
-    }, { once: true })
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        controller.abort('user_cancelled')
+      },
+      { once: true },
+    )
   }
 
   try {
@@ -90,7 +95,7 @@ function extractForms(html: string, baseUrl: string): FormData[] {
     const actionMatch = /action=["']([^"']*)["']/i.exec(formAttrs)
     const methodMatch = /method=["']([^"']*)["']/i.exec(formAttrs)
     const enctypeMatch = /enctype=["']([^"']*)["']/i.exec(formAttrs)
-    const action = actionMatch ? resolveUrl(actionMatch[1], baseUrl) ?? actionMatch[1] : ''
+    const action = actionMatch ? (resolveUrl(actionMatch[1], baseUrl) ?? actionMatch[1]) : ''
     const method = methodMatch ? methodMatch[1].toUpperCase() : 'GET'
     const enctype = enctypeMatch ? enctypeMatch[1] : 'application/x-www-form-urlencoded'
     const fields: FormField[] = []
@@ -178,7 +183,8 @@ function extractApis(html: string, baseUrl: string): string[] {
     const resolved = resolveUrl(match[1], baseUrl)
     if (resolved) apis.add(resolved)
   }
-  const xhrRegex = /\.(?:open|send)\(["'](?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["'],\s*["']([^"']+)["']/gi
+  const xhrRegex =
+    /\.(?:open|send)\(["'](?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["'],\s*["']([^"']+)["']/gi
   while ((match = xhrRegex.exec(html)) !== null) {
     const resolved = resolveUrl(match[1], baseUrl)
     if (resolved) apis.add(resolved)
@@ -224,7 +230,10 @@ const DEFAULT_COMMON_PATHS = [
   '/graphql',
 ]
 
-async function guessPaths(baseUrl: string, customPaths?: string[]): Promise<{ path: string; status: number }[]> {
+async function guessPaths(
+  baseUrl: string,
+  customPaths?: string[],
+): Promise<{ path: string; status: number }[]> {
   const pathsToCheck = customPaths ?? DEFAULT_COMMON_PATHS
   const baseUrlObj = new URL(baseUrl)
   const origin = baseUrlObj.origin
@@ -275,7 +284,14 @@ Actions:
           },
           action: {
             type: 'string',
-            enum: ['extract_js', 'extract_forms', 'extract_links', 'extract_apis', 'guess_paths', 'full_scan'],
+            enum: [
+              'extract_js',
+              'extract_forms',
+              'extract_links',
+              'extract_apis',
+              'guess_paths',
+              'full_scan',
+            ],
             description: 'Exploration action to perform',
           },
           commonPaths: {
@@ -342,10 +358,14 @@ Actions:
           if (forms.length === 0) {
             return { content: 'No forms found', isError: false }
           }
-          const output = forms.map((form, idx) => {
-            const fieldsStr = form.fields.map(f => `  - ${f.name} (${f.type})${f.required ? ' [required]' : ''}`).join('\n')
-            return `Form ${idx + 1}:\n  Action: ${form.action}\n  Method: ${form.method}\n  Enctype: ${form.enctype}\n  Fields:\n${fieldsStr}`
-          }).join('\n\n')
+          const output = forms
+            .map((form, idx) => {
+              const fieldsStr = form.fields
+                .map((f) => `  - ${f.name} (${f.type})${f.required ? ' [required]' : ''}`)
+                .join('\n')
+              return `Form ${idx + 1}:\n  Action: ${form.action}\n  Method: ${form.method}\n  Enctype: ${form.enctype}\n  Fields:\n${fieldsStr}`
+            })
+            .join('\n\n')
           return { content: `Found ${forms.length} form(s):\n\n${output}`, isError: false }
         }
 
@@ -373,7 +393,7 @@ Actions:
           if (results.length === 0) {
             return { content: 'No interesting paths found (all returned 404)', isError: false }
           }
-          const output = results.map(r => `  ${r.path} -> HTTP ${r.status}`).join('\n')
+          const output = results.map((r) => `  ${r.path} -> HTTP ${r.status}`).join('\n')
           return {
             content: `Found ${results.length} interesting path(s):\n\n${output}`,
             isError: false,
@@ -396,10 +416,12 @@ Actions:
           }
 
           if (forms.length > 0) {
-            const formsStr = forms.map((form, idx) => {
-              const fieldsStr = form.fields.map(f => `    - ${f.name} (${f.type})`).join('\n')
-              return `  Form ${idx + 1}: ${form.method} ${form.action}\n${fieldsStr}`
-            }).join('\n')
+            const formsStr = forms
+              .map((form, idx) => {
+                const fieldsStr = form.fields.map((f) => `    - ${f.name} (${f.type})`).join('\n')
+                return `  Form ${idx + 1}: ${form.method} ${form.action}\n${fieldsStr}`
+              })
+              .join('\n')
             sections.push(`Forms (${forms.length}):\n${formsStr}`)
           }
 
@@ -412,7 +434,7 @@ Actions:
           }
 
           if (pathResults.length > 0) {
-            const pathsStr = pathResults.map(r => `  ${r.path} -> HTTP ${r.status}`).join('\n')
+            const pathsStr = pathResults.map((r) => `  ${r.path} -> HTTP ${r.status}`).join('\n')
             sections.push(`Interesting Paths (${pathResults.length}):\n${pathsStr}`)
           }
 

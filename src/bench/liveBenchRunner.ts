@@ -20,14 +20,8 @@
  * end-to-end without depending on a specific CTF dataset.
  */
 
-import {
-  askLlmForAction,
-  type LlmProvider,
-  type ToolDefinition,
-} from '../core/llm/llmToolUse.js'
-import type {
-  ActionExecutionResult,
-} from '../core/ctfReasoning/actionExecutionResult.js'
+import { askLlmForAction, type LlmProvider, type ToolDefinition } from '../core/llm/llmToolUse.js'
+import type { ActionExecutionResult } from '../core/ctfReasoning/actionExecutionResult.js'
 import type {
   StrategyActionExecutor,
   StrategyActionExecutorContext,

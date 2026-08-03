@@ -33,7 +33,7 @@ function base64DecodeTool(): Tool {
       required: ['encoded'],
     },
     (input) => {
-      const encoded = String(input.encoded as string ?? '')
+      const encoded = String((input.encoded as string) ?? '')
       try {
         const decoded = Buffer.from(encoded, 'base64').toString('utf-8')
         return { isError: false, content: decoded }
@@ -71,7 +71,7 @@ function base64EncodeTool(): Tool {
       required: ['plaintext'],
     },
     (input) => {
-      const plaintext = String(input.plaintext as string ?? '')
+      const plaintext = String((input.plaintext as string) ?? '')
       try {
         const encoded = Buffer.from(plaintext, 'utf-8').toString('base64')
         return { isError: false, content: encoded }
@@ -109,7 +109,7 @@ function jsfuckEncodeTool(): Tool {
       required: ['code'],
     },
     (input) => {
-      const code = String(input.code as string ?? '')
+      const code = String((input.code as string) ?? '')
       try {
         const encoded = jsfuckEncode(code)
         return { isError: false, content: encoded }
@@ -205,12 +205,15 @@ function phpFilterChainTool(): Tool {
       required: ['payload'],
     },
     (input) => {
-      const payload = String(input.payload as string ?? '')
+      const payload = String((input.payload as string) ?? '')
       try {
         const chain = generatePhpFilterChain(payload)
         return { isError: false, content: chain }
       } catch (e) {
-        return { isError: true, content: `PHP filter chain generation failed: ${(e as Error).message}` }
+        return {
+          isError: true,
+          content: `PHP filter chain generation failed: ${(e as Error).message}`,
+        }
       }
     },
     {
@@ -234,131 +237,672 @@ TOOL_METADATA['php_filter_chain'] = {
 function generatePhpFilterChain(payload: string): string {
   const CONV_TABLE: Record<number, string[]> = {
     0: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    1: ['convert.iconv.ISO88597.UTF16', 'convert.iconv.RK1048.UCS-4LE', 'convert.iconv.UTF32.CSISO2022KR', 'convert.b64decode/00'],
-    2: ['convert.iconv.L5.UTF-32', 'convert.iconv.ISO88597.UTF16', 'convert.iconv.RK1048.UCS-4LE', 'convert.iconv.UTF32.CSISO2022KR', 'convert.b64decode/00'],
-    3: ['convert.iconv.L6.UTF-16', 'convert.iconv.ISO88597.UTF16', 'convert.iconv.RK1048.UCS-4LE', 'convert.iconv.UTF32.CSISO2022KR', 'convert.b64decode/00'],
-    4: ['convert.iconv.CP1212.UTF32', 'convert.iconv.ISO88597.UTF16', 'convert.iconv.RK1048.UCS-4LE', 'convert.iconv.UTF32.CSISO2022KR', 'convert.b64decode/00'],
-    5: ['convert.iconv.UTF8.UTF16LE', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.ISO-8859-1.UCS2', 'convert.b64decode/00'],
-    6: ['convert.iconv.INIS.UTF16', 'convert.iconv.ISO88597.UTF16', 'convert.iconv.RK1048.UCS-4LE', 'convert.iconv.UTF32.CSISO2022KR', 'convert.b64decode/00'],
-    7: ['convert.iconv.UTF8.UTF16LE', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.8859-1.UCS2', 'convert.b64decode/00'],
-    8: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2', 'convert.b64decode/00'],
-    9: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.ISO6937.UCS2', 'convert.b64decode/00'],
-    10: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    13: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    14: ['convert.iconv.UTF8.UCS-2LE', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.ISO-8859-1.UCS2', 'convert.b64decode/00'],
-    15: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    16: ['convert.iconv.UTF8.UTF16', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.ISO-8859-1.UCS2', 'convert.b64decode/00'],
-    17: ['convert.iconv.UTF8.UTF16LE', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.8859-1.UCS2', 'convert.b64decode/00'],
-    18: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    19: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    20: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    21: ['convert.iconv.UTF8.UTF16LE', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.8859-1.UCS2', 'convert.b64decode/00'],
-    22: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    23: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    24: ['convert.iconv.UTF8.UTF16', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.ISO-8859-1.UCS2', 'convert.b64decode/00'],
-    25: ['convert.iconv.UTF8.UTF16LE', 'convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.UCS2.UTF8', 'convert.iconv.8859-1.UCS2', 'convert.b64decode/00'],
-    26: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    27: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    28: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    29: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    30: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.UCS-2LE.UCS-2BE', 'convert.iconv.TCVN.UCS2', 'convert.iconv.8859-1.UCS2'],
-    31: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    32: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    33: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    34: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    35: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    36: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    37: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    38: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    39: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    40: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    41: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    42: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    43: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    44: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    45: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    46: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    47: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    48: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    49: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    50: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    51: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    52: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    53: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    54: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    55: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    56: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    57: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    58: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    59: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    60: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    61: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    62: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    63: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    64: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    65: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    66: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    67: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    68: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    69: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    70: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    71: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    72: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    73: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    74: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    75: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    76: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    77: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    78: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    79: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    80: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    81: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    82: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    83: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    84: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    85: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    86: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    87: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    88: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    89: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    90: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    91: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    92: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    93: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    94: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    95: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    96: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    97: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    98: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    99: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    100: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    101: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    102: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    103: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    104: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    105: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    106: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    107: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    108: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    109: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    110: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    111: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    112: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    113: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    114: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    115: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    116: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    117: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    118: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    119: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    120: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    121: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    122: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    123: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    124: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    125: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    126: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
-    127: ['convert.iconv.UTF8.CSISO2022KR', 'convert.iconv.ISO2022KR.UTF16', 'convert.iconv.L6.UCS2'],
+    1: [
+      'convert.iconv.ISO88597.UTF16',
+      'convert.iconv.RK1048.UCS-4LE',
+      'convert.iconv.UTF32.CSISO2022KR',
+      'convert.b64decode/00',
+    ],
+    2: [
+      'convert.iconv.L5.UTF-32',
+      'convert.iconv.ISO88597.UTF16',
+      'convert.iconv.RK1048.UCS-4LE',
+      'convert.iconv.UTF32.CSISO2022KR',
+      'convert.b64decode/00',
+    ],
+    3: [
+      'convert.iconv.L6.UTF-16',
+      'convert.iconv.ISO88597.UTF16',
+      'convert.iconv.RK1048.UCS-4LE',
+      'convert.iconv.UTF32.CSISO2022KR',
+      'convert.b64decode/00',
+    ],
+    4: [
+      'convert.iconv.CP1212.UTF32',
+      'convert.iconv.ISO88597.UTF16',
+      'convert.iconv.RK1048.UCS-4LE',
+      'convert.iconv.UTF32.CSISO2022KR',
+      'convert.b64decode/00',
+    ],
+    5: [
+      'convert.iconv.UTF8.UTF16LE',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.ISO-8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    6: [
+      'convert.iconv.INIS.UTF16',
+      'convert.iconv.ISO88597.UTF16',
+      'convert.iconv.RK1048.UCS-4LE',
+      'convert.iconv.UTF32.CSISO2022KR',
+      'convert.b64decode/00',
+    ],
+    7: [
+      'convert.iconv.UTF8.UTF16LE',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    8: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+      'convert.b64decode/00',
+    ],
+    9: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.ISO6937.UCS2',
+      'convert.b64decode/00',
+    ],
+    10: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    13: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    14: [
+      'convert.iconv.UTF8.UCS-2LE',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.ISO-8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    15: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    16: [
+      'convert.iconv.UTF8.UTF16',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.ISO-8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    17: [
+      'convert.iconv.UTF8.UTF16LE',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    18: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    19: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    20: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    21: [
+      'convert.iconv.UTF8.UTF16LE',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    22: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    23: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    24: [
+      'convert.iconv.UTF8.UTF16',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.ISO-8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    25: [
+      'convert.iconv.UTF8.UTF16LE',
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.UCS2.UTF8',
+      'convert.iconv.8859-1.UCS2',
+      'convert.b64decode/00',
+    ],
+    26: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    27: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    28: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    29: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    30: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.UCS-2LE.UCS-2BE',
+      'convert.iconv.TCVN.UCS2',
+      'convert.iconv.8859-1.UCS2',
+    ],
+    31: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    32: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    33: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    34: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    35: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    36: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    37: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    38: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    39: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    40: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    41: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    42: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    43: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    44: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    45: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    46: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    47: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    48: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    49: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    50: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    51: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    52: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    53: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    54: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    55: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    56: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    57: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    58: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    59: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    60: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    61: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    62: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    63: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    64: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    65: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    66: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    67: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    68: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    69: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    70: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    71: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    72: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    73: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    74: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    75: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    76: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    77: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    78: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    79: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    80: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    81: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    82: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    83: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    84: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    85: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    86: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    87: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    88: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    89: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    90: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    91: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    92: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    93: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    94: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    95: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    96: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    97: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    98: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    99: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    100: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    101: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    102: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    103: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    104: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    105: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    106: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    107: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    108: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    109: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    110: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    111: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    112: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    113: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    114: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    115: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    116: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    117: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    118: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    119: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    120: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    121: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    122: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    123: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    124: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    125: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    126: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
+    127: [
+      'convert.iconv.UTF8.CSISO2022KR',
+      'convert.iconv.ISO2022KR.UTF16',
+      'convert.iconv.L6.UCS2',
+    ],
   }
 
   const buf = Buffer.from(payload, 'utf-8')
@@ -376,7 +920,12 @@ function generatePhpFilterChain(payload: string): string {
 
   filters.push('convert.base64-decode')
 
-  return 'php://filter/' + filters.join('/') + '/resource=data://text/plain,' + encodeURIComponent(payload)
+  return (
+    'php://filter/' +
+    filters.join('/') +
+    '/resource=data://text/plain,' +
+    encodeURIComponent(payload)
+  )
 }
 
 function hexEncodeTool(): Tool {
@@ -391,7 +940,7 @@ function hexEncodeTool(): Tool {
       required: ['plaintext'],
     },
     (input) => {
-      const plaintext = String(input.plaintext as string ?? '')
+      const plaintext = String((input.plaintext as string) ?? '')
       try {
         const encoded = Buffer.from(plaintext, 'utf-8').toString('hex')
         return { isError: false, content: encoded }
@@ -429,7 +978,7 @@ function hexDecodeTool(): Tool {
       required: ['hex'],
     },
     (input) => {
-      const hex = String(input.hex as string ?? '')
+      const hex = String((input.hex as string) ?? '')
       try {
         const decoded = Buffer.from(hex, 'hex').toString('utf-8')
         return { isError: false, content: decoded }
@@ -467,7 +1016,7 @@ function urlEncodeTool(): Tool {
       required: ['plaintext'],
     },
     (input) => {
-      const plaintext = String(input.plaintext as string ?? '')
+      const plaintext = String((input.plaintext as string) ?? '')
       try {
         const encoded = encodeURIComponent(plaintext)
         return { isError: false, content: encoded }
@@ -505,7 +1054,7 @@ function urlDecodeTool(): Tool {
       required: ['encoded'],
     },
     (input) => {
-      const encoded = String(input.encoded as string ?? '')
+      const encoded = String((input.encoded as string) ?? '')
       try {
         const decoded = decodeURIComponent(encoded)
         return { isError: false, content: decoded }
@@ -544,8 +1093,8 @@ function responseDiffTool(): Tool {
       required: ['response1', 'response2'],
     },
     (input) => {
-      const r1 = String(input.response1 as string ?? '')
-      const r2 = String(input.response2 as string ?? '')
+      const r1 = String((input.response1 as string) ?? '')
+      const r2 = String((input.response2 as string) ?? '')
       try {
         const lines1 = r1.split('\n')
         const lines2 = r2.split('\n')

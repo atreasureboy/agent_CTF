@@ -24,9 +24,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { processNewReasoningInputs } from '../core/ctfReasoning/reasoningCoordinator.js'
 import { createNoopStrategyActionExecutor } from '../core/ctfReasoning/runtimeStrategyActionExecutor.js'
-import type {
-  ActionExecutionResult,
-} from '../core/ctfReasoning/actionExecutionResult.js'
+import type { ActionExecutionResult } from '../core/ctfReasoning/actionExecutionResult.js'
 import type {
   StrategyActionExecutor,
   StrategyActionExecutorContext,

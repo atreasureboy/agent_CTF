@@ -42,8 +42,9 @@ export function loadManifestsFromDir(
     }
     const r = safeParseManifest(raw)
     if (r.ok) {
-      catalog.upsert(r.manifest)
-      accepted.push(r.manifest)
+      const manifest = r.manifest
+      catalog.upsert(manifest)
+      accepted.push(manifest)
     } else {
       catalog.recordInvalid(raw, r.error)
       invalid.push({ file, error: r.error })

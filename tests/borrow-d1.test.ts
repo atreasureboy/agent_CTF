@@ -28,7 +28,7 @@ describe('HTML trajectory renderer (D1)', () => {
     const out = replayFromEvents(['TASK_CREATED'] as never)  // placeholder
     void out
     // Use the store-derived events:
-    const log: ReplayOutput = { taskId: 'd1-1', cycles: [], finalState: {
+    const log: ReplayOutput = { taskId: 'd1-1', cycles: [], errors: [], finalState: {
       totalObservations: 1, totalEvidence: 1, totalArtifacts: 0, totalFlagCandidates: 0,
       validatedFlagCandidates: 0, acceptedStrategies: 1,
     }}
@@ -48,6 +48,7 @@ describe('HTML trajectory renderer (D1)', () => {
           startedAt: 0, observationIds: [], evidenceIds: [], artifactIds: [], flagCandidateIds: [],
         }],
       }],
+      errors: [],
       finalState: {
         totalObservations: 0, totalEvidence: 0, totalArtifacts: 0,
         totalFlagCandidates: 0, validatedFlagCandidates: 0, acceptedStrategies: 0,

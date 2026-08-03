@@ -1,4 +1,4 @@
-// Core types for ovolv999 execution engine
+// Core types for ovogogogo execution engine
 
 import type { EventLog } from './eventLog.js'
 import type { SemanticMemory } from './semanticMemory.js'

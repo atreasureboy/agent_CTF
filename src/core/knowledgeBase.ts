@@ -79,9 +79,7 @@ export class KnowledgeBase {
 
   getByCategory(category: string): KnowledgeEntry[] {
     const cat = category.toLowerCase()
-    return [...this.entries.values()].filter(
-      (e) => e.category.toLowerCase() === cat,
-    )
+    return [...this.entries.values()].filter((e) => e.category.toLowerCase() === cat)
   }
 
   getById(id: string): KnowledgeEntry | undefined {

@@ -124,10 +124,14 @@ export class TrajectoryReplay {
       const currentRevision = store.getRevision(currentState.taskId)
 
       const recordedSnapshotEnv = envelopes.find(
-        (e) => (e.eventType as string) === 'snapshot_created' || (e.eventType as string) === 'task_snapshot',
+        (e) =>
+          (e.eventType as string) === 'snapshot_created' ||
+          (e.eventType as string) === 'task_snapshot',
       )
-      const recordedHash = recordedSnapshotEnv?.payloadHash || envelopes[envelopes.length - 1]?.payloadHash
-      const recordedToolExposureHash = (recordedSnapshotEnv?.payload as any)?.toolExposureHash || 'resolved'
+      const recordedHash =
+        recordedSnapshotEnv?.payloadHash || envelopes[envelopes.length - 1]?.payloadHash
+      const recordedToolExposureHash =
+        (recordedSnapshotEnv?.payload as any)?.toolExposureHash || 'resolved'
 
       const rebuiltHash = computeCanonicalSnapshotHash({
         taskId: currentState.taskId,
@@ -192,10 +196,16 @@ export class TrajectoryReplay {
 
         // Record content fingerprints (not raw IDs)
         if (payload.observationSummary || payload.observationContent || payload.observationId) {
-          recordedObsFingerprints.push(computeFingerprint(payload.observationSummary || payload.observationContent || payload.observationId))
+          recordedObsFingerprints.push(
+            computeFingerprint(
+              payload.observationSummary || payload.observationContent || payload.observationId,
+            ),
+          )
         }
         if (payload.claim || payload.evidenceClaim || payload.evidenceId) {
-          recordedEvFingerprints.push(computeFingerprint(payload.claim || payload.evidenceClaim || payload.evidenceId))
+          recordedEvFingerprints.push(
+            computeFingerprint(payload.claim || payload.evidenceClaim || payload.evidenceId),
+          )
         }
         if (payload.hypothesisId && payload.status) {
           recordedHypotheses[payload.hypothesisId] = payload.status
@@ -213,7 +223,9 @@ export class TrajectoryReplay {
             runId: env.agentRunId || (env as any).runId || 'replayed_run',
             solverId: payload.solverId || 'replayed_solver',
             status: 'completed',
-            observations: payload.observations || (payload.rawOutput ? [{ summary: payload.rawOutput, confidence: 0.8 }] : []),
+            observations:
+              payload.observations ||
+              (payload.rawOutput ? [{ summary: payload.rawOutput, confidence: 0.8 }] : []),
             artifacts: payload.artifacts || [],
             flagCandidates: payload.flagCandidates || [],
             metrics: { durationMs: 10 },
@@ -283,7 +295,10 @@ export class TrajectoryReplay {
     const consistent = obsMatch && evMatch && actionMatch && candMatch && hypMatch
 
     const diffReport: ReplayDiffReport = {
-      observationFingerprints: { recorded: recordedObsFingerprints, replayed: replayedObsFingerprints },
+      observationFingerprints: {
+        recorded: recordedObsFingerprints,
+        replayed: replayedObsFingerprints,
+      },
       evidenceFingerprints: { recorded: recordedEvFingerprints, replayed: replayedEvFingerprints },
       hypothesisStatus: { recorded: recordedHypotheses, replayed: replayedHypotheses },
       actionFamily: { recorded: recordedActionFamilies, replayed: replayedActionFamilies },

@@ -10,7 +10,6 @@
  * either a typed value or a list of validation errors.
  */
 
-
 export interface ValidationError {
   path: string
   message: string

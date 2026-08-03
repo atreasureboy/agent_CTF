@@ -26,7 +26,7 @@ import { formatFindingForPrompt } from '../core/findings.js'
 import type { ArtifactMeta } from '../core/artifacts.js'
 import type { ContestScopeChecker } from '../core/contestScope.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
-import type {CTFToolMetadata} from '../core/toolDefinition.js'
+import type { CTFToolMetadata } from '../core/toolDefinition.js'
 
 /**
  * Service handle exposed through ToolContext — every meta tool resolves to

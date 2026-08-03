@@ -42,7 +42,7 @@ import type { AgentModule, ModuleBootResult, ModuleBootContext } from './module.
 import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
 import { createLinkedAbortController } from './ctfRuntime/linkedAbortController.js'
-import type {ModelCapabilityProfile} from './modelReliability/modelCapability.js'
+import type { ModelCapabilityProfile } from './modelReliability/modelCapability.js'
 import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
 import { MissingModelInvocationGatewayError } from './modelReliability/errors.js'
 
@@ -197,6 +197,11 @@ export class ExecutionEngine {
     costUsd: 0,
     calls: 0,
   }
+  // §11 F3 — sticky abort flags so cancel() / softAbort() called between
+  // turns aren't silently dropped. Cleared once the next runTurn() observes
+  // them at the top of the loop.
+  private pendingHardAbortReason: string | null = null
+  private pendingSoftAbort = false
 
   constructor(config: EngineConfig, renderer: Renderer) {
     // Merge agent config into effective config (overrides legacy fields)
@@ -254,14 +259,21 @@ export class ExecutionEngine {
     return auto
   }
 
-  /** Hard cancel — immediately aborts in-flight API calls and tool executions */
+  /** Hard cancel — abort in-flight API calls and tool executions. Persists
+   *  the request so a subsequent runTurn() observes it immediately rather
+   *  than dropping the cancel as a silent no-op (audit §11 F3). */
   abort(): void {
-    this.currentTurnAbortController?.abort('user_cancelled')
+    this.pendingHardAbortReason = 'user_cancelled'
+    if (this.currentTurnAbortController) {
+      this.currentTurnAbortController.abort('user_cancelled')
+    }
   }
 
-  /** Soft interrupt — pause after current tool, preserve history */
+  /** Soft interrupt — pause after current tool, preserve history. Also
+   *  persists so the next runTurn() honors it before any LLM call. */
   softAbort(): void {
     this.softAbortRequested = true
+    this.pendingSoftAbort = true
   }
 
   // ── System prompt ───────────────────────────────────────────────────────
@@ -304,7 +316,7 @@ export class ExecutionEngine {
       if (!modelProfile) {
         throw new Error(
           `ExecutionEngine.getToolDefinitions: Unknown model profile '${identity.modelProfileId}'. ` +
-            `Register it via ModelCapabilityRegistry.registerProfile() before calling runTurn().`
+            `Register it via ModelCapabilityRegistry.registerProfile() before calling runTurn().`,
         )
       }
 
@@ -317,7 +329,13 @@ export class ExecutionEngine {
           parameters: d.function.parameters,
           cost: reg?.costClass === 'expensive' ? 3 : reg?.costClass === 'medium' ? 2 : 1,
           metadata: {
-            visibilityClass: reg?.visibilityClass ?? (reg?.domains?.some((dom: string) => dom === 'meta' || dom === 'workflow' || dom === 'agent') ? 'orchestrator' : 'all'),
+            visibilityClass:
+              reg?.visibilityClass ??
+              (reg?.domains?.some(
+                (dom: string) => dom === 'meta' || dom === 'workflow' || dom === 'agent',
+              )
+                ? 'orchestrator'
+                : 'all'),
             roleMatch: reg?.roleMatch || [],
             hypothesisMatch: reg?.hypothesisMatch || [],
             informationGain: reg?.informationGain ?? 1,
@@ -608,6 +626,24 @@ export class ExecutionEngine {
 
   // ── Tool execution ──────────────────────────────────────────────────────
 
+  /**
+   * Execute a single tool call. Three routes, in this order:
+   *
+   *   1. planMode / agent-whitelist (defence in depth, applies to BOTH paths)
+   *   2. broker path (CTF runtime) — broker enforces CapabilityProfile,
+   *      ContestScope, ToolFirstPolicy, Artifact conversion,
+   *      background-job spawning. Broker does NOT consult the engine's
+   *      `permissionChecker`. This is intentional — the engine-side
+   *      permissionChecker is for the *legacy direct* path below.
+   *   3. direct path (non-CTF) — engine `permissionChecker` gate then
+   *      `tool.execute(input, context)`.
+   *
+   * The asymmetry (broker skips engine permissionChecker) is documented
+   * and intentional: a tool that goes through the broker is governed by
+   * broker-side gates which are stricter than engine-side checks. Calling
+   * the engine-side check on the broker path would double-gate (latency
+   * + possible disagreement on rule ordering). See AUDIT.md §11 F6.
+   */
   private async executeToolCall(
     toolName: string,
     input: Record<string, unknown>,
@@ -632,10 +668,7 @@ export class ExecutionEngine {
       }
     }
 
-    // ── CTF Broker path ─────────────────────────────────────
-    // When a broker is supplied (typical for specialist Agent runs), route the
-    // call through it. The broker enforces CapabilityProfile, ContestScope,
-    // ToolFirstPolicy, Artifact conversion, and background-job spawning.
+    // ── CTF Broker path (skips engine-side permissionChecker; see doc above) ─
     if (this.config.broker) {
       const brokerResult = await this.config.broker.execute(toolName, input, {
         cwd: this.config.cwd,
@@ -675,10 +708,10 @@ export class ExecutionEngine {
       return { content: `Unknown tool: ${toolName}`, isError: true }
     }
 
-    // ── Permission gate ──────────────────────────────────────────
-    // Consult the injected PermissionChecker (if any). This is the single choke
-    // point both parallel and serial execution pass through, so every tool call
-    // is gated exactly once. Denied calls return an error result the model sees.
+    // ── Direct path: engine-side PermissionChecker ─────────────────────────
+    // Consult the injected PermissionChecker (if any). The direct path runs
+    // only in non-CTF callers (legacy single-Harness non-CTF mode); broker
+    // mode bypasses this check entirely (see method doc above).
     if (this.config.permissionChecker) {
       const decision = await this.config.permissionChecker.check({ tool: toolName, input })
       this.eventLog?.append(
@@ -948,8 +981,6 @@ export class ExecutionEngine {
     // exact same lifecycle (one-way propagation: external fires → turn
     // fires). The linked controller is stored so runTurn cleanup can
     // unlink it (avoids listener accumulation across long sessions).
-    // `createLinkedAbortController` is imported at module top-level — a
-    // // dynamic import per turn would be measurable overhead at scale.
     let turnAbortController: AbortController
     let linkedAbort: { unlink(): void } | null = null
     if (this.config.signal) {
@@ -975,6 +1006,18 @@ export class ExecutionEngine {
     let result: TurnResult
     let lastToolName: string | undefined
     try {
+      // §11 F3 — pick up a sticky abort / soft-abort that landed while the
+      // engine was idle (between turns). Without this, engine.abort() called
+      // from the harness after the previous runTurn() resolved but before
+      // the next call would be silently dropped.
+      if (this.pendingHardAbortReason) {
+        turnAbortController.abort(this.pendingHardAbortReason)
+        this.pendingHardAbortReason = null
+      }
+      if (this.pendingSoftAbort) {
+        // already set the flag below the loop check; nothing more to do here.
+        this.pendingSoftAbort = false
+      }
       while (iterations < this.config.maxIterations) {
         // Check for cancellation — treat an aborted per-turn signal as
         // 'cancelled' (or 'interrupted' for soft-abort) rather than as a

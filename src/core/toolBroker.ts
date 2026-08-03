@@ -210,11 +210,17 @@ export class ToolBroker {
       const identity: ModelExecutionIdentity = ctx.identity || {
         taskId: ctx.taskId || 'task',
         agentRunId: ctx.agentId,
-        modelRole: activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator' ? 'task_planner' : activeProf.id.includes('scout') ? 'solver_scout' : 'deep_solver',
+        modelRole:
+          activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator'
+            ? 'task_planner'
+            : activeProf.id.includes('scout')
+              ? 'solver_scout'
+              : 'deep_solver',
         modelProfileId: activeProf.id,
         providerId: 'openai-compatible',
         capabilityProfileId: activeProf.id,
-        isOrchestrator: activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator',
+        isOrchestrator:
+          activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator',
       }
       try {
         this.opts.toolExposureResolver.assertExecutable({

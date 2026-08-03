@@ -43,11 +43,7 @@ export class DefaultSolverPreActionGuard implements SolverPreActionGuard {
     const attempts = input.taskState?.attempts || []
     const priorMatch = attempts.filter((att) => {
       if (att.fingerprint && att.fingerprint === input.fingerprint) return true
-      if (
-        att.targetId &&
-        input.action.target &&
-        att.targetId === input.action.target
-      ) {
+      if (att.targetId && input.action.target && att.targetId === input.action.target) {
         return true
       }
       return false

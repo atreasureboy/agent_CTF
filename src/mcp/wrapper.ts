@@ -1,4 +1,7 @@
 /**
+ * @deprecated See `src/mcp/client.ts` for the deprecation notice. Use
+ * `src/core/mcp/mcpExecutorAdapter.ts` for new work.
+ *
  * MCP tool wrapper + loader — bridges MCP tool descriptors into the base's
  * native `Tool` interface so the engine schedules them like built-ins.
  *

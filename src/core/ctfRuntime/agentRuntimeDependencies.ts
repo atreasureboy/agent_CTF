@@ -50,6 +50,14 @@ export interface AgentRuntimeDependencies {
   toolVisibilityPolicy?: ToolVisibilityPolicy
   toolExposureResolver?: ToolExposureResolver
   trajectoryRecorder?: TrajectoryRecorder
+  /**
+   * Phase 3.x — context-compiler used by external solver adapters to
+   * materialise challenge inputs. Typed as `unknown` because the runtime
+   * never invokes it directly (specialist harness + adapters know the
+   * concrete shape). The previous `(dependencies as any).contextCompiler`
+   * cast was a smell; `unknown` is the type-safe narrowing point.
+   */
+  contextCompiler?: unknown
 }
 
 /**

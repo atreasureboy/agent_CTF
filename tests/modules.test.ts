@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync } from 'fs'
+import { appendFileSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { SemanticMemory } from '../src/core/semanticMemory.js'
 import { EpisodicMemory } from '../src/core/episodicMemory.js'
@@ -86,9 +86,7 @@ describe('SemanticMemory', () => {
     // After the rewrite the temp file must be renamed away.
     mem.write({ content: 'override target', tags: [], source: 'agent_inferred', confidence: 0.5, timestamp: '' })
     mem.write({ content: 'override target', tags: [], source: 'user_stated', confidence: 0.9, timestamp: '' })
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
-    const fs = require('fs') as typeof import('fs')
-    const tmpFiles = fs.readdirSync(join(tmpDir, 'memory')).filter((f) => f.startsWith('semantic.jsonl.tmp.'))
+    const tmpFiles = readdirSync(join(tmpDir, 'memory')).filter((f) => f.startsWith('semantic.jsonl.tmp.'))
     expect(tmpFiles).toEqual([])
     expect(mem.readAll()).toHaveLength(1)
     expect(mem.readAll()[0].source).toBe('user_stated')
@@ -137,11 +135,9 @@ describe('EpisodicMemory', () => {
     // Audit P0 deferred — Phase 1.7 audit documented that a mid-write crash
     // left a half-written line. Atomic write + trim-partial must drop the
     // dangling line and keep going.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
-    const fs = require('fs') as typeof import('fs')
     const filePath = join(tmpDir, 'memory', 'episodes.jsonl')
     mem.write({ turn: 1, toolName: 'Bash', inputSummary: 'a', resultSummary: 'b', outcome: 'success', timestamp: '' })
-    fs.appendFileSync(filePath, '{"id":"epi_partial","turn":2,"toolName":"Bash",') // dangling
+    appendFileSync(filePath, '{"id":"epi_partial","turn":2,"toolName":"Bash",') // dangling
     mem.write({ turn: 3, toolName: 'Bash', inputSummary: 'c', resultSummary: 'd', outcome: 'success', timestamp: '' })
     const all = mem.readAll()
     // Both valid entries survive; the dangling partial line is dropped.

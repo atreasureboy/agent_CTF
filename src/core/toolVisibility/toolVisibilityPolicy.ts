@@ -19,7 +19,12 @@ export interface ToolVisibilityRule {
   visibleTo: ToolVisibility[]
 }
 
-export interface ResolveVisibleToolsInput<T extends { name: string }> {
+export interface ResolveVisibleToolsInput<
+  T extends {
+    name: string
+    metadata?: { visibilityClass?: 'orchestrator' | 'solver' | 'specialist' | 'all' }
+  },
+> {
   tools: T[]
   identity: ModelExecutionIdentity
   profile?: CapabilityProfile
@@ -90,7 +95,12 @@ export class ToolVisibilityPolicy {
     return false
   }
 
-  public resolveVisibleTools<T extends { name: string }>(input: ResolveVisibleToolsInput<T>): T[] {
+  public resolveVisibleTools<
+    T extends {
+      name: string
+      metadata?: { visibilityClass?: 'orchestrator' | 'solver' | 'specialist' | 'all' }
+    },
+  >(input: ResolveVisibleToolsInput<T>): T[] {
     const context = {
       role: input.identity.modelRole,
       modelId: input.identity.modelId,
@@ -101,8 +111,10 @@ export class ToolVisibilityPolicy {
       isOneShot: input.identity.isOneShot,
     }
 
-    let candidateTools = input.tools.filter((t) => this.isToolVisible(t.name, context))
+    let candidateTools = input.tools
 
+    // Apply CapabilityProfile deny/allow first — these are hard rules
+    // that override every visibility policy (orchestrator included).
     if (input.profile) {
       const p = input.profile
       candidateTools = candidateTools.filter((t) => {
@@ -118,11 +130,16 @@ export class ToolVisibilityPolicy {
       // orchestrator-classified tools. The previous hardcoded
       // HIGH_LEVEL_ORCHESTRATOR_TOOLS list was removed; the Tool
       // Registry's visibilityClass metadata is the single source of
-      // truth.
+      // truth. Orchestrator path skips the policy rule filter so a
+      // strict defaultPolicy='deny' cannot strip orchestrator tools.
       return candidateTools.filter(
-        (t) => t.metadata?.visibilityClass === 'orchestrator' || t.metadata?.visibilityClass === 'all',
+        (t) =>
+          t.metadata?.visibilityClass === 'orchestrator' || t.metadata?.visibilityClass === 'all',
       )
     }
+
+    // Non-orchestrator: apply policy rules.
+    candidateTools = candidateTools.filter((t) => this.isToolVisible(t.name, context))
 
     // Smart ranking & prioritization if maxVisibleTools is specified
     const cap = input.maxVisibleTools

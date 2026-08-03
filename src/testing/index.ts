@@ -6,7 +6,7 @@
  * related objects) without spinning up an engine, so tool unit-tests stay tiny.
  *
  * Example:
- *   import { createMockToolContext } from 'ovolv999/testing'
+ *   import { createMockToolContext } from 'ovogogogo/testing'
  *   const ctx = createMockToolContext({ cwd: '/tmp/proj' })
  *   const res = await myTool.execute({ path: 'a' }, ctx)
  *   expect(res.isError).toBe(false)

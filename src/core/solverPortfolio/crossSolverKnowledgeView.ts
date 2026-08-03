@@ -40,9 +40,10 @@ export class CrossSolverKnowledgeView {
       this.readCursors.set(input.solverRunId, seen)
     }
 
-    const currentRevision = typeof this.stateStore.getRevision === 'function'
-      ? this.stateStore.getRevision(input.taskId)
-      : ((state as any).revision ?? (state as any).stateRevision ?? 1)
+    const currentRevision =
+      typeof this.stateStore.getRevision === 'function'
+        ? this.stateStore.getRevision(input.taskId)
+        : ((state as any).revision ?? (state as any).stateRevision ?? 1)
 
     // Only return updates if current revision is greater than afterRevision
     if (input.afterRevision > 0 && currentRevision <= input.afterRevision) {
@@ -70,8 +71,12 @@ export class CrossSolverKnowledgeView {
             sourceSolverRunId: sourceRunId,
             stateRevision: currentRevision,
             evidenceIds: [ev.id],
-            observationIds: (ev as any).observationIds || (ev.sources || []).flatMap((s: any) => s.observationIds || []),
-            artifactIds: (ev as any).artifactIds || (ev.sources || []).flatMap((s: any) => s.artifactIds || []),
+            observationIds:
+              (ev as any).observationIds ||
+              (ev.sources || []).flatMap((s: any) => s.observationIds || []),
+            artifactIds:
+              (ev as any).artifactIds ||
+              (ev.sources || []).flatMap((s: any) => s.artifactIds || []),
             candidateIds: [],
             priority: ev.confidence >= 0.8 ? 'high' : 'medium',
             createdAt: ev.createdAt || Date.now(),

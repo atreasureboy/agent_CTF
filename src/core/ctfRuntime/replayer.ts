@@ -50,12 +50,29 @@ export interface ReplayCycle {
   attempts: ReplayAttempt[]
 }
 
+export interface ReplayError {
+  /** 0-based event index within the source event list. */
+  index: number
+  /** Event.type string for diagnostics. */
+  eventType: string
+  /** Reducer throw message. */
+  message: string
+}
+
 export interface ReplayOutput {
   taskId: string
   startedAt?: number
   completedAt?: number
   stoppedReason?: string
   cycles: ReplayCycle[]
+  /**
+   * §11 F10 — events that the reducer rejected. The reducer throws
+   * for known illegal transitions (e.g. ATTEMPT terminal→running);
+   * we previously swallowed these silently (`catch { continue }`) which
+   * made replay output look clean even when the underlying state was
+   * broken. These are now surfaced for the auditor / on-call to inspect.
+   */
+  errors: ReplayError[]
   /** Final state summary. */
   finalState: {
     totalObservations: number
@@ -94,7 +111,10 @@ export function replayFromEvents(events: ReadonlyArray<CTFTaskEvent>): ReplayOut
   let startedAt: number | undefined
   let completedAt: number | undefined
   let stoppedReason: string | undefined
-  for (const event of events) {
+  const errors: ReplayError[] = []
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i]
+    if (event === undefined) continue
     if (event.type === 'TASK_CREATED') {
       taskId = event.taskId
       state = event.initial
@@ -110,10 +130,15 @@ export function replayFromEvents(events: ReadonlyArray<CTFTaskEvent>): ReplayOut
     if (!state) continue
     try {
       state = reduceInternal(state, event)
-    } catch {
-      // Replay continues even if a reducer throws — the auditor sees
-      // a broken event in the timeline rather than aborting the
-      // entire replay.
+    } catch (err) {
+      // §11 F10 — record the error so callers can audit replay quality.
+      // The previous `catch { continue }` hid reducer bugs behind a clean
+      // ReplayOutput; surface them now via `errors[]`.
+      errors.push({
+        index: i,
+        eventType: event.type,
+        message: err instanceof Error ? err.message : String(err),
+      })
       continue
     }
     if (event.type === 'STRATEGY_DECISION_RECORDED') {
@@ -195,6 +220,7 @@ export function replayFromEvents(events: ReadonlyArray<CTFTaskEvent>): ReplayOut
     return {
       taskId: '',
       cycles: [],
+      errors,
       finalState: emptyFinalState(),
     }
   }
@@ -204,6 +230,7 @@ export function replayFromEvents(events: ReadonlyArray<CTFTaskEvent>): ReplayOut
     completedAt,
     stoppedReason,
     cycles,
+    errors,
     finalState: {
       totalObservations: state.observations.length,
       totalEvidence: state.evidence.length,

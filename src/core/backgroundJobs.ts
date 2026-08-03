@@ -85,20 +85,71 @@ export type JobRunner = (spec: JobSpec, signal: AbortSignal) => Promise<JobRunne
 export interface JobRunnerRegistry {
   register(prefix: string, runner: JobRunner): void
   resolve(toolId: string): JobRunner | null
+  unregister(prefix: string): boolean
+  list(): string[]
 }
 
 export class JobRunnerRegistryImpl implements JobRunnerRegistry {
   private readonly map = new Map<string, JobRunner>()
+  // Cached warning emission: emit each overlap only once per (existing, new)
+  // pair to avoid log spam when resolve() is called repeatedly.
+  private readonly emittedOverlapWarnings = new Set<string>()
 
   register(prefix: string, runner: JobRunner): void {
+    if (this.map.has(prefix)) {
+      throw new Error(
+        `JobRunnerRegistry: prefix '${prefix}' already registered. ` +
+          `Call unregister() first or pick a different prefix.`,
+      )
+    }
+    // Warn on partial overlap: e.g. registering 'oneshot:' after 'oneshot:'
+    // would shadow the 'oneshot:v2' tool under the original runner. Sort
+    // longest-first in resolve() so longer prefixes win, but emit a warning
+    // so misconfigurations are visible at boot, not silently at run-time.
+    for (const existing of this.map.keys()) {
+      if (existing === prefix) continue
+      const warnKey = `${existing}|${prefix}`
+      if (existing.startsWith(prefix) || prefix.startsWith(existing)) {
+        if (!this.emittedOverlapWarnings.has(warnKey)) {
+          this.emittedOverlapWarnings.add(warnKey)
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[JobRunnerRegistry] prefix overlap: existing '${existing}' and new ` +
+              `'${prefix}' share a prefix; longer-match wins, but rename to disambiguate.`,
+          )
+        }
+      }
+    }
     this.map.set(prefix, runner)
   }
 
   resolve(toolId: string): JobRunner | null {
-    for (const [prefix, runner] of this.map) {
+    // Longest-prefix match: iterate sorted by length descending so 'oneshot:v2'
+    // wins over 'oneshot:'. Map preserves insertion order, so we need explicit
+    // sorting — without it the first registered prefix always matches first.
+    const sorted = Array.from(this.map.entries()).sort(([a], [b]) => b.length - a.length)
+    for (const [prefix, runner] of sorted) {
       if (toolId.startsWith(prefix)) return runner
     }
     return null
+  }
+
+  unregister(prefix: string): boolean {
+    const existed = this.map.delete(prefix)
+    if (existed) {
+      // Drop cached overlap warnings that involved the removed prefix so a
+      // future re-registration can re-warn if needed.
+      for (const key of Array.from(this.emittedOverlapWarnings)) {
+        if (key.includes(`|${prefix}`) || key.includes(`${prefix}|`)) {
+          this.emittedOverlapWarnings.delete(key)
+        }
+      }
+    }
+    return existed
+  }
+
+  list(): string[] {
+    return Array.from(this.map.keys())
   }
 }
 

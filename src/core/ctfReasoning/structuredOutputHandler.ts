@@ -20,8 +20,7 @@ import {
   type ProcessReasoningInputsInput,
   type ReasoningCoordinatorOptions,
 } from './reasoningCoordinator.js'
-import type {
-  ProcessedOutputRegistry} from './reasoningCascade.js';
+import type { ProcessedOutputRegistry } from './reasoningCascade.js'
 import {
   createCascadeContext,
   REASONING_CASCADE_MAX_DEPTH,

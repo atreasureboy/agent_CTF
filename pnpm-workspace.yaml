@@ -1,2 +1,13 @@
-allowBuilds:
-  esbuild: set this to true or false
+# pnpm workspace declaration for agent_CTF.
+#
+# We intentionally do NOT declare multi-package workspaces here:
+# `src/`, `tests/`, `bin/` belong to a single TypeScript project (see
+# `tsconfig.json`) and the package manager installs deps at the root.
+# The vendored comparison repos under `swe-agent/`, `CAI/`, `HackSynth/`,
+# etc. are git-ignored reference material — they are NOT workspaces and
+# are explicitly excluded from `tsc` and `eslint` via their own globs.
+#
+# This file exists so anyone who clones the repo and runs `pnpm` instead
+# of npm sees a non-misleading config (an empty `packages:` would also
+# be valid; we set it explicitly to make the intent obvious).
+packages: []

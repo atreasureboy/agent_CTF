@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 
 export const ChallengeManifestSchema = z.object({
@@ -20,8 +21,10 @@ export const ChallengeManifestSchema = z.object({
 export type ChallengeManifest = z.infer<typeof ChallengeManifestSchema>
 
 export function loadChallengeManifest(path: string): ChallengeManifest {
-  const fs = require('fs')
-  const content = fs.readFileSync(path, 'utf-8')
-  const json = JSON.parse(content)
+  const content = readFileSync(path, 'utf-8')
+  // `JSON.parse` returns `unknown` is correct, but TypeScript types it
+  // as `any`. Cast through `unknown` so the Zod schema's narrowing works
+  // and the eslint `no-unsafe-assignment` rule is satisfied.
+  const json: unknown = JSON.parse(content)
   return ChallengeManifestSchema.parse(json)
 }

