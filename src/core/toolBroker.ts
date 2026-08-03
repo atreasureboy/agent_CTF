@@ -92,6 +92,9 @@ export interface ToolBrokerOptions {
   profileStore?: ProfileStore
   toolVisibilityPolicy?: ToolVisibilityPolicy
   toolExposureResolver?: ToolExposureResolver
+  /** Real Deep Integration: Hard-gated anti-stagnation interceptor */
+  attemptDeduplicator?: import('./ctfReasoning/attemptDeduplicator.js').AttemptDeduplicator
+  taskStateStore?: import('./ctfRuntime/taskStateStore.js').CTFTaskStateStore
 }
 
 /**
@@ -242,6 +245,38 @@ export class ToolBroker {
         content: `Unknown tool "${toolId}".`,
         isError: true,
       })
+    }
+
+    // ── Step 1.8: Hard-Gated Anti-Stagnation Interceptor ──────
+    if (this.opts.attemptDeduplicator && this.opts.taskStateStore) {
+      const state = this.opts.taskStateStore.getState()
+      const decision = this.opts.attemptDeduplicator.check(
+        {
+          kind: 'tool_call',
+          targetId: toolId,
+          input,
+        },
+        state,
+      )
+      if (!decision.allowed) {
+        this.opts.eventLog?.append(
+          'permission',
+          'broker',
+          {
+            decision: 'dedup_block',
+            tool: toolId,
+            reason: decision.reason,
+            fingerprint: decision.fingerprint,
+            agent: ctx.agentId,
+            task: ctx.taskId,
+          },
+          ['broker', toolId, 'dedup_block'],
+        )
+        return new BrokerExecutionResult({
+          content: `[ToolBroker Guard] Action execution blocked due to repetition: This exact tool (${toolId}) and parameter signature (fingerprint: ${decision.fingerprint}) has already been attempted (${decision.reason}). Please adjust your parameters or pivot your strategy.`,
+          isError: true,
+        })
+      }
     }
 
     // ── Step 2: ToolFirstPolicy advisory ─────────────────────

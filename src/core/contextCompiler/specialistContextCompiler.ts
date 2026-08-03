@@ -42,6 +42,24 @@ export class SpecialistContextCompiler {
       lines.push(`- Evidence [E:${ev.id}]: ${ev.title} - ${ev.factSummary}`)
     }
 
+    const attempts = input.attempts || input.state?.attempts || []
+    if (attempts.length > 0) {
+      const failed = attempts.filter((a) => a.status === 'failed' || a.status === 'cancelled')
+      if (failed.length > 0) {
+        lines.push('', '=== BLOCKED / FAILED ATTEMPTS (DO NOT REPEAT) ===')
+        for (const f of failed.slice(-5)) {
+          lines.push(
+            `- Attempt [${f.id}] Target: ${f.targetId || 'unknown'} (Status: ${f.status}, Fingerprint: ${f.fingerprint ?? 'none'})`,
+          )
+        }
+      }
+    }
+
+    lines.push('', '=== DOMAIN STRATEGY GUIDANCE ===')
+    lines.push(
+      `- Focus strictly on ${specialistDomain} analysis. Avoid executing commands outside profile boundaries.`,
+    )
+    lines.push('- Utilize confirmed evidence before generating new hypotheses.')
     lines.push('', '=== ALLOWED TOOLS FOR SPECIALIST ===', ctx.allowedToolIds.join(', '))
 
     ctx.renderedText = lines.join('\n')
