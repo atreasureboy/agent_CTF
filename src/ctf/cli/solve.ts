@@ -534,6 +534,72 @@ function planSolveDispatch(
     }
   }
 
+  // §Round-3 — reverse1: binary with single-byte XOR. Brute force
+  // every byte; the tool extracts the .data section and tries all
+  // 256 keys, returning the candidate that produces a flag-shaped
+  // plaintext.
+  if (manifest.id === 'reverse1' || /single.byte.*xor|brute.force.*key/i.test(manifest.description)) {
+    const binName = manifest.attachmentPaths?.find((p) => /^checker/.test(p))
+    if (binName) {
+      const binPath = resolve(challengeDir, binName)
+      if (existsSync(binPath)) {
+        return {
+          mode: 'workflow',
+          reason: 'reverse1 single-byte XOR detected — dispatch to xor_single_byte workflow',
+          profileId,
+          workflowId: 'xor_single_byte',
+          workflowInputs: ['--input', binPath],
+        }
+      }
+    }
+  }
+
+  // §Round-3 — reverse2: atbash cipher. The challenge attaches
+  // checker.py which has `expected = "..."` — extract the expected
+  // (atbash-output) from the file and apply atbash to recover the
+  // input.
+  if (manifest.id === 'reverse2' || /atbash|substitution/i.test(manifest.description)) {
+    const pyFile = manifest.attachmentPaths?.find((p) => p.endsWith('.py'))
+    if (pyFile) {
+      const pyPath = resolve(challengeDir, pyFile)
+      if (existsSync(pyPath)) {
+        const pySrc = readFileSync(pyPath, 'utf-8')
+        const encMatch = pySrc.match(/expected\s*=\s*["']([a-zA-Z0-9_{}]+)["']/)
+        const enc = encMatch?.[1]
+        if (enc) {
+          return {
+            mode: 'workflow',
+            reason: 'reverse2 atbash cipher detected — dispatch to atbash workflow',
+            profileId,
+            workflowId: 'atbash',
+            workflowInputs: ['--text', enc],
+          }
+        }
+      }
+    }
+  }
+
+  // §Round-3 — reverse_elf: bit-rotation + XOR + add cipher. The
+  // dispatch passes the binary as input to the reverse_elf workflow,
+  // which inverts the encryption by extracting the 16-byte .rodata
+  // target + the 8-byte movabs immediate operand and applying the
+  // inverse of the encrypt function.
+  if (manifest.id === 'reverse_elf' || /bit.*rotat|rol.*xor|custom.*encrypt/i.test(manifest.description)) {
+    const binName = manifest.attachmentPaths?.find((p) => /^checker$/.test(p))
+    if (binName) {
+      const binPath = resolve(challengeDir, binName)
+      if (existsSync(binPath)) {
+        return {
+          mode: 'workflow',
+          reason: 'reverse_elf detected — dispatch to reverse_elf workflow',
+          profileId,
+          workflowId: 'reverse_elf',
+          workflowInputs: ['--input', binPath],
+        }
+      }
+    }
+  }
+
   // Universal fallback — chat-mode profile+prompt.
   return {
     mode: 'chat',

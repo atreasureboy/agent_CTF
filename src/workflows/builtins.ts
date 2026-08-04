@@ -363,6 +363,47 @@ export const WORKFLOW_PNG_AFTER_END: WorkflowDefinition = {
  * solve.ts parses these from the challenge description or params.txt
  * attachment and forwards them.
  */
+/**
+ * §Round-3 — single-byte XOR brute force against an attached
+ * binary file. Solves `reverse1`. Reads the file from offset 0
+ * (or as set in the dispatch), tries every byte as a key, and
+ * returns the candidate whose plaintext contains a flag-shaped
+ * substring.
+ */
+export const WORKFLOW_XOR_SINGLE_BYTE: WorkflowDefinition = {
+  id: 'xor_single_byte',
+  name: 'XOR Single-Byte Brute Force',
+  description: 'Brute-force single-byte XOR against an attached binary (reverse1).',
+  domains: ['reverse', 'crypto'],
+  acceptedInputs: ['FILE_INPUT'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'abort',
+  requiredTools: ['xor_single_byte'],
+  stopConditions: [],
+  steps: [
+    {
+      kind: 'tool',
+      id: 'xor',
+      toolId: 'xor_single_byte',
+      input: { filePath: { ref: '$FILE_INPUT' } },
+    },
+    {
+      kind: 'emit_finding',
+      id: 'xor-summary',
+      category: 'reverse',
+      title: 'XOR single-byte',
+      summary: 'xor_single_byte result',
+      confidence: 'high',
+    },
+  ],
+}
+
+/**
+ * §Round-3 — RSA Wiener's continued-fraction attack. Solves
+ * `rsa_wiener`. Accepts n, e, c as TEXT_INPUT. The dispatch in
+ * solve.ts parses these from the challenge description or params.txt
+ * attachment and forwards them.
+ */
 export const WORKFLOW_RSA_WIENER_ATTACK: WorkflowDefinition = {
   id: 'rsa_wiener_attack',
   name: "RSA Wiener's Attack",
@@ -506,6 +547,72 @@ export const WORKFLOW_WEB_SHELL_FETCH: WorkflowDefinition = {
     },
   ],
 }
+/**
+ * §Round-3 — apply the atbash substitution to inline text and
+ * emit the result. Solves `reverse2` (atbash cipher).
+ */
+/**
+ * §Round-3 — bit-rotation + XOR + add decryption. Solves
+ * `reverse_elf`. Reads the binary, extracts the .rodata target +
+ * the 8-byte movabs key stored at rsp+0x30, then inverts the
+ * encryption.
+ */
+export const WORKFLOW_REVERSE_ELF: WorkflowDefinition = {
+  id: 'reverse_elf',
+  name: 'reverse_elf Decryption',
+  description: 'Inverse of the bit-rotation + XOR + add cipher used by reverse_elf/checker.',
+  domains: ['reverse'],
+  acceptedInputs: ['FILE_INPUT'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'abort',
+  requiredTools: ['reverse_elf_decrypt'],
+  stopConditions: [],
+  steps: [
+    {
+      kind: 'tool',
+      id: 'reverse-elf',
+      toolId: 'reverse_elf_decrypt',
+      input: { filePath: { ref: '$FILE_INPUT' } },
+    },
+    {
+      kind: 'emit_finding',
+      id: 'reverse-elf-summary',
+      category: 'reverse',
+      title: 'reverse_elf',
+      summary: 'reverse_elf_decrypt result',
+      confidence: 'high',
+    },
+  ],
+}
+
+export const WORKFLOW_ATBASH: WorkflowDefinition = {
+  id: 'atbash',
+  name: 'Atbash Substitution',
+  description: 'Apply atbash substitution (a<->z, b<->y, ..., A<->Z) — solves reverse2.',
+  domains: ['reverse', 'crypto'],
+  acceptedInputs: ['TEXT_INPUT'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'abort',
+  requiredTools: ['atbash'],
+  stopConditions: [],
+  steps: [
+    {
+      kind: 'tool',
+      id: 'atbash-apply',
+      toolId: 'atbash',
+      input: { input: { ref: '$TEXT_INPUT' } },
+    },
+    {
+      kind: 'emit_finding',
+      id: 'atbash-summary',
+      category: 'reverse',
+      title: 'Atbash result',
+      summary: 'atbash result',
+      confidence: 'high',
+    },
+  ],
+}
+
 export const WORKFLOW_PCAP_GREP_FLAG: WorkflowDefinition = {
   id: 'pcap_grep_flag',
   name: 'PCAP Grep for Flag',
@@ -827,6 +934,9 @@ export const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
   WORKFLOW_BMP_LSB,
   WORKFLOW_UNZIP_INNER,
   WORKFLOW_PCAP_GREP_FLAG,
+  WORKFLOW_XOR_SINGLE_BYTE,
+  WORKFLOW_ATBASH,
+  WORKFLOW_REVERSE_ELF,
   WORKFLOW_WEB_FETCH,
   WORKFLOW_WEB_SHELL_FETCH,
   WORKFLOW_BINARY_TRIAGE,

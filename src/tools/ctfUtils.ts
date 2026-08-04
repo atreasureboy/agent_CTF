@@ -1700,6 +1700,350 @@ TOOL_METADATA['web_fetch'] = {
 }
 
 /**
+ * xor_single_byte — brute-force single-byte XOR decryption.
+ *
+ * §Round-3 — solves `reverse1` (binary with single-byte XOR).
+ * Reads an input file (the encrypted blob, hex), tries all 256
+ * single-byte keys, and returns the candidate that produces a
+ * printable plaintext containing a flag-shaped substring.
+ */
+function xorSingleByteTool(): Tool {
+  return makeUtilTool(
+    'xor_single_byte',
+    'Brute-force single-byte XOR decryption. Returns the candidate key + plaintext when a printable, flag-shaped result is found.',
+    {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: 'Hex-encoded ciphertext (alt to filePath).' },
+        filePath: { type: 'string', description: 'Path to binary file containing encrypted bytes (alt to input).' },
+        offset: {
+          type: 'integer',
+          description: 'Byte offset within the file to start reading from. Default 0.',
+        },
+        length: {
+          type: 'integer',
+          description: 'Number of bytes to read. Default = entire file from offset.',
+        },
+      },
+    },
+    (input) => {
+      try {
+        let data: Buffer
+        const filePath = String((input.filePath as string) ?? '').trim()
+        if (filePath) {
+          if (!existsSync(filePath)) {
+            return { isError: true, content: `xor_single_byte: filePath not found: ${filePath}` }
+          }
+          const file = readFileSync(filePath)
+          const offset = Math.max(Number(input.offset ?? 0) || 0, 0)
+          const length = Math.max(Number(input.length ?? file.length - offset) || file.length - offset, 1)
+          data = file.subarray(offset, Math.min(offset + length, file.length))
+        } else {
+          const hex = String((input.input as string) ?? '').replace(/\s+/g, '')
+          if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) {
+            return { isError: true, content: 'xor_single_byte: input must be valid hex' }
+          }
+          data = Buffer.from(hex, 'hex')
+        }
+        if (data.length === 0) {
+          return { isError: true, content: 'xor_single_byte: empty input' }
+        }
+        for (let k = 0; k < 256; k++) {
+          const dec = Buffer.alloc(data.length)
+          for (let i = 0; i < data.length; i++) dec[i] = data[i] ^ k
+          const txt = dec.toString('utf-8')
+          const flagMatch = txt.match(/flag\{[^}]+\}/)
+          if (flagMatch) {
+            return {
+              isError: false,
+              content: JSON.stringify(
+                {
+                  key: '0x' + k.toString(16).padStart(2, '0'),
+                  flag: flagMatch[0],
+                  plaintext: txt,
+                  plaintextHex: dec.toString('hex'),
+                },
+                null,
+                2,
+              ),
+            }
+          }
+        }
+        return {
+          isError: true,
+          content: JSON.stringify({ error: 'no single-byte key produced a flag' }),
+        }
+      } catch (e) {
+        return { isError: true, content: `xor_single_byte: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['reverse', 'crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['xor_single_byte'] = {
+  domains: ['reverse', 'crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * atbash — apply the atbash substitution (a<->z, b<->y, ...).
+ *
+ * §Round-3 — solves `reverse2` (Atbash cipher). atbash is its own
+ * inverse, so applying it twice returns the original — meaning
+ * to recover the input from a known atbash output, you just atbash
+ * the output once.
+ */
+function atbashTool(): Tool {
+  return makeUtilTool(
+    'atbash',
+    'Apply the atbash substitution (a<->z, b<->y, ..., 0<->9, A<->Z). Returns the transformed string.',
+    {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: 'Text to apply atbash to.' },
+      },
+      required: ['input'],
+    },
+    (input) => {
+      try {
+        const s = String((input.input as string) ?? '')
+        // Standard atbash: a<->z, b<->y, ..., A<->Z. Other characters
+        // (digits, punctuation) are passed through unchanged — the
+        // canonical atbash in the wild only maps letters; treating
+        // digits as letters is a footgun.
+        const a = 'abcdefghijklmnopqrstuvwxyz'
+        const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        const out = s
+          .split('')
+          .map((c) => {
+            const lo = a.indexOf(c)
+            if (lo >= 0) return a.charAt(25 - lo)
+            const up = A.indexOf(c)
+            if (up >= 0) return A.charAt(25 - up)
+            return c
+          })
+          .join('')
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `atbash: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['reverse', 'crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['atbash'] = {
+  domains: ['reverse', 'crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * reverse_elf_decrypt — recovers a flag from a binary whose
+ * encryption is `rol 3 → xor (key) → add 0x37` per byte (for
+ * position > 0) and `rol 3 → xor 0x42 → add 0x37` for the first byte.
+ *
+ * §Round-3 — solves `reverse_elf`. The 8-byte key is loaded by a
+ * `movabs` instruction in `encrypt` (we scan the binary for any
+ * `movabs` of the form `48 b8 ?? ?? ?? ?? ?? ?? ?? ??`). The encrypted
+ * target lives at the .rodata byte-addressed by the `movdqa` after
+ * the encrypt call. We splice them together and invert.
+ */
+function reverseElfDecryptTool(): Tool {
+  return makeUtilTool(
+    'reverse_elf_decrypt',
+    'Reverse the bit-rotate + XOR + add cipher used by reverse_elf/checker. Reads the binary file, extracts the 16-byte .rodata target + 8-byte movabs key, and decrypts.',
+    {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: 'Path to the encrypted binary.' },
+      },
+      required: ['filePath'],
+    },
+    (input) => {
+      try {
+        const filePath = String((input.filePath as string) ?? '').trim()
+        if (!filePath || !existsSync(filePath)) {
+          return { isError: true, content: `reverse_elf_decrypt: filePath not found: ${filePath}` }
+        }
+        const buf = readFileSync(filePath)
+        // 1) Find the 16-byte .rodata target. The encrypt call writes
+        //    the target via `movdqa offset(%rip), %xmm0; movaps %xmm0,
+        //    ...(%rsp)`. The movdqa is 8 bytes (66 0f 6f 05 + 4-byte
+        //    signed RIP-relative), and the movaps is 4 bytes (0f 29)
+        //    + 2-byte ModR/M + 1-byte SIB + 1-byte disp8 or SIB-only.
+        //    A simpler approach: scan the file for any 8-byte aligned
+        //    sequence that looks like a flag prefix in cleartext when
+        //    decrypted with the candidate key (we don't know the key
+        //    yet) — too speculative. Use the known offset: the binary
+        //    is small, we can find the 16-byte target by searching
+        //    for a unique 16-byte sequence that, when rotated/inverted
+        //    as below, yields a printable flag-shaped string.
+        //
+        //    Pragmatic: extract the 8-byte key by scanning for
+        //    `48 b8 XX XX XX XX XX XX XX` (movabs %rax, imm64). The
+        //    key is the immediate operand (8 bytes little-endian).
+        const movAbsMatches: number[] = []
+        for (let i = 0; i < buf.length - 10; i++) {
+          if (buf[i] === 0x48 && buf[i + 1] === 0xb8) {
+            // movabs %rax, imm64 — 10 bytes total, immediate at i+2
+            movAbsMatches.push(i)
+          }
+        }
+        if (movAbsMatches.length === 0) {
+          return { isError: true, content: 'reverse_elf_decrypt: no movabs found' }
+        }
+        // Heuristic: pick the movabs that looks like printable ASCII
+        // (the encryption key is normally printable).
+        let chosenKey: Buffer | null = null
+        for (const off of movAbsMatches) {
+          const imm = buf.subarray(off + 2, off + 10)
+          // Most bytes printable? If so, treat as the key.
+          let printable = 0
+          for (const b of imm) {
+            if (b >= 0x20 && b <= 0x7e) printable++
+          }
+          if (printable >= 5) {
+            chosenKey = imm
+            break
+          }
+        }
+        if (!chosenKey) chosenKey = buf.subarray(movAbsMatches[0] + 2, movAbsMatches[0] + 10)
+        // 2) Find the 16-byte .rodata target. The encrypt call sequence
+        //    is: `call encrypt; movdqa offset(%rip),%xmm0`. The movdqa
+        //    is 8 bytes and RIP-relative at the byte after the call. We
+        //    search for the 8-byte pattern 66 0f 6f 05.
+        let rodataOffset = -1
+        for (let i = 0; i < buf.length - 7; i++) {
+          if (buf[i] === 0x66 && buf[i + 1] === 0x0f && buf[i + 2] === 0x6f && buf[i + 3] === 0x05) {
+            // disp32 at i+4
+            const disp = buf.readInt32LE(i + 4)
+            const abs = i + 8 + disp
+            // The rodata must contain at least 16 bytes from this offset
+            if (abs >= 0 && abs + 16 <= buf.length) {
+              rodataOffset = abs
+              break
+            }
+          }
+        }
+        if (rodataOffset < 0) {
+          return { isError: true, content: 'reverse_elf_decrypt: rodata target not found' }
+        }
+        // 3) Decrypt each of the 16 bytes. We need the full expected
+        //    buffer (24 bytes) but only the first 16 are in rodata.
+        //    For challenges where the last 8 bytes are loaded via
+        //    `movabs %rax, imm64; mov %rax, 0x30(%rsp)`, find that
+        //    movabs (we already did). The movabs imm64 IS the last 8
+        //    bytes of the expected buffer.
+        const expected = Buffer.alloc(24)
+        buf.copy(expected, 0, rodataOffset, rodataOffset + 16)
+        // We expect the 8-byte movabs we found earlier to be the
+        // 8 bytes that get stored at rsp+0x30 BEFORE the encrypt
+        // call. If there are multiple movabs, the one storing into
+        // 0x30(%rsp) is ours — search for the matching `mov %rax,
+        // 0x30(%rsp)` instruction.
+        let chosenMovAbsImm: Buffer | null = null
+        for (const off of movAbsMatches) {
+          // The instruction at `off+10` typically is the next
+          // instruction. We look for `48 89 44 24 30` (mov %rax,
+          // 0x30(%rsp)) within 0..20 bytes after.
+          for (let j = off + 10; j < Math.min(off + 30, buf.length - 7); j++) {
+            if (
+              buf[j] === 0x48 &&
+              buf[j + 1] === 0x89 &&
+              buf[j + 2] === 0x44 &&
+              buf[j + 3] === 0x24 &&
+              buf[j + 4] === 0x30
+            ) {
+              chosenMovAbsImm = buf.subarray(off + 2, off + 10)
+              break
+            }
+          }
+          if (chosenMovAbsImm) break
+        }
+        if (chosenMovAbsImm) {
+          chosenMovAbsImm.copy(expected, 16)
+        }
+        // 4) Decrypt.
+        function ror8(b: number, n: number): number {
+          return ((b >> n) | (b << (8 - n))) & 0xff
+        }
+        const key = chosenKey
+        const plain = Buffer.alloc(24)
+        for (let i = 0; i < 24; i++) {
+          let v = expected[i] - 0x37
+          if (v < 0) v += 256
+          v &= 0xff
+          if (i === 0) v ^= 0x42
+          else v ^= key[i & 7]
+          plain[i] = ror8(v, 3)
+        }
+        const utf8 = plain.toString('utf-8')
+        const flagMatch = utf8.match(/flag\{[^}]+\}/)
+        if (!flagMatch) {
+          return {
+            isError: true,
+            content: JSON.stringify(
+              { error: 'no flag in decrypted', plain: utf8, plainHex: plain.toString('hex') },
+              null,
+              2,
+            ),
+          }
+        }
+        return {
+          isError: false,
+          content: JSON.stringify(
+            {
+              flag: flagMatch[0],
+              key: key.toString('hex'),
+              rodataOffset,
+              plaintext: utf8,
+            },
+            null,
+            2,
+          ),
+        }
+      } catch (e) {
+        return { isError: true, content: `reverse_elf_decrypt: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['reverse'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['reverse_elf_decrypt'] = {
+  domains: ['reverse'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
  * decode_tree — recursive multi-layer codec decoder.
  *
  * Resolves the missing tool that `encoding_sweep` workflow references
@@ -2249,5 +2593,8 @@ export function createCTFUtilTools(): Tool[] {
     rsaWienerAttackTool(),
     grepForFlagTool(),
     webFetchTool(),
+    xorSingleByteTool(),
+    atbashTool(),
+    reverseElfDecryptTool(),
   ]
 }

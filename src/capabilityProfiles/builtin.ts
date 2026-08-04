@@ -274,6 +274,11 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'radare2',
       'gdb',
       'exiftool',
+      // §Round-3 — xor_single_byte + atbash tools used by
+      // reverse1 / reverse2 workflows.
+      'xor_single_byte',
+      'atbash',
+      'reverse_elf_decrypt',
       'list_artifacts',
       'list_findings',
       'list_jobs',
@@ -283,7 +288,7 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'inspect_finding',
     ],
     deniedTools: ['nmap', 'sqlmap', 'tshark'],
-    allowedWorkflows: ['binary_triage', 'function_disassembly', 'embedded_string_search'],
+    allowedWorkflows: ['binary_triage', 'function_disassembly', 'embedded_string_search', 'pcap_grep_flag', 'xor_single_byte', 'atbash', 'reverse_elf'],
     deniedWorkflows: ['host_service_enumeration'],
     allowShell: true,
     allowPython: false,
@@ -316,8 +321,12 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'objdump',
       'gdb',
       'exiftool',
-      // §Round-3 — pcap_grep_flag workflow uses grep_for_flag tool.
+      // §Round-3 — pcap_grep_flag + xor_single_byte + atbash workflows
+      // share grep_for_flag / xor_single_byte / atbash tools.
       'grep_for_flag',
+      'xor_single_byte',
+      'atbash',
+      'reverse_elf_decrypt',
       'list_artifacts',
       'list_findings',
       'list_jobs',
@@ -327,7 +336,7 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'inspect_finding',
     ],
     deniedTools: ['nmap', 'sqlmap', 'tshark'],
-    allowedWorkflows: ['pwn_triage', 'register_state_capture', 'segfault_backtrace', 'pcap_grep_flag'],
+    allowedWorkflows: ['pwn_triage', 'register_state_capture', 'segfault_backtrace', 'pcap_grep_flag', 'xor_single_byte', 'atbash'],
     deniedWorkflows: ['host_service_enumeration'],
     allowShell: true,
     allowPython: true,
