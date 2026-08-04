@@ -235,6 +235,93 @@ export const WORKFLOW_RSA_COMMON_ATTACKS: WorkflowDefinition = {
   ],
 }
 
+/**
+ * §13 R4 — workflow that calls the xor_known_plaintext tool to recover
+ * a repeating XOR key from a known plaintext / ciphertext pair, then
+ * decrypt the longer ciphertext. Solves the `xor_known` challenge
+ * end-to-end without LLM reasoning.
+ *
+ * Inputs:
+ *   - $KNOWN_PLAINTEXT (utf-8 string passed via --text)
+ *   - $KNOWN_CIPHERTEXT_HEX (hex string passed via --text key)
+ *   - $TEXT_INPUT (the longer ciphertext, hex)
+ */
+export const WORKFLOW_XOR_KNOWN_ATTACK: WorkflowDefinition = {
+  id: 'xor_known_attack',
+  name: 'XOR Known-Plaintext Attack',
+  description:
+    '已知明文 + 密文 → 推导 XOR key → 解密长密文（适用于 xor_known 等）。',
+  domains: ['crypto'],
+  acceptedInputs: ['TEXT_INPUT', 'KNOWN_PLAINTEXT', 'KNOWN_CIPHERTEXT_HEX'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'abort',
+  requiredTools: ['xor_known_plaintext'],
+  stopConditions: [],
+  steps: [
+    {
+      kind: 'tool',
+      id: 'xor-attack',
+      toolId: 'xor_known_plaintext',
+      input: {
+        cipherHex: { ref: '$TEXT_INPUT' },
+        knownPlaintext: { ref: '$KNOWN_PLAINTEXT' },
+        knownCiphertextHex: { ref: '$KNOWN_CIPHERTEXT_HEX' },
+      },
+    },
+    {
+      kind: 'emit_finding',
+      id: 'xor-summary',
+      category: 'crypto',
+      title: 'XOR known-plaintext attack',
+      // Placeholder summary — the broker's auto-emit-flag side effect
+      // surfaces the actual flag alongside this finding.
+      summary: 'xor_known_plaintext result',
+      confidence: 'high',
+    },
+  ],
+}
+
+/**
+ * §13 R4 — AES-ECB decryption with known key. Solves the `aes_zero_iv`
+ * challenge end-to-end (the challenge is actually AES-ECB despite the
+ * title; AES-CBC with zero IV would not have produced the same
+ * printable flag for an AES-128 key with no padding).
+ *
+ * Inputs:
+ *   - $KEY_HEX (passed via --text key=value syntax)
+ *   - $TEXT_INPUT (the ciphertext hex)
+ */
+export const WORKFLOW_AES_ECB_ATTACK: WorkflowDefinition = {
+  id: 'aes_ecb_attack',
+  name: 'AES-ECB Decryption',
+  description: '已知 key 时 AES-128/192/256-ECB 解密（aes_zero_iv 等）。',
+  domains: ['crypto'],
+  acceptedInputs: ['TEXT_INPUT', 'KEY_HEX'],
+  executionMode: 'sequential',
+  partialFailurePolicy: 'abort',
+  requiredTools: ['aes_ecb_decrypt'],
+  stopConditions: [],
+  steps: [
+    {
+      kind: 'tool',
+      id: 'aes-decrypt',
+      toolId: 'aes_ecb_decrypt',
+      input: {
+        ciphertextHex: { ref: '$TEXT_INPUT' },
+        keyHex: { ref: '$KEY_HEX' },
+      },
+    },
+    {
+      kind: 'emit_finding',
+      id: 'aes-summary',
+      category: 'crypto',
+      title: 'AES-ECB decryption',
+      summary: 'aes_ecb_decrypt result',
+      confidence: 'high',
+    },
+  ],
+}
+
 export const WORKFLOW_BINARY_TRIAGE: WorkflowDefinition = {
   id: 'binary_triage',
   name: 'Binary Triage',
@@ -493,6 +580,8 @@ export const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
   WORKFLOW_IMAGE_QUICK_SCAN,
   WORKFLOW_ENCODING_SWEEP,
   WORKFLOW_RSA_COMMON_ATTACKS,
+  WORKFLOW_XOR_KNOWN_ATTACK,
+  WORKFLOW_AES_ECB_ATTACK,
   WORKFLOW_BINARY_TRIAGE,
   WORKFLOW_PWN_TRIAGE,
   WORKFLOW_WEB_TRIAGE,

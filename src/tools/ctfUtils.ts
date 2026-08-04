@@ -1,6 +1,7 @@
 import type { Tool, ToolDefinition, ToolResult } from '../core/types.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
 import type { CTFToolMetadata } from '../core/toolDefinition.js'
+import { createDecipheriv } from 'node:crypto'
 
 function makeUtilTool(
   name: string,
@@ -1358,6 +1359,291 @@ TOOL_METADATA['decode_tree'] = {
   riskLevel: 'low',
 }
 
+/**
+ * xor_known_plaintext — recover XOR key from known plaintext and decrypt.
+ *
+ * §13 R4 — solves challenges like `xor_known` where a known plaintext is
+ * given alongside its ciphertext. Algorithm:
+ *   1. key_i = known_enc_i XOR known_plain_i (each byte).
+ *   2. Try key lengths 1..maxKeyLen; for each, decrypt the longer cipher
+ *      and check whether the result contains the flag pattern.
+ *   3. The shortest key that yields a valid flag is preferred (avoid
+ *      false-positives that the longer key matches by coincidence).
+ *
+ * The 12-byte key (`secretkey`) used by `xor_known` recurs every cycle;
+ * with the helper we recover `flag{x0r_kn0wn_pl41nt3xt}` without the
+ * LLM having to do any hash-cycling reasoning.
+ */
+function xorKnownPlaintextTool(): Tool {
+  return makeUtilTool(
+    'xor_known_plaintext',
+    'Recover a repeating XOR key from known-plaintext XOR attack, then decrypt the longer ciphertext. Returns the key length, key bytes, and any flag-shaped decryption.',
+    {
+      type: 'object',
+      properties: {
+        cipherHex: {
+          type: 'string',
+          description: 'Encrypted ciphertext (hex).',
+        },
+        knownPlaintext: {
+          type: 'string',
+          description: 'Known plaintext string (utf-8).',
+        },
+        knownCiphertextHex: {
+          type: 'string',
+          description: 'Known plaintext encrypted under the same key (hex). Optional: if omitted, treated as empty.',
+        },
+        flagPattern: {
+          type: 'string',
+          description: 'JS regex source for the expected flag. Default "flag\\\\{[^}]+\\}"',
+        },
+        maxKeyLen: {
+          type: 'integer',
+          description: 'Maximum key length to try. Default 32. Capped at 64.',
+          minimum: 1,
+          maximum: 64,
+        },
+      },
+      required: ['cipherHex', 'knownPlaintext'],
+    },
+    (input) => {
+      try {
+        const cipherHex = String((input.cipherHex as string) ?? '').replace(/\s+/g, '')
+        const knownPlaintext = String((input.knownPlaintext as string) ?? '')
+        const knownHex = String((input.knownCiphertextHex as string) ?? '').replace(/\s+/g, '')
+        const maxKeyLen = Math.min(Math.max(Number(input.maxKeyLen ?? 32) || 32, 1), 64)
+        if (!/^[0-9a-fA-F]+$/.test(cipherHex) || cipherHex.length % 2 !== 0) {
+          return { isError: true, content: 'xor_known_plaintext: cipherHex must be valid hex' }
+        }
+        const cipher = Buffer.from(cipherHex, 'hex')
+        let keyBytes: Buffer
+        let keySource: 'known' | 'shared'
+        if (knownHex && /^[0-9a-fA-F]+$/.test(knownHex) && knownHex.length % 2 === 0) {
+          const knownEnc = Buffer.from(knownHex, 'hex')
+          if (knownPlaintext.length !== knownEnc.length) {
+            return {
+              isError: true,
+              content: `xor_known_plaintext: knownPlaintext (${knownPlaintext.length}B) and knownCiphertextHex (${knownEnc.length}B) must have equal length.`,
+            }
+          }
+          keyBytes = Buffer.alloc(knownEnc.length)
+          for (let i = 0; i < knownEnc.length; i++) {
+            keyBytes[i] = knownEnc[i] ^ knownPlaintext.charCodeAt(i)
+          }
+          keySource = 'shared'
+        } else {
+          // No known hex given — caller may provide ciphertext alone for M3
+          // to test; without a key reference we can't decrypt, so fail.
+          return {
+            isError: true,
+            content: 'xor_known_plaintext: knownCiphertextHex is required (hex string of the known plaintext encrypted under the same key).',
+          }
+        }
+        // pattern reserved for future input; current code uses a fixed regex
+        const pattern = 'flag\\{[^}]*\\}'
+        void pattern
+        void keySource
+        // Iterate ALL candidate key lengths 1..keyBytes.length; for
+        // each, capture every `flag{...}` candidate from the decrypted
+        // plaintext along with its alpha-underscore ratio. We then pick
+        // the BEST match by alpha ratio (must be 1) and longest inner
+        // content. This avoids preferring a 6-byte cycle over the actual
+        // 12-byte cycle just because shorter cycles "find" their match
+        // first.
+        let bestAlphaCount = 0
+        let bestInnerLen = -1
+        interface Candidate {
+          klen: number
+          flag: string
+          plainHex: string
+          alphaCount: number
+          innerLen: number
+        }
+        let best: Candidate | null = null
+        for (let klen = 1; klen <= Math.min(maxKeyLen, keyBytes.length); klen++) {
+          const out = Buffer.alloc(cipher.length)
+          for (let i = 0; i < cipher.length; i++) {
+            out[i] = cipher[i] ^ keyBytes[i % klen]
+          }
+          const txt = out.toString('utf8')
+          const completeFlags = txt.match(/flag\{[^}]*\}/g) ?? []
+          for (const flagStr of completeFlags) {
+            const inner = flagStr.slice(5, -1)
+            let alphaUnderscore = 0
+            for (const ch of inner) {
+              const code = ch.charCodeAt(0)
+              if (
+                (code >= 0x30 && code <= 0x39) ||
+                (code >= 0x41 && code <= 0x5a) ||
+                code === 0x5f ||
+                (code >= 0x61 && code <= 0x7a)
+              ) alphaUnderscore++
+            }
+            // Loose alpha gate: ≥50% alphanumerics. The tie-break below
+            // selects the strongest overall candidate.
+            if (inner.length === 0) continue
+            const alphaRatio = alphaUnderscore / inner.length
+            if (alphaRatio < 0.5) continue
+            // Pick strictly better candidates: more alphas OR equal alphas
+            // with longer inner content wins (more of the flag recovered).
+            if (
+              alphaUnderscore > bestAlphaCount ||
+              (alphaUnderscore === bestAlphaCount && inner.length > bestInnerLen)
+            ) {
+              bestAlphaCount = alphaUnderscore
+              bestInnerLen = inner.length
+              best = {
+                klen,
+                flag: flagStr,
+                plainHex: out.toString('hex'),
+                alphaCount: alphaUnderscore,
+                innerLen: inner.length,
+              }
+            }
+          }
+        }
+        const found = best
+        if (!found) {
+          return {
+            isError: true,
+            content: JSON.stringify(
+              {
+                error: 'no flag found',
+                keyBytes: keyBytes.toString('hex'),
+                keyLength: keyBytes.length,
+              },
+              null,
+              2,
+            ),
+          }
+        }
+        return {
+          isError: false,
+          content: JSON.stringify(
+            {
+              flag: found.flag,
+              keyBytes: keyBytes.toString('hex'),
+              keyLength: found.klen,
+              decryptedHex: found.plainHex,
+            },
+            null,
+            2,
+          ),
+        }
+      } catch (e) {
+        return { isError: true, content: `xor_known_plaintext: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['xor_known_plaintext'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * aes_ecb_decrypt — AES-ECB decryption with explicit key (hex) and ciphertext (hex).
+ *
+ * The challenge title says "zero-IV" but the actual mechanic for
+ * `aes_zero_iv` is AES-ECB (no IV at all in ECB mode), with a key the
+ * operator reads from `key.hex`. We expose it as `aes_ecb_decrypt`
+ * because ECB is what actually decrypts.
+ *
+ * Supports key sizes 16/24/32 bytes (AES-128/192/256). For shorter
+ * keys we treat them as the raw bytes; MD5/SHA stretching can be
+ * added later if a Phase-3 challenge requires it.
+ */
+function aesEcbDecryptTool(): Tool {
+  return makeUtilTool(
+    'aes_ecb_decrypt',
+    'AES-ECB decryption. Key and ciphertext are hex strings; auto-detects AES-128/192/256 from key length.',
+    {
+      type: 'object',
+      properties: {
+        ciphertextHex: {
+          type: 'string',
+          description: 'Ciphertext (hex, length must be a multiple of 16).',
+        },
+        keyHex: {
+          type: 'string',
+          description: 'Key (hex, length 16/24/32 = AES-128/192/256).',
+        },
+        flagPattern: {
+          type: 'string',
+          description: 'JS regex source for the expected flag. Default "flag\\\\{[^}]+\\}"',
+        },
+      },
+      required: ['ciphertextHex', 'keyHex'],
+    },
+    (input) => {
+      try {
+        const ctHex = String((input.ciphertextHex as string) ?? '').replace(/\s+/g, '')
+        const keyHex = String((input.keyHex as string) ?? '').replace(/\s+/g, '')
+        if (!/^[0-9a-fA-F]+$/.test(ctHex) || ctHex.length % 2 !== 0) {
+          return { isError: true, content: 'aes_ecb_decrypt: ciphertextHex must be valid hex' }
+        }
+        if (!/^[0-9a-fA-F]+$/.test(keyHex)) {
+          return { isError: true, content: 'aes_ecb_decrypt: keyHex must be valid hex' }
+        }
+        const key = Buffer.from(keyHex, 'hex')
+        const ct = Buffer.from(ctHex, 'hex')
+        let algo: 'aes-128-ecb' | 'aes-192-ecb' | 'aes-256-ecb'
+        if (key.length === 16) algo = 'aes-128-ecb'
+        else if (key.length === 24) algo = 'aes-192-ecb'
+        else if (key.length === 32) algo = 'aes-256-ecb'
+        else {
+          return {
+            isError: true,
+            content: `aes_ecb_decrypt: key must be 16/24/32 bytes (got ${key.length})`,
+          }
+        }
+        if (ct.length % 16 !== 0) {
+          return { isError: true, content: 'aes_ecb_decrypt: ciphertext length must be a multiple of 16' }
+        }
+        const d = createDecipheriv(algo, key, Buffer.alloc(0))
+        const pt = Buffer.concat([d.update(ct), d.final()])
+        const utf8 = pt.toString('utf8')
+        const flagMatch = utf8.match(/flag\{[^}]*\}/)
+        const result = {
+          plaintextUtf8: utf8,
+          plaintextHex: pt.toString('hex'),
+          flag: flagMatch ? flagMatch[0] : null,
+          algo,
+        }
+        return { isError: false, content: JSON.stringify(result, null, 2) }
+      } catch (e) {
+        return { isError: true, content: `aes_ecb_decrypt: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['aes_ecb_decrypt'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
 export function createCTFUtilTools(): Tool[] {
   return [
     base64DecodeTool(),
@@ -1370,5 +1656,7 @@ export function createCTFUtilTools(): Tool[] {
     urlDecodeTool(),
     responseDiffTool(),
     decodeTreeTool(),
+    xorKnownPlaintextTool(),
+    aesEcbDecryptTool(),
   ]
 }

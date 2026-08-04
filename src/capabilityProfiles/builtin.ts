@@ -159,6 +159,8 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       // encoding_sweep. Without this, the broker denies with "not in profile"
       // and the workflow fails even though the tool is registered globally.
       'decode_tree',
+      'xor_known_plaintext',
+      'aes_ecb_decrypt',
       'base64_decode',
       'base64_encode',
       'hex_decode',
@@ -181,6 +183,8 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'encoding_sweep',
       'classical_cipher_sweep',
       'xor_key_search',
+      'xor_known_attack',
+      'aes_ecb_attack',
       'rsa_common_attacks',
       'hash_identify_and_crack',
     ],

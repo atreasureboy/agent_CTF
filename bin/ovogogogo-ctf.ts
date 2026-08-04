@@ -72,6 +72,8 @@ interface CtfArgs {
   runWorkflow?: string
   input?: string
   text?: string
+  /** §13 R4 — multi-input --text (parsed from `--text KEY=VALUE`). */
+  textInputs?: Record<string, string>
   task?: string
   help: boolean
   version: boolean
@@ -115,6 +117,10 @@ function parseArgs(argv: string[]): CtfArgs {
   let runWorkflow: string | undefined
   let input: string | undefined
   let text: string | undefined
+  /** §13 R4 — multi-input --text. Each `--text KEY=VALUE` maps to
+   *  `inputs[key.toLowerCase()] = VALUE`. Bare `--text VALUE` is the
+   *  legacy form (defaults to KEY=TEXT_INPUT). */
+  const textInputs: Record<string, string> = {}
   let help = false
   let version = false
   let cwd = process.env.OVOGO_CWD ?? process.cwd()
@@ -192,7 +198,18 @@ function parseArgs(argv: string[]): CtfArgs {
       continue
     }
     if (arg === '--text' || arg.startsWith('--text=')) {
-      text = takeValue(arg)
+      // §13 R4 — `--text KEY=VALUE` registers an extra workflow input
+      // (e.g. `--text KNOWN_PLAINTEXT=...`). Bare `--text VALUE` is
+      // equivalent to `--text TEXT_INPUT=VALUE` (back-compat for callers
+      // that only need the default TEXT_INPUT).
+      const value = takeValue(arg)
+      const eq = value.indexOf('=')
+      if (eq > 0) {
+        textInputs[value.slice(0, eq).toLowerCase()] = value.slice(eq + 1)
+      } else {
+        textInputs['text_input'] = value
+      }
+      text = value
       continue
     }
     if (arg === '--cwd' || arg.startsWith('--cwd=')) {
@@ -215,6 +232,7 @@ function parseArgs(argv: string[]): CtfArgs {
     runWorkflow,
     input,
     text,
+    textInputs: Object.keys(textInputs).length > 0 ? textInputs : undefined,
     task,
     help,
     version,
@@ -230,7 +248,7 @@ export interface CtfCliDependencies {
   createClient?: (apiKey: string, baseURL?: string) => OpenAI
   /** Build a Renderer; defaults to a noop renderer. */
   createRenderer?: () => Renderer
-  /** Construct the runtime. Defaults to `createCTFTaskRuntime`. */
+  /** Construct the runtime. Defaults to createCTFTaskRuntime. */
   createRuntime?: typeof createCTFTaskRuntime
   /**
    * Register signal handlers. Defaults to process.on + an in-flight
@@ -378,7 +396,12 @@ ONEShot COMMANDS (six_goal §十四)
       }
       const inputs: Record<string, unknown> = {}
       if (args.input) inputs['FILE_INPUT'] = args.input
-      if (args.text) inputs['TEXT_INPUT'] = args.text
+      // Apply textInputs FIRST (last-wins if `text` overlaps), then the
+      // legacy single `--text VALUE` form as a back-compat fallback.
+      for (const [k, v] of Object.entries(args.textInputs ?? {})) inputs[k] = v
+      if (args.text && !('text_input' in inputs)) {
+        inputs['TEXT_INPUT'] = args.text
+      }
       if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
         // eslint-disable-next-line no-console
         console.error(
