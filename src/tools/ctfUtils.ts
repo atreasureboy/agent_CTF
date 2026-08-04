@@ -1135,6 +1135,229 @@ TOOL_METADATA['response_diff'] = {
   riskLevel: 'low',
 }
 
+/**
+ * decode_tree — recursive multi-layer codec decoder.
+ *
+ * Resolves the missing tool that `encoding_sweep` workflow references
+ * (audit §13 R1). Tries a small library of common codecs (base64,
+ * hex, URL-percent, optional ROT13) recursively up to `maxDepth`,
+ * detecting flag candidates via the supplied `flagPattern` regex.
+ *
+ * Stops early on:
+ *   - flag candidate found (returns the first hit + decoded trail),
+ *   - maxDepth reached (returns the deepest reachable output),
+ *   - no codec produces a new output (outputHash dedupes across
+ *     siblings within a depth).
+ *
+ * Side-effect-safe: never executes shell commands; pure in-process
+ * codec chain.
+ */
+function tryDecodeTreeCodec(codec: string, text: string): string | null {
+  try {
+    switch (codec) {
+      case 'base64': {
+        const stripped = text.replace(/\s+/g, '')
+        // Reject non-base64 alphabet to avoid silent garbage.
+        if (!/^[A-Za-z0-9+/=]+$/.test(stripped)) return null
+        const out = Buffer.from(stripped, 'base64').toString('utf-8')
+        // Heuristic: a successful decode should be shorter or contain
+        // printable ASCII at > 70% of bytes. If it's mostly garbage,
+        // bail so we don't recurse into noise.
+        if (out.length === 0 || out === text) return null
+        const printable = (out.match(/[\x20-\x7e\n\r\t]/g) ?? []).length
+        if (printable / out.length < 0.7) return null
+        return out
+      }
+      case 'hex': {
+        const stripped = text.replace(/\s+/g, '').replace(/^0x/, '')
+        if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0) return null
+        return Buffer.from(stripped, 'hex').toString('utf-8')
+      }
+      case 'url': {
+        try {
+          const out = decodeURIComponent(text)
+          return out === text ? null : out
+        } catch {
+          return null
+        }
+      }
+      case 'rot13': {
+        if (!/[a-zA-Z]/.test(text)) return null
+        const out = text.replace(/[a-zA-Z]/g, (c) =>
+          c <= 'Z'
+            ? String.fromCharCode(((c.charCodeAt(0) - 65 + 13) % 26) + 65)
+            : String.fromCharCode(((c.charCodeAt(0) - 97 + 13) % 26) + 97),
+        )
+        return out === text ? null : out
+      }
+      default:
+        return null
+    }
+  } catch {
+    return null
+  }
+}
+
+interface DecodeTreeOutput {
+  flag: string | null
+  decodedTrail: string[]
+  totalDepth: number
+  codecsApplied: string[]
+  stoppedReason: 'flag_found' | 'max_depth' | 'no_new_output' | 'no_codec'
+}
+
+function runDecodeTree(
+  start: string,
+  flagPattern: RegExp,
+  maxDepth: number,
+  codecs: string[],
+): DecodeTreeOutput {
+  const trail: string[] = []
+  const appliedCodecs: string[] = []
+  let current = start
+  for (let depth = 0; depth < maxDepth; depth++) {
+    const flagMatch = current.match(flagPattern)
+    if (flagMatch) {
+      return {
+        flag: flagMatch[0],
+        decodedTrail: trail,
+        totalDepth: depth,
+        codecsApplied: appliedCodecs,
+        stoppedReason: 'flag_found',
+      }
+    }
+    let nextProduced = false
+    let next: string | null = null
+    let appliedCodec: string | null = null
+    for (const codec of codecs) {
+      const candidate = tryDecodeTreeCodec(codec, current)
+      if (candidate === null) continue
+      if (candidate === current) continue
+      next = candidate
+      appliedCodec = codec
+      nextProduced = true
+      break
+    }
+    if (!nextProduced || next === null) {
+      return {
+        flag: null,
+        decodedTrail: trail,
+        totalDepth: depth,
+        codecsApplied: appliedCodecs,
+        stoppedReason: 'no_codec',
+      }
+    }
+    trail.push(current)
+    if (appliedCodec !== null) appliedCodecs.push(appliedCodec)
+    if (next !== null) current = next
+  }
+  // Loop exhausted without flag — check current one final time
+  const finalMatch = current.match(flagPattern)
+  if (finalMatch) {
+    return {
+      flag: finalMatch[0],
+      decodedTrail: trail,
+      totalDepth: maxDepth,
+      codecsApplied: appliedCodecs,
+      stoppedReason: 'flag_found',
+    }
+  }
+  return {
+    flag: null,
+    decodedTrail: trail,
+    totalDepth: maxDepth,
+    codecsApplied: appliedCodecs,
+    stoppedReason: 'no_new_output',
+  }
+}
+
+function decodeTreeTool(): Tool {
+  return makeUtilTool(
+    'decode_tree',
+    'Recursive multi-layer codec decoder. Tries base64/hex/url/rot13 in turn up to maxDepth layers; reports the first flag candidate that matches flagPattern (regex). Useful for layered-encoding CTF challenges.',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Encoded text (single string or whitespace-separated).' },
+        flagPattern: {
+          type: 'string',
+          description: 'JS regex source. Default "flag\\\\{[^}]+\\}".',
+        },
+        maxDepth: {
+          type: 'integer',
+          description: 'Maximum decode layers. Default 4. Capped at 12 to prevent runaway recursion.',
+          minimum: 1,
+          maximum: 12,
+        },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '')
+      if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[decode_tree.input] len=${text.length} start=${text.slice(0, 60)} end=${text.slice(-30)}`,
+        )
+      }
+      if (!text || text.length === 0) {
+        return { isError: true, content: 'decode_tree: empty text input' }
+      }
+      const patternStr = String((input.flagPattern as string) ?? 'flag\\{[^}]+\\}')
+      const maxDepth = Math.min(
+        Math.max(Number(input.maxDepth ?? 4) || 4, 1),
+        12,
+      )
+      let pattern: RegExp
+      try {
+        pattern = new RegExp(patternStr, 'g')
+      } catch (e) {
+        return { isError: true, content: `decode_tree: bad regex: ${(e as Error).message}` }
+      }
+      const result = runDecodeTree(text, pattern, maxDepth, [
+        'base64',
+        'hex',
+        'url',
+        'rot13',
+      ])
+      const summary = JSON.stringify(
+        {
+          flag: result.flag,
+          stoppedReason: result.stoppedReason,
+          totalDepth: result.totalDepth,
+          codecsApplied: result.codecsApplied,
+          decodedTrailLength: result.decodedTrail.length,
+          // Show first 200 chars of trail[0] for at-a-glance debugging.
+          trailPreview: result.decodedTrail.length > 0
+            ? result.decodedTrail[0].slice(0, 200)
+            : '',
+        },
+        null,
+        2,
+      )
+      return {
+        isError: false,
+        content: `decode_tree: ${summary}`,
+      }
+    },
+    {
+      domains: ['crypto', 'forensics', 'web'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['decode_tree'] = {
+  domains: ['crypto', 'forensics', 'web'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
 export function createCTFUtilTools(): Tool[] {
   return [
     base64DecodeTool(),
@@ -1146,5 +1369,6 @@ export function createCTFUtilTools(): Tool[] {
     urlEncodeTool(),
     urlDecodeTool(),
     responseDiffTool(),
+    decodeTreeTool(),
   ]
 }

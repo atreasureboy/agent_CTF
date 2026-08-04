@@ -536,6 +536,12 @@ export class CTFTaskOrchestrator {
     inputs?: Record<string, unknown>,
     initiatedByAgentRunId?: string,
   ): Promise<WorkflowRunResult> {
+    if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[orchestrator.runWorkflow] inputs_keys=${Object.keys(inputs ?? {}).join(',')}`,
+      )
+    }
     return this.withLock(`workflow:${workflowId}`, async () => {
       // Audit rounds 6-10 — enforce profile.allowedWorkflows /
       // deniedWorkflows. Previously the orchestrator ignored the

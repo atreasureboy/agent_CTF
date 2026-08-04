@@ -364,6 +364,12 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
     runInputs: Record<string, unknown> = {},
     options: { workflowRunId?: string } = {},
   ): Promise<WorkflowRunResult> {
+    if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[harness.runWorkflow] runInputs_keys=${Object.keys(runInputs).join(',')} sample=${Object.values(runInputs)[0]?.toString().slice(0, 40)}`,
+      )
+    }
     // §十三.3 — use the orchestrator-issued workflow run id when provided
     // so the WorkflowRunRecord, the broker's emitted Findings/Artifacts,
     // and the projector's run-id filter all reference the SAME id.

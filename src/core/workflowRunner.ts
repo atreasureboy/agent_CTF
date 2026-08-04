@@ -45,6 +45,74 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
   }
 
   /**
+   * Resolve `input` placeholders that the typedDagExecutor accepts but the
+   * legacy WorkflowRunner previously ignored. Two shapes are supported:
+   *
+   *   1. Typed-DAG `{ ref: '$TEXT_INPUT' }` — unwrap to the matching entry
+   *      in `inputs`. Unknown refs are passed through unchanged so a missing
+   *      input surfaces as an actual tool error.
+   *   2. Legacy `$TEXT_INPUT` text — string-substituted inside string
+   *      leaf values (matches shell-step substitution in the previous block).
+   *
+   * Lookup is case-insensitive because CLI callers register inputs as
+   * `inputs['TEXT_INPUT']` while workflow steps use `$text_input`. We
+   * match both.
+   */
+  private resolveToolInputRefs(
+    input: Record<string, unknown>,
+    inputs: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[resolveToolInputRefs] input_keys=${Object.keys(input).join(',')} inputs_keys=${Object.keys(inputs).join(',')}`,
+      )
+    }
+    const lookup = (key: string): unknown => {
+      if (key in inputs) return inputs[key]
+      const lower = key.toLowerCase()
+      for (const [k, v] of Object.entries(inputs)) {
+        if (k.toLowerCase() === lower) return v
+      }
+      return undefined
+    }
+    const resolve = (v: unknown): unknown => {
+      if (v === null || v === undefined) return v
+      if (Array.isArray(v)) return v.map((x) => resolve(x))
+      if (typeof v === 'object') {
+        const obj = v as Record<string, unknown>
+        // Typed-DAG ref pattern.
+        if (typeof obj['ref'] === 'string') {
+          const refStr = obj['ref']
+          const m = /^\$([A-Z_]+)$/i.exec(refStr)
+          if (m) {
+            const v2 = lookup(m[1])
+            if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+              // eslint-disable-next-line no-console
+              console.error(
+                `[resolveToolInputRefs] ref=${refStr} lookup(${m[1]})=found=${v2 !== undefined}`,
+              )
+            }
+            if (v2 !== undefined) return v2
+          }
+          return v
+        }
+        const out: Record<string, unknown> = {}
+        for (const [k, val] of Object.entries(obj)) out[k] = resolve(val)
+        return out
+      }
+      if (typeof v === 'string') {
+        return v.replaceAll(/\$([A-Z_]+)/gi, (_, name: string) => {
+          const v2 = lookup(name)
+          return typeof v2 === 'string' ? v2 : ''
+        })
+      }
+      return v
+    }
+    return resolve(input) as Record<string, unknown>
+  }
+
+  /**
    * Resolve the current agent id. Per §十一 the runner must NOT keep a stale
    * cached defaultAgentId — it always asks the broker. The `opts.defaultAgentId`
    * is preserved as a fallback for first-call bootstrap before any profile
@@ -63,6 +131,15 @@ export class WorkflowBrokerRunner implements WorkflowRunner {
     if (step.kind === 'tool') {
       toolId = step.toolId
       input = step.input ?? {}
+      // §13 R1 fix — substitute placeholders $FILE_INPUT / $TEXT_INPUT
+      // (and `{ref: '$X'}` typed-DAG style refs) BEFORE handing off to the
+      // broker. The legacy workflow runner previously only substituted on
+      // shell steps, leaving tool steps with literal `{ref: '$TEXT_INPUT'}`
+      // objects that got coerced to "[object Object]" — which made
+      // encode_sweep's decode_tree receive a stringified object instead of
+      // the encoded text. Mirrors the typedDagExecutor's input ref
+      // resolution so the legacy and typed paths line up.
+      input = this.resolveToolInputRefs(input, ctx.inputs ?? {})
     } else {
       toolId = 'Bash'
       // Translate placeholders $FILE_INPUT, $TEXT_INPUT into the matched env.

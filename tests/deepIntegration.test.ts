@@ -59,11 +59,10 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
         execute: () => Promise.resolve({ content: 'file content', isError: false }),
       }
       registry.register(toolImpl, {
-        id: 'Read',
         domains: ['forensics'],
-        executionMode: 'inline',
-        costClass: 'fast',
-        outputMode: 'raw',
+        executionMode: 'foreground',
+        costClass: 'cheap',
+        outputMode: 'inline',
       })
 
       const initial = createBlankState('task_dedup_test')
@@ -83,27 +82,33 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
         parameters: { path: 'secret.txt' },
       })
       // Add a failed attempt to stateStore via events
+      const nowA = Date.now()
       stateStore.apply({
         type: 'ATTEMPT_STARTED',
         attempt: {
           id: 'attempt_1',
+          taskId: 'task_dedup_test',
           kind: 'tool',
           targetId: 'Read',
-          parameters: { path: 'secret.txt' },
+          input: { path: 'secret.txt' },
           fingerprint: fp,
+          hypothesisIds: [],
           status: 'running',
-          startedAt: new Date().toISOString(),
-          executions: [],
+          startedAt: nowA,
+          createdAt: nowA,
           observationIds: [],
           evidenceIds: [],
+          artifactIds: [],
+          flagCandidateIds: [],
         },
       })
       stateStore.apply({
         type: 'ATTEMPT_FAILED',
         attemptId: 'attempt_1',
-        error: 'failed to find flag',
+        error: { message: 'failed to find flag' },
         observationIds: [],
         evidenceIds: [],
+        completedAt: Date.now(),
       })
 
       // Try executing the exact same failed attempt
@@ -134,11 +139,10 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
         execute: () => Promise.resolve({ content: 'file content', isError: false }),
       }
       registry.register(toolImpl, {
-        id: 'Read',
         domains: ['forensics'],
-        executionMode: 'inline',
-        costClass: 'fast',
-        outputMode: 'raw',
+        executionMode: 'foreground',
+        costClass: 'cheap',
+        outputMode: 'inline',
       })
 
       const initial = createBlankState('task_dedup_test_2')
@@ -156,22 +160,28 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
         type: 'ATTEMPT_STARTED',
         attempt: {
           id: 'attempt_1',
+          taskId: 'task_dedup_test_2',
           kind: 'tool',
           targetId: 'Read',
-          parameters: { path: 'secret.txt' },
+          input: { path: 'secret.txt' },
           status: 'running',
-          startedAt: new Date().toISOString(),
-          executions: [],
+          startedAt: Date.now(),
+          fingerprint: 'fp_attempt_1',
+          hypothesisIds: [],
           observationIds: [],
           evidenceIds: [],
+          artifactIds: [],
+          flagCandidateIds: [],
+          createdAt: Date.now(),
         },
       })
       stateStore.apply({
         type: 'ATTEMPT_FAILED',
         attemptId: 'attempt_1',
-        error: 'failed to find flag',
+        error: { message: 'failed to find flag' },
         observationIds: [],
         evidenceIds: [],
+        completedAt: Date.now(),
       })
 
       // Different path argument
@@ -191,7 +201,8 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
       const compiled = SpecialistContextCompiler.compileSpecialistContext(
         {
           taskId: 'task_spec_test',
-          profileId: 'crypto',
+          stateRevision: 1,
+          stateSnapshotHash: 'snap_spec_1',
           objective: 'Solve RSA challenge',
           scopeSummary: 'local',
           artifacts: [],
@@ -208,16 +219,13 @@ describe('Deep Integration Mechanisms (D-CIPHER / CAI / Cyber-Zero)', () => {
           attempts: [
             {
               id: 'att_failed_1',
-              kind: 'tool_call',
-              targetId: 'Python',
-              parameters: { script: 'factor.py' },
-              status: 'failed',
+              actionSummary: 'run factor.py',
               outcome: 'failed',
               fingerprint: 'fp_12345',
-            } as any,
+              reason: 'factor returned no factors',
+            },
           ],
           allowedToolIds: ['Read', 'Python'],
-          state: createBlankState('task_spec_test'),
         },
         'crypto',
         'gpt-4o',

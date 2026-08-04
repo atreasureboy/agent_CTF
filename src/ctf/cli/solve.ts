@@ -234,3 +234,42 @@ function execPromise(cmd: string, cwd: string): Promise<string> {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+// ── Module entry — only invoked when the script is run directly.
+// Audit §13 R3 — the previous version of solve.ts only exported
+// `runSolveCommand`, which silently exited 0 with no output when invoked
+// via `npx tsx src/ctf/cli/solve.ts <path>` — masking the fact that the
+// SolveBench binary was never actually exercised. This guard mirrors the
+// `bin/ovogogogo-ctf.ts` invokedDirectly pattern so a direct invocation
+// now resolves a challenge end-to-end.
+const invokedDirectly = (() => {
+  try {
+    const arg = process.argv[1]
+    if (!arg) return false
+    return resolve(arg) === resolve(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+})()
+
+if (invokedDirectly) {
+  const challengePath = process.argv[2]
+  if (!challengePath) {
+    process.stderr.write(
+      'usage: solve <challenge.json>  [-- one-shot flags accepted]\n',
+    )
+    process.exitCode = 1
+  } else {
+    runSolveCommand(challengePath, {
+      stdout: process.stdout,
+      stderr: process.stderr,
+    })
+      .then((code) => {
+        process.exitCode = code
+      })
+      .catch((err: unknown) => {
+        process.stderr.write(`fatal: ${(err as Error)?.message ?? String(err)}\n`)
+        process.exitCode = 1
+      })
+  }
+}

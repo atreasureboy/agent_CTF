@@ -398,6 +398,47 @@ export class ToolBroker {
       // Broker only enforces it when the engine delegated the gate here.
       result = await reg.impl.execute(input, innerCtx)
 
+      // §13 R1 side-effect — auto-emit a Finding when a successful tool
+      // result surfaces a flag pattern. This makes encode_sweep's
+      // decode_tree output (and any other tool's flag detection)
+      // visible to the projector / CLI without requiring the legacy
+      // emit_finding step to inter-step-data-mux through capturedOutputs.
+      // Without this, the legacy workflow runs decode_tree successfully
+      // but the user-visible finding is hardcoded "所有命中解码的简要结果".
+      if (
+        !result.isError &&
+        this.opts.findingStore &&
+        typeof result.content === 'string'
+      ) {
+        // Use the same default pattern as encoding_sweep's flag pattern.
+        const flagMatch = result.content.match(/flag\{[^}]+\}/)
+        if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[broker.execute] gate tool=${toolId} len=${result.content.length} match=${flagMatch?.[0] ?? 'null'}`,
+          )
+        }
+        if (flagMatch) {
+          const flag = flagMatch[0]
+          try {
+            this.opts.findingStore.append({
+              taskId: ctx.taskId,
+              producerAgentId: ctx.agentId,
+              category: 'crypto',
+              title: `Flag detected by ${toolId}`,
+              summary: `Tool ${toolId} produced a flag candidate: ${flag}`,
+              confidence: 'high',
+              agentRunId: ctx.agentRunId,
+              workflowRunId: ctx.workflowRunId,
+              handoffId: ctx.handoffId,
+              recommendedNextActions: ['verify_flag', 'submit_flag'],
+            })
+          } catch {
+            /* best-effort; never block the tool result on auto-emit */
+          }
+        }
+      }
+
       // ── Artifact conversion for long outputs ──────────────
       if (
         this.opts.artifactStore &&

@@ -160,54 +160,24 @@ export const WORKFLOW_ENCODING_SWEEP: WorkflowDefinition = {
   acceptedInputs: ['input_string'],
   executionMode: 'parallel',
   partialFailurePolicy: 'continue',
-  requiredTools: ['Bash'],
+  requiredTools: ['decode_tree'],
   stopConditions: [],
+  // §13 R1 fix — the previous 6-step bash only tried single-layer codecs
+  // (base16/32/64/85/rot13/url) which can't solve multi-layer encoded
+  // challenges like encoding1 (3× base64). Replaced with a single
+  // `decode_tree` tool call that recursively walks the codec chain up to
+  // maxDepth=4 with flag regex detection. The Bash steps are still kept
+  // in active history but are no longer the success path.
   steps: [
     {
-      kind: 'parallel',
-      id: 'parallel-decode',
-      join: 'all',
-      steps: [
-        {
-          kind: 'tool',
-          id: 'b16',
-          toolId: 'Bash',
-          input: { command: 'printf %s "$TEXT_INPUT" | base16 -d 2>/dev/null || true' },
-        },
-        {
-          kind: 'tool',
-          id: 'b32',
-          toolId: 'Bash',
-          input: { command: 'printf %s "$TEXT_INPUT" | base32 -d 2>/dev/null || true' },
-        },
-        {
-          kind: 'tool',
-          id: 'b64',
-          toolId: 'Bash',
-          input: { command: 'printf %s "$TEXT_INPUT" | base64 -d 2>/dev/null || true' },
-        },
-        {
-          kind: 'tool',
-          id: 'b85',
-          toolId: 'Bash',
-          input: { command: 'printf %s "$TEXT_INPUT" | base85 -d 2>/dev/null || true' },
-        },
-        {
-          kind: 'tool',
-          id: 'rot13',
-          toolId: 'Bash',
-          input: { command: 'printf %s "$TEXT_INPUT" | tr "A-Za-z" "N-ZA-Mn-za-m" || true' },
-        },
-        {
-          kind: 'tool',
-          id: 'url',
-          toolId: 'Bash',
-          input: {
-            command:
-              'python3 -c "import urllib.parse,sys;print(urllib.parse.unquote(sys.argv[1]))" "$TEXT_INPUT" || true',
-          },
-        },
-      ],
+      kind: 'tool',
+      id: 'decode-tree',
+      toolId: 'decode_tree',
+      input: {
+        text: { ref: '$TEXT_INPUT' },
+        flagPattern: 'flag\\{[^}]+\\}',
+        maxDepth: 4,
+      },
     },
     {
       kind: 'emit_finding',

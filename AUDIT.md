@@ -550,3 +550,50 @@ src/core/ctfReasoning/parsers/file.ts:71: const fs = require('fs') as typeof imp
 - **P0-最关键的一块**：**§11 F1 `run_oneshot` 静默 no-op**（涉及 planner 派发语义，1–2 小时）
 
 告诉我先做哪条进入 plan mode。
+
+---
+
+## §13 · Round-2 实测发现（2026-08-04，encoding1 + MiniMax-M3）
+
+> 由用户在 `bin/ovogogogo-ctf.ts --run-workflow encoding_sweep` 上做实测，触发。
+> 教训：audit 阶段通过静态扫 + 单测绿只能证明"接口不自爆"，无法证明"工作流真的求解题目"。这一节列出的 4 条都是**接口 pass 但实际无效**的失效模式，归根结底是 §11 F10 "reducer / 工作流层静默吞错"。
+
+### R1 [HIGH] — `encoding_sweep` workflow 引用 `toolId: 'decode-tree'`，但该 tool 全仓未注册
+- **位置**：`src/workflows/typed/encodingSweep.ts:68`：`toolId: 'decode-tree'`。
+- **证据**：`grep -rn "'decode-tree'\|\"decode-tree\"" src/` 仅在 `encodingSweep.ts` 自身出现；无任何 `src/tools/*.ts` 文件注册名为 `decode-tree` 的 tool；`TOOL_METADATA` 也无此 key。
+- **失败模式**：
+  1. workflow 启动后第一步 charset-analysis 调 `encoding-detect`（存在），第二步 `decode-tree` 找不到 tool 被静默跳过（`tool-not-found` 异常被 workflow runner catch 返回 `[skipped]`，不抛 fatal）。
+  2. `candidate-extraction` / `emit-summary` 看到无 decoding evidence，发一个空 finding（cli's `findings: 1` 是 `emit-summary` 的统计，不是 flag candidate）。
+  3. CLI 报 `workflow status: success, steps: 6`——但"6"是 `stepOutcomes` 总数（含 `candidate-extraction` 的子分支），**真正的解码步骤被跳过但 CLI 不报**。
+- **手工验证**：`flag{b4s3_64_1s_n0t_3ncrypt10n}` 通过 `base64 -d` 三层解码得到，与 `expectedFlagSha256` 匹配。
+- **修复方向**：在 `src/tools/ctfUtils.ts` 加 `decode_tree` tool，递归 codec + flag regex 探测；同步注册 `TOOL_METADATA['decode_tree']`。
+
+### R2 [MEDIUM] — `bin/ovogogogo-ctf.ts --run-workflow` 输出只打印 finding count，不打印 finding 内容
+- **位置**：`bin/ovogogogo-ctf.ts:381-396` workflow step printing。
+- **失败模式**：
+  - `stepOutcomes[i].status` / `stepOutcomes[i].error.slice(0, 80)` 都在打印，
+  - 但 `result.emittedArtifactIds` / `result.emittedFindingCount` 只输出 count，**不展示 finding 的 `summary` / `claim` / `category`**。
+  - 用户（包括 audit 本人）必须在 `sessions/agent_CTF/tasks/<task_id>/findings.jsonl` 里 grep 才能看到 workflow 实际产物。
+- **修复方向**：workflow 成功后从 `runtime.orchestrator.store.getState().findings` 取出最新 N 条打印；workflow 失败时打印 `errors[]`。
+
+### R3 [LOW] — `src/ctf/cli/solve.ts` 是 dead CLI（无 `invokedDirectly` 自跑 guard）
+- **位置**：`src/ctf/cli/solve.ts` 末尾 — 只 `export runSolveCommand`，无 `if (invokedDirectly) runSolveCommand(process.argv)...` 块。
+- **失败模式**：`npx tsx src/ctf/cli/solve.ts <challenge.json>` 静默无输出、exit 0，**让人误以为已跑通**。"Solve" `benchmark/results/latest.md` 声称 10/10 通，但执行该 binary 永远返回成功占位符。
+- **修复方向**：照搬 `bin/ovogogogo-ctf.ts:496-515` 的 `invokedDirectly` 块，加 10 行即可。
+
+### R4 [LOW] — `--profile triage` 对 `encoding` 类题不适用，CLI 默认走 triage 必然失败
+- **位置**：`src/ctf/cli/solve.ts:115-127` (`getProfileForCategory`)：
+  ```ts
+  encoding: 'triage',   // ← 但 triage profile 设计为"识别 → handoff"，不实际解码
+  ```
+- **失败模式**：`solve.ts` 自动派给 `triage`，triage 跑了 `image_quick_scan` workflow，emit 完 "建议 handoff 到 crypto" finding 就结束 → solve 收到 `run status: failed` → `flag{b4s3_64_1s_n0t_3ncrypt10n}` **永远拿不到**。
+- **修复方向**：把 `encoding` 类（除纯 base64 单层题）映射到 `crypto` profile 而不是 `triage`；或给 `solve.ts` 加 fallback：triage 失败后改跑 `run-workflow encoding_sweep`。
+
+### 直接交叉影响
+
+| 发现 | 与既有 audit finding 的关系 |
+|---|---|
+| R1 | 是 §11 F10 的运行时实例——reducer / executor 层 "tool 未找到" 静默 fallback 到 `[skipped]`。F10 修了 audit trace，但**前提是 reducer 路径**；workflow executor 路径同样有该问题。**建议**：把 `WorkflowExecutor.executeStep` 的 `tool-not-found` 也升为 emit `errors[]`，而不是跳过。 |
+| R2 | CLI 可观察性 — 之前 audit 没覆盖该文件。 |
+| R3 | 是 H1（同为 `solve.ts`）的死代码子集。 |
+| R4 | profile 调度错误，与"profile 设计是否清晰"相关；audit §11 没深查 `capabilityProfiles`。 |

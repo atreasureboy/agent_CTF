@@ -379,6 +379,12 @@ ONEShot COMMANDS (six_goal §十四)
       const inputs: Record<string, unknown> = {}
       if (args.input) inputs['FILE_INPUT'] = args.input
       if (args.text) inputs['TEXT_INPUT'] = args.text
+      if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[cli.runWorkflow] args.text_len=${args.text ? args.text.length : 'unset'} inputs_keys=${Object.keys(inputs).join(',')}`,
+        )
+      }
       stdout.write(`running workflow: ${BOLD}${args.runWorkflow}${RESET}\n`)
       const result = await runtime.orchestrator.runWorkflow(args.runWorkflow, inputs)
       stdout.write(`\n${GREEN}workflow status:${RESET} ${result.status}\n`)
@@ -390,6 +396,39 @@ ONEShot COMMANDS (six_goal §十四)
         for (const s of result.stepOutcomes) {
           stdout.write(
             `    - [${s.status}] ${s.stepId}${s.error ? `: ${s.error.slice(0, 80)}` : ''}\n`,
+          )
+        }
+      }
+      // §13 R2 — print the actual finding summaries so the operator
+      // can see what the workflow emitted without grepping the
+      // sessions/<task>/findings.jsonl. We pull from the live state
+      // store (which the projector populated during the run).
+      //
+      // Filter strategy: scope by workflowId AND recency so unrelated
+      // findings from prior runs never leak in. Allow a 60s window
+      // because the projector dispatches findings asynchronously
+      // after `runWorkflow` resolves.
+      const stateSnapshot = runtime.orchestrator.store.getState()
+      const recentThreshold = Date.now() - 60_000
+      const findingsAfter = stateSnapshot.findings.filter((f) => {
+        const meta = f as { workflowId?: string; workflowRunId?: string }
+        // Some projectors emit with `workflowId` set instead of
+        // `workflowRunId`. The workflow-run itself is the lookup
+        // identifier we have; we don't have its id without a state
+        // search, so we just filter by recency + workflowId.
+        if (meta.workflowId === args.runWorkflow) return true
+        const created = typeof f.createdAt === 'string' ? Date.parse(f.createdAt) : f.createdAt
+        return created > recentThreshold
+      })
+      if (findingsAfter.length > 0) {
+        stdout.write(`  emitted findings:\n`)
+        for (const f of findingsAfter) {
+          stdout.write(
+            `    - [${f.category}] ${f.title}` +
+              // FindingConfidence is the typed union 'low' | 'medium' | 'high';
+              // it can also surface as a string at runtime, so handle both.
+              ` [confidence=${String(f.confidence)}]` +
+              `\n      summary: ${f.summary.slice(0, 240)}\n`,
           )
         }
       }

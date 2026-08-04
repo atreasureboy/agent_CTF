@@ -155,6 +155,19 @@ export const PROFILES: Record<string, CapabilityProfile> = {
       'john',
       'sage',
       'cyberchef',
+      // §13 R1 fix — the recursive multi-layer codec decoder referenced by
+      // encoding_sweep. Without this, the broker denies with "not in profile"
+      // and the workflow fails even though the tool is registered globally.
+      'decode_tree',
+      'base64_decode',
+      'base64_encode',
+      'hex_decode',
+      'hex_encode',
+      'url_decode',
+      'url_encode',
+      'response_diff',
+      'jsfuck_encode',
+      'php_filter_chain',
       'list_artifacts',
       'list_findings',
       'list_jobs',

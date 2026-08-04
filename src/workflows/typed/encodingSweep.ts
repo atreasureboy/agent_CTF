@@ -65,7 +65,12 @@ export const ENCODING_SWEEP_TYPED: TypedWorkflowDefinition = {
     {
       id: 'decode-tree',
       kind: 'tool',
-      toolId: 'decode-tree',
+      // §13 R1 fix — point at the actual `decode_tree` tool registered by
+      // `src/tools/ctfUtils.ts` (recursive codec chain + flag regex detector).
+      // The previous `toolId: 'decode-tree'` was undeclared anywhere and
+      // got silently skipped by the typed DAG executor, which is why the
+      // workflow always succeeded with 0 flags.
+      toolId: 'decode_tree',
       dependsOn: ['charset-analysis'],
       emit_finding: false,
       inputs: {
@@ -74,6 +79,7 @@ export const ENCODING_SWEEP_TYPED: TypedWorkflowDefinition = {
         maxBranchesPerDepth: 8,
         maxTotalAttempts: 24,
         maxOutputBytesPerNode: 1048576,
+        flagPattern: 'flag\\{[^}]+\\}',
       },
     },
     {
