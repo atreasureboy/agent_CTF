@@ -2,6 +2,8 @@ import type { Tool, ToolDefinition, ToolResult } from '../core/types.js'
 import { TOOL_METADATA } from '../core/toolMetadata.js'
 import type { CTFToolMetadata } from '../core/toolDefinition.js'
 import { createDecipheriv } from 'node:crypto'
+import { readFileSync, existsSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 
 function makeUtilTool(
   name: string,
@@ -1137,6 +1139,567 @@ TOOL_METADATA['response_diff'] = {
 }
 
 /**
+ * png_after_iend — extract bytes appended after a PNG file's IEND chunk.
+ *
+ * §Round-3 — solves CTF challenges that hide payload after a valid
+ * image (e.g. `forensics1`, `forensics2` which embeds a ZIP, and
+ * `forensics_nested` which embeds inner PNG+ZIP). Forensics tools
+ * like `binwalk` do this; we re-implement in pure Node so the
+ * workflow-only path handles it without spawning binwalk.
+ */
+function pngAfterIendTool(): Tool {
+  return makeUtilTool(
+    'png_after_iend',
+    'Extract bytes appended after a PNG file\'s IEND chunk. Accepts either hex input or a filesystem path. Returns the trailing payload as utf-8 (or hex if non-printable).',
+    {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: 'Hex-encoded file contents (alternative to filePath).' },
+        filePath: { type: 'string', description: 'Path to a PNG file (alternative to input).' },
+        asHex: {
+          type: 'boolean',
+          description: 'If true, return the trailing bytes as hex instead of utf-8 (default false).',
+        },
+      },
+    },
+    (input) => {
+      try {
+        let data: Buffer
+        const filePath = String((input.filePath as string) ?? '').trim()
+        const hex = String((input.input as string) ?? '').replace(/\s+/g, '')
+        if (filePath) {
+          if (!existsSync(filePath)) {
+            return { isError: true, content: `png_after_iend: filePath not found: ${filePath}` }
+          }
+          data = readFileSync(filePath)
+        } else if (/^[0-9a-fA-F]+$/.test(hex) && hex.length % 2 === 0) {
+          data = Buffer.from(hex, 'hex')
+        } else {
+          return { isError: true, content: 'png_after_iend: provide either filePath or hex input' }
+        }
+        // Walk chunks: each starts with 4-byte length, 4-byte type, payload, 4-byte CRC.
+        // IEND is type b'IEND'.
+        let off = 8 // skip PNG signature
+        let iendEnd = -1
+        while (off + 8 <= data.length) {
+          const len = data.readUInt32BE(off)
+          const type = data.slice(off + 4, off + 8).toString('latin1')
+          const chunkEnd = off + 12 + len
+          if (type === 'IEND') {
+            iendEnd = chunkEnd
+            break
+          }
+          if (chunkEnd > data.length) break
+          off = chunkEnd
+        }
+        if (iendEnd < 0 || iendEnd >= data.length) {
+          return {
+            isError: false,
+            content: JSON.stringify({
+              trailing: '',
+              trailingLength: 0,
+              note: 'no trailing data after IEND',
+            }),
+          }
+        }
+        const trailing = data.slice(iendEnd)
+        const asHex = Boolean(input.asHex)
+        const text = asHex ? trailing.toString('hex') : trailing.toString('utf-8')
+        return {
+          isError: false,
+          content: JSON.stringify({
+            trailing: text,
+            trailingLength: trailing.length,
+            trailingHex: trailing.toString('hex'),
+            note: trailing.length === 0 ? 'no trailing data' : 'extracted',
+          }, null, 2),
+        }
+      } catch (e) {
+        return { isError: true, content: `png_after_iend: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['forensics'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['png_after_iend'] = {
+  domains: ['forensics'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * bmp_lsb_extract — extract LSB-encoded message from a 24-bit BMP.
+ *
+ * §Round-3 — solves `stego_bmp`. Concatenates the least significant bit
+ * of every byte from the pixel data offset onward, MSB-first within each
+ * byte (the BitMapStego convention), and returns the first decoded
+ * sequence. The trailing payload after a null-terminator isn't
+ * extracted; consumers can grep for `flag{...}` in the output.
+ */
+function bmpLsbExtractTool(): Tool {
+  return makeUtilTool(
+    'bmp_lsb_extract',
+    'Extract a Least-Significant-Bit message from a 24-bit BMP (or any byte stream after the pixel offset). Accepts hex input OR a filesystem path. MSB-first byte order; reads up to maxBytes bits.',
+    {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: 'Hex-encoded file contents (alt to filePath).' },
+        filePath: { type: 'string', description: 'Path to a BMP file (alt to input).' },
+        maxBytes: {
+          type: 'integer',
+          description: 'Maximum decoded bytes to return. Default 256.',
+          minimum: 16,
+          maximum: 65536,
+        },
+      },
+    },
+    (input) => {
+      try {
+        let data: Buffer
+        const filePath = String((input.filePath as string) ?? '').trim()
+        const hex = String((input.input as string) ?? '').replace(/\s+/g, '')
+        if (filePath) {
+          if (!existsSync(filePath)) {
+            return { isError: true, content: `bmp_lsb_extract: filePath not found: ${filePath}` }
+          }
+          data = readFileSync(filePath)
+        } else if (/^[0-9a-fA-F]+$/.test(hex) && hex.length % 2 === 0) {
+          data = Buffer.from(hex, 'hex')
+        } else {
+          return { isError: true, content: 'bmp_lsb_extract: provide either filePath or hex input' }
+        }
+        // 24-bit BMP: pixel data starts at offset 54. If the input's first
+        // 14 bytes aren't 'BM' + valid BMP header, fall back to byte 0.
+        let pixelOffset = 0
+        if (data.length >= 14 && data[0] === 0x42 && data[1] === 0x4d) {
+          pixelOffset = data.readUInt32LE(10)
+          if (pixelOffset < 14 || pixelOffset >= data.length) pixelOffset = 0
+        }
+        const maxBytes = Math.min(Math.max(Number(input.maxBytes ?? 256) || 256, 16), 65536)
+        const bits: number[] = []
+        for (let i = pixelOffset; i < data.length && bits.length < maxBytes * 8; i++) {
+          bits.push(data[i] & 1)
+        }
+        const out = Buffer.alloc(Math.floor(bits.length / 8))
+        for (let i = 0; i < out.length; i++) {
+          let v = 0
+          for (let b = 0; b < 8; b++) v = (v << 1) | (bits[i * 8 + b] ?? 0)
+          out[i] = v
+        }
+        // Trim after first NUL if present so the consumer doesn't have
+        // to scroll past raw pixel bits to find the message.
+        const nulAt = out.indexOf(0)
+        const trimmed = nulAt >= 0 ? out.subarray(0, nulAt) : out
+        return {
+          isError: false,
+          content: JSON.stringify({
+            lsb: trimmed.toString('utf-8'),
+            lsbLength: trimmed.length,
+            fullLength: out.length,
+            note: 'first NUL trimmed',
+          }, null, 2),
+        }
+      } catch (e) {
+        return { isError: true, content: `bmp_lsb_extract: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['forensics'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['bmp_lsb_extract'] = {
+  domains: ['forensics'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * unzip_inner — extract an inner file from a non-password ZIP archive.
+ *
+ * §Round-3 — solves `forensics2` (and similar ZIP-with-secret challenges).
+ * Reads `innerName` (default `secret.txt`) from the ZIP at `filePath`
+ * and returns its content. The broker's auto-emit-flag side effect
+ * surfaces any `flag{...}` (or `flag(...}`-style) in the inner file's
+ * content; solve.ts then extracts the matched flag from the printed
+ * finding summary.
+ */
+function unzipInnerTool(): Tool {
+  return makeUtilTool(
+    'unzip_inner',
+    'Extract an inner file from a non-password ZIP archive (default filename secret.txt). Returns the file content as utf-8.',
+    {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: 'Path to the .zip archive.' },
+        innerName: {
+          type: 'string',
+          description: 'Filename inside the archive. Default "secret.txt".',
+        },
+      },
+      required: ['filePath'],
+    },
+    (input) => {
+      try {
+        const filePath = String((input.filePath as string) ?? '').trim()
+        const innerName = String((input.innerName as string) ?? 'secret.txt')
+        if (!filePath) {
+          return { isError: true, content: 'unzip_inner: filePath is required' }
+        }
+        if (!existsSync(filePath)) {
+          return { isError: true, content: `unzip_inner: filePath not found: ${filePath}` }
+        }
+        // Shell out to the platform unzip. Adds no new dep; works on
+        // any *nix or WSL env that has unzip(1) installed.
+        const stdout = execSync(`unzip -p ${JSON.stringify(filePath)} ${JSON.stringify(innerName)}`, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }).toString('utf-8')
+        return {
+          isError: false,
+          content: JSON.stringify({
+            innerName,
+            content: stdout,
+            length: stdout.length,
+          }, null, 2),
+        }
+      } catch (e) {
+        return { isError: true, content: `unzip_inner: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['forensics'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['unzip_inner'] = {
+  domains: ['forensics'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * rsa_wiener_attack — recover small RSA private exponent d via continued
+ * fraction expansion of e/n (Wiener's attack).
+ *
+ * §Round-3 — solves `rsa_wiener`. For RSA with a small d (roughly
+ * d < 1/3 · n^0.25), the convergent k/q of e/n satisfies k = d, and
+ * we can decrypt c^d mod n. Returns the first convergent that yields
+ * a printable plaintext containing `flag`.
+ */
+function rsaWienerAttackTool(): Tool {
+  return makeUtilTool(
+    'rsa_wiener_attack',
+    'RSA Wiener attack — recover small private exponent d via continued-fraction expansion of e/n, then decrypt c^d mod n. Returns plaintext (utf-8) when a printable flag-shaped message is recovered.',
+    {
+      type: 'object',
+      properties: {
+        n: { type: 'string', description: 'RSA modulus (decimal).' },
+        e: { type: 'string', description: 'RSA public exponent (decimal).' },
+        c: { type: 'string', description: 'RSA ciphertext (decimal).' },
+      },
+      required: ['n', 'e', 'c'],
+    },
+    (input) => {
+      try {
+        const n = BigInt(String((input.n as string) ?? '').trim())
+        const e = BigInt(String((input.e as string) ?? '').trim())
+        const c = BigInt(String((input.c as string) ?? '').trim())
+        if (n <= 1n || e <= 1n || c < 0n) {
+          return { isError: true, content: 'rsa_wiener_attack: invalid n/e/c' }
+        }
+        // Continued-fraction expansion of e/n
+        function cf(p: bigint, q: bigint): bigint[] {
+          const out: bigint[] = []
+          while (q !== 0n) {
+            out.push(p / q)
+            const r = p % q
+            p = q
+            q = r
+          }
+          return out
+        }
+        const a = cf(e, n)
+        // Convergents — track (h_k, k_k) where p_k/q_k approximates e/n.
+        let h0 = 1n, h1 = a[0] ?? 0n
+        let k0 = 0n, k1 = 1n
+        function powmod(base: bigint, exp: bigint, mod: bigint): bigint {
+          let r = 1n
+          base = ((base % mod) + mod) % mod
+          while (exp > 0n) {
+            if ((exp & 1n) === 1n) r = (r * base) % mod
+            exp >>= 1n
+            base = (base * base) % mod
+          }
+          return r
+        }
+        for (let i = 1; i < a.length; i++) {
+          const ai = a[i]
+          const h2 = ai * h1 + h0
+          const k2 = ai * k1 + k0
+          if (k2 !== 0n && (e * k2 - 1n) % h2 === 0n) {
+            // k2 is candidate d.
+            const d = k2
+            const m = powmod(c, d, n)
+            // Convert m to bytes — strip any leading zero bytes (PKCS#1 v1.5 padding).
+            let hex = m.toString(16)
+            if (hex.length % 2 !== 0) hex = '0' + hex
+            const buf = Buffer.from(hex, 'hex')
+            const utf8 = buf.toString('utf-8')
+            // The flag may be embedded in PKCS#1 v1.5 padding. Look for
+            // any flag-shaped substring; if absent, return the raw
+            // bytes as hex.
+            const flagMatch = utf8.match(/flag\{[^}]+\}/)
+                        if (flagMatch) {
+              return {
+                isError: false,
+                content: JSON.stringify(
+                  {
+                    d: d.toString(),
+                    flag: flagMatch[0],
+                    plaintextHex: buf.toString('hex'),
+                    fullPlaintext: utf8,
+                  },
+                  null,
+                  2,
+                ),
+              }
+            }
+            // Try stripping PKCS#1 v1.5 padding: 0x00 0x02 ... 0x00 M
+            if (buf.length >= 3 && buf[0] === 0x00 && buf[1] === 0x02) {
+              const sep = buf.indexOf(0x00, 2)
+              if (sep > 0) {
+                const m2 = buf.subarray(sep + 1)
+                const utf2 = m2.toString('utf-8')
+                const m2match = utf2.match(/flag\{[^}]+\}/)
+                if (m2match) {
+                  return {
+                    isError: false,
+                    content: JSON.stringify(
+                      {
+                        d: d.toString(),
+                        flag: m2match[0],
+                        plaintextHex: m2.toString('hex'),
+                        strippedPadding: true,
+                      },
+                      null,
+                      2,
+                    ),
+                  }
+                }
+              }
+            }
+            // otherwise keep iterating — the next convergent may be d.
+          }
+          h0 = h1
+          h1 = h2
+          k0 = k1
+          k1 = k2
+        }
+        return {
+          isError: true,
+          content: JSON.stringify(
+            { error: 'no convergent yielded a flag', testedConvergents: a.length },
+            null,
+            2,
+          ),
+        }
+      } catch (e) {
+        return { isError: true, content: `rsa_wiener_attack: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['rsa_wiener_attack'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * grep_for_flag — pull the first `flag{...}` (or `flag(...)` /
+ * `flag(...}` variant) substring from a file or inline text.
+ *
+ * §Round-3 — solves pcap-style challenges where the flag is buried
+ * somewhere in a traffic capture. Returns the flag plus the
+ * surrounding context (the line containing the match).
+ */
+function grepForFlagTool(): Tool {
+  return makeUtilTool(
+    'grep_for_flag',
+    'Read a file (or inline text) and return the first flag-shaped substring (`flag{...}`, `flag(...)`, or `flag(...}`).',
+    {
+      type: 'object',
+      properties: {
+        filePath: { type: 'string', description: 'Path to file to scan (alternative to text).' },
+        text: { type: 'string', description: 'Inline text to scan (alternative to filePath).' },
+        contextChars: {
+          type: 'integer',
+          description: 'How many characters of context around the match to return. Default 80.',
+          minimum: 0,
+          maximum: 1000,
+        },
+      },
+    },
+    (input) => {
+      try {
+        let data: string
+        const filePath = String((input.filePath as string) ?? '').trim()
+        if (filePath) {
+          if (!existsSync(filePath)) {
+            return { isError: true, content: `grep_for_flag: filePath not found: ${filePath}` }
+          }
+          data = readFileSync(filePath, 'utf-8')
+        } else {
+          data = String((input.text as string) ?? '')
+        }
+        if (data.length === 0) {
+          return { isError: true, content: 'grep_for_flag: empty input' }
+        }
+        const re = /flag\{[^}]+\}|flag\([^)]*\)|flag\([^}]*\}/
+        const m = re.exec(data)
+        if (!m) {
+          return {
+            isError: true,
+            content: JSON.stringify({ error: 'no flag-shaped substring found' }),
+          }
+        }
+        const ctx = Math.min(Math.max(Number(input.contextChars ?? 80) || 80, 0), 1000)
+        const start = Math.max(0, m.index - ctx)
+        const end = Math.min(data.length, m.index + m[0].length + ctx)
+        return {
+          isError: false,
+          content: JSON.stringify(
+            {
+              flag: m[0],
+              contextStart: m.index,
+              context: data.slice(start, end),
+            },
+            null,
+            2,
+          ),
+        }
+      } catch (e) {
+        return { isError: true, content: `grep_for_flag: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['forensics', 'web'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['grep_for_flag'] = {
+  domains: ['forensics', 'web'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * web_fetch — make an HTTP request via curl, return response body.
+ *
+ * §Round-3 — solves `web1` (directory traversal), `web_sqli` (POST
+ * with SQLi payload), and any other HTTP-based challenge. Method
+ * supports `GET` and `POST`. For POST, the body is sent as
+ * application/x-www-form-urlencoded (the standard login form
+ * encoding used by SolveBench).
+ */
+function webFetchTool(): Tool {
+  return makeUtilTool(
+    'web_fetch',
+    'Make an HTTP request via curl and return the response body. Method: GET or POST. For POST, body is sent as x-www-form-urlencoded.',
+    {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full URL to fetch.' },
+        method: {
+          type: 'string',
+          description: 'HTTP method: GET or POST. Default GET.',
+        },
+        body: {
+          type: 'string',
+          description: 'POST body (x-www-form-urlencoded). Ignored for GET.',
+        },
+      },
+      required: ['url'],
+    },
+    (input) => {
+      try {
+        const url = String((input.url as string) ?? '').trim()
+        const method = (String((input.method as string) ?? 'GET').toUpperCase() === 'POST') ? 'POST' : 'GET'
+        const body = String((input.body as string) ?? '')
+        if (!url) return { isError: true, content: 'web_fetch: url is required' }
+        const args = ['-sS', '-X', method, url]
+        if (method === 'POST' && body) args.push('-d', body)
+        const stdout = execSync(`curl ${args.map((a) => JSON.stringify(a)).join(' ')}`, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 30_000,
+        }).toString('utf-8')
+        return {
+          isError: false,
+          content: JSON.stringify({ url, method, body: stdout }, null, 2),
+        }
+      } catch (e) {
+        return { isError: true, content: `web_fetch: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['web'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['web_fetch'] = {
+  domains: ['web'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
  * decode_tree — recursive multi-layer codec decoder.
  *
  * Resolves the missing tool that `encoding_sweep` workflow references
@@ -1191,6 +1754,15 @@ function tryDecodeTreeCodec(codec: string, text: string): string | null {
         )
         return out === text ? null : out
       }
+      case 'reverse': {
+        // String reversal — solves the third layer of multi_encoding
+        // (hex -> rot13 -> **reverse** -> base64). Symmetric, so
+        // always strictly changes the input. Bail only on tiny
+        // strings where reversal is a no-op.
+        if (text.length < 2) return null
+        const out = text.split('').reverse().join('')
+        return out === text ? null : out
+      }
       default:
         return null
     }
@@ -1213,62 +1785,70 @@ function runDecodeTree(
   maxDepth: number,
   codecs: string[],
 ): DecodeTreeOutput {
-  const trail: string[] = []
-  const appliedCodecs: string[] = []
-  let current = start
-  for (let depth = 0; depth < maxDepth; depth++) {
-    const flagMatch = current.match(flagPattern)
-    if (flagMatch) {
-      return {
-        flag: flagMatch[0],
-        decodedTrail: trail,
-        totalDepth: depth,
-        codecsApplied: appliedCodecs,
-        stoppedReason: 'flag_found',
-      }
-    }
-    let nextProduced = false
-    let next: string | null = null
-    let appliedCodec: string | null = null
-    for (const codec of codecs) {
-      const candidate = tryDecodeTreeCodec(codec, current)
-      if (candidate === null) continue
-      if (candidate === current) continue
-      next = candidate
-      appliedCodec = codec
-      nextProduced = true
-      break
-    }
-    if (!nextProduced || next === null) {
-      return {
-        flag: null,
-        decodedTrail: trail,
-        totalDepth: depth,
-        codecsApplied: appliedCodecs,
-        stoppedReason: 'no_codec',
-      }
-    }
-    trail.push(current)
-    if (appliedCodec !== null) appliedCodecs.push(appliedCodec)
-    if (next !== null) current = next
+  // §Round-3 — breadth-first search across all single-step codec
+  // candidates per layer, instead of greedy DFS. Greedy DFS would
+  // commit to the first valid codec at each layer (e.g. `reverse`) and
+  // miss the actual chain when the first valid codec isn't the right
+  // first step. BFS tries every (single-step) at depth 1, then every
+  // (two-step) at depth 2, etc. We cap explored nodes so the worst
+  // case stays bounded.
+  const MAX_NODES = 1024
+  type Node = {
+    state: string
+    depth: number
+    path: string[]
+    trail: string[]
   }
-  // Loop exhausted without flag — check current one final time
-  const finalMatch = current.match(flagPattern)
-  if (finalMatch) {
-    return {
-      flag: finalMatch[0],
-      decodedTrail: trail,
-      totalDepth: maxDepth,
-      codecsApplied: appliedCodecs,
-      stoppedReason: 'flag_found',
+  const visited = new Set<string>([start])
+  let frontier: Node[] = [{ state: start, depth: 0, path: [], trail: [] }]
+  let explored = 0
+  while (frontier.length > 0) {
+    const nextFrontier: Node[] = []
+    for (const node of frontier) {
+      if (explored >= MAX_NODES) break
+      explored++
+      const m = node.state.match(flagPattern)
+      if (m) {
+        return {
+          flag: m[0],
+          decodedTrail: node.trail,
+          totalDepth: node.depth,
+          codecsApplied: node.path,
+          stoppedReason: 'flag_found',
+        }
+      }
+      if (node.depth >= maxDepth) continue
+      for (const codec of codecs) {
+        const candidate = tryDecodeTreeCodec(codec, node.state)
+        if (candidate === null) continue
+        if (candidate === node.state) continue
+        if (visited.has(candidate)) continue
+        // §Round-3 — also forbid back-to-back application of the same
+        // *symmetric* codec (reverse-reverse, rot13-rot13, hex-hex) at
+        // depth-1 to avoid identity cycles that BFS would otherwise
+        // also re-explore.
+        if (node.path.length > 0 && node.path[node.path.length - 1] === codec) {
+          const sym = codec === 'reverse' || codec === 'rot13'
+          if (sym) continue
+        }
+        visited.add(candidate)
+        nextFrontier.push({
+          state: candidate,
+          depth: node.depth + 1,
+          path: [...node.path, codec],
+          trail: [...node.trail, node.state],
+        })
+      }
     }
+    if (nextFrontier.length === 0) break
+    frontier = nextFrontier
   }
   return {
     flag: null,
-    decodedTrail: trail,
-    totalDepth: maxDepth,
-    codecsApplied: appliedCodecs,
-    stoppedReason: 'no_new_output',
+    decodedTrail: [],
+    totalDepth: 0,
+    codecsApplied: [],
+    stoppedReason: 'no_codec',
   }
 }
 
@@ -1315,10 +1895,15 @@ function decodeTreeTool(): Tool {
       } catch (e) {
         return { isError: true, content: `decode_tree: bad regex: ${(e as Error).message}` }
       }
+      // §Round-3 — try `reverse` early. Solves multi-layer patterns
+      // like hex → rot13 → reverse → base64 where the only valid
+      // path uses reverse on a string that already looks "valid
+      // base64-ish" before the decode step.
       const result = runDecodeTree(text, pattern, maxDepth, [
-        'base64',
+        'reverse',
         'hex',
         'url',
+        'base64',
         'rot13',
       ])
       const summary = JSON.stringify(
@@ -1484,7 +2069,7 @@ function xorKnownPlaintextTool(): Tool {
             if (inner.length === 0) continue
             const alphaRatio = alphaUnderscore / inner.length
             if (alphaRatio < 0.5) continue
-            // Pick strictly better candidates: more alphas OR equal alphas
+                    // Pick strictly better candidates: more alphas OR equal alphas
             // with longer inner content wins (more of the flag recovered).
             if (
               alphaUnderscore > bestAlphaCount ||
@@ -1658,5 +2243,11 @@ export function createCTFUtilTools(): Tool[] {
     decodeTreeTool(),
     xorKnownPlaintextTool(),
     aesEcbDecryptTool(),
+    pngAfterIendTool(),
+    bmpLsbExtractTool(),
+    unzipInnerTool(),
+    rsaWienerAttackTool(),
+    grepForFlagTool(),
+    webFetchTool(),
   ]
 }

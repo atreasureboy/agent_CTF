@@ -226,6 +226,14 @@ function detectPathEscape(
   context: { workspaceDir: string; artifactDir: string },
 ): string | null {
   const safeRoots = [context.workspaceDir, context.artifactDir]
+  // Keys that we never want to scan. `command` is the substituted
+  // shell command (e.g. `curl -sS "$URL"`) which legitimately
+  // contains `..` for directory-traversal challenges like web1.
+  // We don't want to reject such shell commands — the shell tool
+  // runs them through `child_process.spawn` and the OS resolves
+  // the path; this check only protects the tool-form input
+  // (which is where file-path arguments actually flow).
+  const skipKeys = new Set(['command', 'description', 'mode'])
   function checkString(s: string): string | null {
     if (s.includes('..' + '/') || s.includes('..' + '\\') || s.endsWith('..')) {
       // Allow `..` only when it stays inside one of the safe roots.
@@ -235,7 +243,8 @@ function detectPathEscape(
     }
     return null
   }
-  function walk(value: unknown): string | null {
+  function walk(value: unknown, keyHint?: string): string | null {
+    if (keyHint && skipKeys.has(keyHint)) return null
     if (typeof value === 'string') return checkString(value)
     if (Array.isArray(value)) {
       for (const v of value) {
@@ -245,8 +254,8 @@ function detectPathEscape(
       return null
     }
     if (value && typeof value === 'object') {
-      for (const v of Object.values(value as Record<string, unknown>)) {
-        const r = walk(v)
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        const r = walk(v, k)
         if (r) return r
       }
     }

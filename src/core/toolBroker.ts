@@ -411,7 +411,11 @@ export class ToolBroker {
         typeof result.content === 'string'
       ) {
         // Use the same default pattern as encoding_sweep's flag pattern.
-        const flagMatch = result.content.match(/flag\{[^}]+\}/)
+        // Matches `flag{...}`, `flag(...)`, and `flag(...}` (open-paren /
+        // close-brace — forensics2 variant).
+        const flagMatch = result.content.match(
+          /flag\{[^}]+\}|flag\([^)]*\)|flag\([^}]*\}/,
+        )
         if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
           // eslint-disable-next-line no-console
           console.error(
