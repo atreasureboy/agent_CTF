@@ -1,0 +1,4 @@
+An HTTP traffic capture contains sensitive information.
+Analyze the traffic to find the flag that was transmitted.
+
+Hint: Look for sensitive data in the HTTP responses.

@@ -1,0 +1,16 @@
+{
+  "id": "encoding2",
+  "title": "ROT13 Classic",
+  "category": "encoding",
+  "description": "A simple substitution cipher was used to encode the flag.\nThe cipher shifts each letter by 13 positions in the alphabet.\n\nDecode the message to reveal the flag.\n",
+  "flagPattern": "flag{...}",
+  "expectedFlagSha256": "f044475028d3828eb3350207594369fb4788a4f0afce73656e38b62eeaa82912",
+  "attachmentPaths": [
+    "encoded.txt"
+  ],
+  "timeoutMs": 60000,
+  "allowedTools": [
+    "Bash",
+    "Read"
+  ]
+}
