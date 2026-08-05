@@ -48,6 +48,8 @@ export interface ComposeSystemPromptInput {
   inheritedFindings?: Array<{ id: string; summary: string; confidence: string }>
   inheritedArtifacts?: Array<{ id: string; type: string; summary: string }>
   basePrompt?: string
+  /** CTF competition knowledge base content to inject into the system prompt. */
+  knowledgeContext?: string
 }
 
 /**
@@ -101,6 +103,12 @@ export function composeSystemPrompt(input: ComposeSystemPromptInput): string {
   }
 
   if (input.basePrompt) sections.push(input.basePrompt)
+
+  // CTF knowledge base — injected after all profile modules so
+  // specialists get domain context without overriding their role.
+  if (input.knowledgeContext && input.knowledgeContext.trim().length > 0) {
+    sections.push(`# CTF 知识库\n\n${input.knowledgeContext.trim()}`)
+  }
 
   return sections.join('\n\n---\n\n')
 }

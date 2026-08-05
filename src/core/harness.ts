@@ -19,6 +19,7 @@
  */
 
 import { resolve } from 'path'
+import { existsSync, readFileSync } from 'fs'
 
 import { ExecutionEngine } from './engine.js'
 import type { Renderer } from '../ui/renderer.js'
@@ -179,6 +180,59 @@ export interface HarnessBundle {
   approveHandoff(handoffId: string): { handoff: HandoffRequest; approved: true }
   /** Cancel all running jobs for this task. */
   cancelAllJobs(reason: string): number
+}
+
+/**
+ * CTF knowledge base loader — injects the built-in domain knowledge
+ * (`src/knowledge/*.md`) into the system prompt, scoped by the active
+ * profile so the LLM only sees the categories relevant to the current task.
+ * Silent no-op when the knowledge dir is absent (workspace moves / dist
+ * builds that strip source files).
+ */
+const KNOWLEDGE_DIR_NAME = 'knowledge'
+const KNOWLEDGE_MAX_CHARS_PER_FILE = 4500
+const KNOWLEDGE_MAX_FILES = 3
+
+const PROFILE_KNOWLEDGE_FILES: Record<string, string[]> = {
+  crypto: ['crypto-attacks.md', 'encoding-reference.md'],
+  encoding: ['encoding-reference.md', 'crypto-attacks.md'],
+  image: ['stego-techniques.md', 'forensics-methods.md'],
+  'image-stego': ['stego-techniques.md', 'forensics-methods.md'],
+  forensics: ['forensics-methods.md', 'stego-techniques.md'],
+  'file-forensics': ['forensics-methods.md', 'encoding-reference.md'],
+  web: ['web-exploits.md', 'encoding-reference.md'],
+  reverse: ['forensics-methods.md', 'crypto-attacks.md'],
+  pwn: ['crypto-attacks.md'],
+  traffic: ['forensics-methods.md'],
+  triage: ['encoding-reference.md', 'forensics-methods.md', 'stego-techniques.md'],
+  orchestrator: ['crypto-attacks.md', 'web-exploits.md', 'forensics-methods.md'],
+}
+
+function loadKnowledgeContext(cwd: string, profileId: string): string {
+  try {
+    const dir = resolve(cwd, 'src', KNOWLEDGE_DIR_NAME)
+    if (!existsSync(dir)) return ''
+    const wanted =
+      PROFILE_KNOWLEDGE_FILES[profileId] ??
+      PROFILE_KNOWLEDGE_FILES['orchestrator'] ??
+      []
+    const files = wanted.slice(0, KNOWLEDGE_MAX_FILES)
+    const sections: string[] = []
+    for (const file of files) {
+      const p = resolve(dir, file)
+      if (!existsSync(p)) continue
+      const raw = readFileSync(p, 'utf-8')
+      const clipped =
+        raw.length > KNOWLEDGE_MAX_CHARS_PER_FILE
+          ? raw.slice(0, KNOWLEDGE_MAX_CHARS_PER_FILE) +
+            `\n\n[... ${raw.length - KNOWLEDGE_MAX_CHARS_PER_FILE} chars omitted — see ${dir}/${file} for full knowledge ...]`
+          : raw
+      sections.push(`### ${file.replace('.md', '')}\n\n${clipped}`)
+    }
+    return sections.join('\n\n')
+  } catch {
+    return ''
+  }
 }
 
 export function createHarness(input: CreateHarnessInput): HarnessBundle {
@@ -467,9 +521,19 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       inheritedFindings: options.inheritedFindings,
       inheritedArtifacts: options.inheritedArtifacts,
     })
-    const systemPrompt = options.systemPromptAddon
-      ? `${baseSystemPrompt}\n\n${options.systemPromptAddon}`
-      : baseSystemPrompt
+    // Inject the CTF knowledge base (scoped by active profile) so the LLM
+    // has instant access to attack recipes / tool chains without spending
+    // tokens on WebSearch.
+    const knowledgeContext = loadKnowledgeContext(input.cwd, currentProfile.id)
+    const systemPrompt =
+      options.systemPromptAddon || knowledgeContext
+        ? `${baseSystemPrompt}\n\n---\n\n${[
+            options.systemPromptAddon,
+            knowledgeContext ? `# CTF 知识库\n\n${knowledgeContext}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n\n---\n\n')}`
+        : baseSystemPrompt
     const engineConfig: EngineConfig = {
       client: input.client,
       cwd: input.cwd,

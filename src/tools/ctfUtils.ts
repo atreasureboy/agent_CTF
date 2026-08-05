@@ -2573,6 +2573,740 @@ TOOL_METADATA['aes_ecb_decrypt'] = {
   riskLevel: 'low',
 }
 
+/**
+ * rot13 — ROT13/ROT47 encode/decode.
+ * ROT13 rotates only A-Z/a-z by 13; ROT47 rotates printable ASCII 33-126 by 47.
+ * Both are self-inverse, so encode === decode.
+ */
+function rot13Tool(): Tool {
+  return makeUtilTool(
+    'rot13',
+    'ROT13/ROT47 encode or decode. ROT13 rotates only letters by 13 places. ROT47 rotates all printable ASCII (33-126) by 47. Both are self-inverse (encode === decode).',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text to encode/decode.' },
+        variant: {
+          type: 'string',
+          description: 'ROT variant: "rot13" (letters only) or "rot47" (all printable ASCII). Default "rot13".',
+          enum: ['rot13', 'rot47'],
+        },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '')
+      const variant = String((input.variant as string) ?? 'rot13')
+      try {
+        if (variant === 'rot47') {
+          const out = text
+            .split('')
+            .map((c) => {
+              const code = c.charCodeAt(0)
+              if (code >= 33 && code <= 126) {
+                return String.fromCharCode(33 + ((code - 33 + 47) % 94))
+              }
+              return c
+            })
+            .join('')
+          return { isError: false, content: out }
+        }
+        const out = text.replace(/[a-zA-Z]/g, (c) =>
+          c <= 'Z'
+            ? String.fromCharCode(((c.charCodeAt(0) - 65 + 13) % 26) + 65)
+            : String.fromCharCode(((c.charCodeAt(0) - 97 + 13) % 26) + 97),
+        )
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `rot13: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['rot13'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * morse_code — Morse code encode/decode.
+ * Uses '.' for dot, '-' for dash, ' ' between letters, '/' between words.
+ */
+function morseCodeTool(): Tool {
+  const MORSE_ENCODE: Record<string, string> = {
+    A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.',
+    H: '....', I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.',
+    O: '---', P: '.--.', Q: '--.-', R: '.-.', S: '...', T: '-', U: '..-',
+    V: '...-', W: '.--', X: '-..-', Y: '-.--', Z: '--..',
+    '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
+    '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
+    '.': '.-.-.-', ',': '--..--', '?': '..--..', "'": '.----.', '!': '-.-.--',
+    '/': '-..-.', '(': '-.--.', ')': '-.--.-', '&': '.-...', ':': '---...',
+    ';': '-.-.-.', '=': '-...-', '+': '.-.-.', '-': '-....-', '_': '..--.-',
+    '"': '.-..-.', '$': '...-..-', '@': '.--.-.', ' ': '/',
+  }
+  const MORSE_DECODE = Object.fromEntries(
+    Object.entries(MORSE_ENCODE).map(([k, v]) => [v, k]),
+  )
+
+  return makeUtilTool(
+    'morse_decode',
+    'Morse code encode or decode. Uses "." for dot, "-" for dash, space between letters, "/" between words.',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text to encode or morse code to decode.' },
+        mode: {
+          type: 'string',
+          description: '"encode" (text -> morse) or "decode" (morse -> text). Default "decode".',
+          enum: ['encode', 'decode'],
+        },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '').trim()
+      const mode = String((input.mode as string) ?? 'decode')
+      try {
+        if (mode === 'encode') {
+          const upper = text.toUpperCase()
+          const out = upper
+            .split('')
+            .map((c) => MORSE_ENCODE[c] ?? c)
+            .join(' ')
+          return { isError: false, content: out }
+        }
+        const tokens = text.replace(/\s+/g, ' ').trim().split(' ')
+        const out = tokens
+          .map((t) => {
+            if (t === '/') return ' '
+            return MORSE_DECODE[t] ?? '?'
+          })
+          .join('')
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `morse_decode: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['morse_decode'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * bacon_cipher — 24-letter Bacon cipher (I/J merged, U/V merged).
+ * A=AAAAA, B=AAAAB, C=AAABA, ..., Z=AABBB.
+ */
+function baconCipherTool(): Tool {
+  const BACON: Record<string, string> = {}
+  const letters = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'
+  for (let i = 0; i < 24; i++) {
+    const bin = i.toString(2).padStart(5, '0')
+    const code = bin.replace(/0/g, 'A').replace(/1/g, 'B')
+    BACON[letters[i]] = code
+  }
+  BACON['J'] = BACON['I']
+  BACON['V'] = BACON['U']
+  const BACON_REV: Record<string, string> = {}
+  for (let i = 0; i < 24; i++) {
+    const bin = i.toString(2).padStart(5, '0')
+    const code = bin.replace(/0/g, 'A').replace(/1/g, 'B')
+    BACON_REV[code] = letters[i]
+  }
+
+  return makeUtilTool(
+    'bacon_cipher',
+    '24-letter Bacon cipher encode/decode. A=AAAAA, B=AAAAB, ... I/J merged, U/V merged.',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text to encode or Bacon cipher to decode.' },
+        mode: {
+          type: 'string',
+          description: '"encode" (text -> bacon) or "decode" (bacon -> text). Default "decode".',
+          enum: ['encode', 'decode'],
+        },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '')
+      const mode = String((input.mode as string) ?? 'decode')
+      try {
+        if (mode === 'encode') {
+          const upper = text.toUpperCase().replace(/[^A-Z]/g, '')
+          const out = upper
+            .split('')
+            .map((c) => BACON[c] ?? '?????')
+            .join(' ')
+          return { isError: false, content: out }
+        }
+        const cleaned = text.toUpperCase().replace(/[^AB]/g, '')
+        const groups: string[] = []
+        for (let i = 0; i + 5 <= cleaned.length; i += 5) {
+          groups.push(cleaned.slice(i, i + 5))
+        }
+        const out = groups.map((g) => BACON_REV[g] ?? '?').join('')
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `bacon_cipher: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['bacon_cipher'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * vigenere — Vigenère cipher encrypt/decrypt.
+ */
+function vigenereTool(): Tool {
+  return makeUtilTool(
+    'vigenere',
+    'Vigenère cipher encrypt or decrypt. Uses the standard tabula recta (A-Z only).',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Plaintext (encrypt) or ciphertext (decrypt).' },
+        key: { type: 'string', description: 'Keyword (A-Z only, case-insensitive).' },
+        mode: {
+          type: 'string',
+          description: '"encrypt" or "decrypt". Default "decrypt".',
+          enum: ['encrypt', 'decrypt'],
+        },
+      },
+      required: ['text', 'key'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '')
+      const key = String((input.key as string) ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+      const mode = String((input.mode as string) ?? 'decrypt')
+      try {
+        if (!key) return { isError: true, content: 'vigenere: key must contain at least one A-Z letter' }
+        let ki = 0
+        const out = text
+          .split('')
+          .map((c) => {
+            const isUpper = c >= 'A' && c <= 'Z'
+            const isLower = c >= 'a' && c <= 'z'
+            if (!isUpper && !isLower) return c
+            const base = isUpper ? 65 : 97
+            const shift = key.charCodeAt(ki % key.length) - 65
+            ki++
+            if (mode === 'encrypt') {
+              return String.fromCharCode(((c.charCodeAt(0) - base + shift) % 26) + base)
+            }
+            return String.fromCharCode(((c.charCodeAt(0) - base - shift + 26) % 26) + base)
+          })
+          .join('')
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `vigenere: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['vigenere'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * multi_byte_xor — brute-force multi-byte repeating XOR key (2-8 bytes).
+ * Returns printable / flag-shaped candidates.
+ */
+function multiByteXorTool(): Tool {
+  return makeUtilTool(
+    'multi_byte_xor',
+    'Brute-force multi-byte repeating XOR decryption. Tries key lengths 2-8 bytes and returns candidates that are mostly printable or contain a flag pattern.',
+    {
+      type: 'object',
+      properties: {
+        cipherHex: {
+          type: 'string',
+          description: 'Ciphertext as hex string.',
+        },
+        minKeyLen: {
+          type: 'integer',
+          description: 'Minimum key length to try. Default 2.',
+          minimum: 2,
+          maximum: 8,
+        },
+        maxKeyLen: {
+          type: 'integer',
+          description: 'Maximum key length to try. Default 8.',
+          minimum: 2,
+          maximum: 8,
+        },
+        maxResults: {
+          type: 'integer',
+          description: 'Maximum candidate results to return. Default 5.',
+          minimum: 1,
+          maximum: 20,
+        },
+      },
+      required: ['cipherHex'],
+    },
+    (input) => {
+      const hex = String((input.cipherHex as string) ?? '').replace(/\s+/g, '')
+      const minKeyLen = Math.max(Number(input.minKeyLen ?? 2) || 2, 2)
+      const maxKeyLen = Math.min(Number(input.maxKeyLen ?? 8) || 8, 8)
+      const maxResults = Math.min(Math.max(Number(input.maxResults ?? 5) || 5, 1), 20)
+      try {
+        if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) {
+          return { isError: true, content: 'multi_byte_xor: cipherHex must be valid hex' }
+        }
+        const cipher = Buffer.from(hex, 'hex')
+        if (cipher.length === 0) {
+          return { isError: true, content: 'multi_byte_xor: empty ciphertext' }
+        }
+        const results: { keyLen: number; key: string; plaintext: string; flag: string | null }[] = []
+        const flagRe = /flag\{[^}]+\}/
+
+        for (let klen = minKeyLen; klen <= maxKeyLen && results.length < maxResults * 3; klen++) {
+          const candidates: number[][] = []
+          for (let pos = 0; pos < klen; pos++) {
+            const posCands: number[] = []
+            for (let kb = 0; kb < 256; kb++) {
+              let printable = 0
+              let total = 0
+              for (let i = pos; i < cipher.length; i += klen) {
+                total++
+                const dec = cipher[i] ^ kb
+                if ((dec >= 0x20 && dec <= 0x7e) || dec === 0x0a || dec === 0x0d) {
+                  printable++
+                }
+              }
+              if (total > 0 && printable / total >= 0.7) {
+                posCands.push(kb)
+              }
+            }
+            if (posCands.length === 0) {
+              for (let kb = 0; kb < 256; kb++) posCands.push(kb)
+            }
+            candidates.push(posCands)
+          }
+
+          const MAX_COMBOS = 50000
+          let combos = 1
+          for (const c of candidates) combos *= c.length
+          if (combos > MAX_COMBOS) {
+            for (let i = 0; i < candidates.length; i++) {
+              if (candidates[i].length > 20) {
+                candidates[i] = candidates[i].slice(0, 20)
+              }
+            }
+          }
+
+          function tryCombos(depth: number, key: number[]): boolean {
+            if (results.length >= maxResults) return true
+            if (depth === klen) {
+              const out = Buffer.alloc(cipher.length)
+              for (let i = 0; i < cipher.length; i++) {
+                out[i] = cipher[i] ^ key[i % klen]
+              }
+              const txt = out.toString('utf-8')
+              const m = txt.match(flagRe)
+              results.push({
+                keyLen: klen,
+                key: Buffer.from(key).toString('hex'),
+                plaintext: txt.slice(0, 500),
+                flag: m ? m[0] : null,
+              })
+              return results.length >= maxResults
+            }
+            for (const kb of candidates[depth]) {
+              key.push(kb)
+              if (tryCombos(depth + 1, key)) return true
+              key.pop()
+            }
+            return false
+          }
+          tryCombos(0, [])
+        }
+
+        if (results.length === 0) {
+          return {
+            isError: true,
+            content: JSON.stringify({ error: 'no printable candidates found' }),
+          }
+        }
+        return {
+          isError: false,
+          content: JSON.stringify({ candidates: results.slice(0, maxResults) }, null, 2),
+        }
+      } catch (e) {
+        return { isError: true, content: `multi_byte_xor: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['multi_byte_xor'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * rail_fence — Rail fence (W-type / zigzag) cipher decrypt.
+ */
+function railFenceTool(): Tool {
+  return makeUtilTool(
+    'rail_fence',
+    'Rail fence (W-type / zigzag) cipher decryption. Decrypts text encoded with the given number of rails.',
+    {
+      type: 'object',
+      properties: {
+        ciphertext: { type: 'string', description: 'Ciphertext to decrypt.' },
+        rails: {
+          type: 'integer',
+          description: 'Number of rails used for encryption. Default 2.',
+          minimum: 2,
+          maximum: 20,
+        },
+      },
+      required: ['ciphertext'],
+    },
+    (input) => {
+      const text = String((input.ciphertext as string) ?? '')
+      const rails = Math.min(Math.max(Number(input.rails ?? 2) || 2, 2), 20)
+      try {
+        if (text.length === 0) return { isError: false, content: '' }
+        const n = text.length
+        const rail: number[] = new Array(n).fill(0)
+        let dirDown = false
+        let row = 0
+        for (let i = 0; i < n; i++) {
+          rail[i] = row
+          if (row === 0 || row === rails - 1) dirDown = !dirDown
+          row += dirDown ? 1 : -1
+        }
+        const counts: number[] = new Array(rails).fill(0)
+        for (let i = 0; i < n; i++) counts[rail[i]]++
+        const chunks: string[] = []
+        let pos = 0
+        for (let r = 0; r < rails; r++) {
+          chunks.push(text.slice(pos, pos + counts[r]))
+          pos += counts[r]
+        }
+        const idx: number[] = new Array(rails).fill(0)
+        const out: string[] = []
+        for (let i = 0; i < n; i++) {
+          out.push(chunks[rail[i]][idx[rail[i]]])
+          idx[rail[i]]++
+        }
+        return { isError: false, content: out.join('') }
+      } catch (e) {
+        return { isError: true, content: `rail_fence: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['rail_fence'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * base85 — Base85 / Ascii85 encode and decode.
+ */
+function base85Tool(): Tool {
+  return makeUtilTool(
+    'base85',
+    'Base85 / Ascii85 encode or decode. Uses the standard Adobe Ascii85 alphabet.',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text to encode or Base85 string to decode.' },
+        mode: {
+          type: 'string',
+          description: '"encode" (text -> base85) or "decode" (base85 -> text). Default "decode".',
+          enum: ['encode', 'decode'],
+        },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '')
+      const mode = String((input.mode as string) ?? 'decode')
+      try {
+        if (mode === 'encode') {
+          const buf = Buffer.from(text, 'utf-8')
+          const out: string[] = []
+          let i = 0
+          while (i < buf.length) {
+            const chunk = buf.subarray(i, Math.min(i + 4, buf.length))
+            i += 4
+            if (chunk.length < 4) {
+              const padded = Buffer.alloc(4)
+              chunk.copy(padded)
+              const val = padded.readUInt32BE(0)
+              if (val === 0) {
+                out.push('z')
+              } else {
+                let encoded = ''
+                for (let j = 4; j >= 0; j--) {
+                  encoded += String.fromCharCode(33 + (Math.floor(val / Math.pow(85, j)) % 85))
+                }
+                out.push(encoded.slice(0, chunk.length + 1))
+              }
+            } else {
+              const val = chunk.readUInt32BE(0)
+              if (val === 0) {
+                out.push('z')
+              } else {
+                let encoded = ''
+                for (let j = 4; j >= 0; j--) {
+                  encoded += String.fromCharCode(33 + (Math.floor(val / Math.pow(85, j)) % 85))
+                }
+                out.push(encoded)
+              }
+            }
+          }
+          return { isError: false, content: '<~' + out.join('') + '~>' }
+        }
+        let cleaned = text.replace(/\s+/g, '')
+        if (cleaned.startsWith('<~')) cleaned = cleaned.slice(2)
+        if (cleaned.endsWith('~>')) cleaned = cleaned.slice(0, -2)
+        cleaned = cleaned.replace(/z/g, '!!!!!')
+        const chunks: Buffer[] = []
+        let pos = 0
+        while (pos < cleaned.length) {
+          const groupLen = Math.min(5, cleaned.length - pos)
+          const group = cleaned.slice(pos, pos + groupLen)
+          pos += groupLen
+          let val = 0
+          for (let j = 0; j < group.length; j++) {
+            val = val * 85 + (group.charCodeAt(j) - 33)
+          }
+          for (let j = group.length; j < 5; j++) {
+            val = val * 85 + 84
+          }
+          const bytes = Buffer.alloc(4)
+          bytes.writeUInt32BE(val, 0)
+          const outLen = groupLen - 1 > 0 ? groupLen - 1 : 0
+          chunks.push(bytes.subarray(0, outLen))
+          if (groupLen < 5) break
+        }
+        const decoded = Buffer.concat(chunks).toString('utf-8')
+        return { isError: false, content: decoded }
+      } catch (e) {
+        return { isError: true, content: `base85: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['base85'] = {
+  domains: ['crypto'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * binary_decode — batch decode binary (8-bit) and octal strings.
+ */
+function binaryDecodeTool(): Tool {
+  return makeUtilTool(
+    'binary_decode',
+    'Batch decode binary (8-bit space-separated) or octal (space-separated) strings to text.',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Binary or octal string to decode.' },
+        format: {
+          type: 'string',
+          description: 'Input format: "binary" (8-bit, e.g. "01100001 01100010") or "octal" (e.g. "141 142"). Default "binary".',
+          enum: ['binary', 'octal'],
+        },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '').trim()
+      const format = String((input.format as string) ?? 'binary')
+      try {
+        const tokens = text.split(/\s+/)
+        const out = tokens
+          .map((t) => {
+            if (format === 'octal') {
+              const val = parseInt(t, 8)
+              return isNaN(val) ? '?' : String.fromCharCode(val)
+            }
+            if (!/^[01]{1,16}$/.test(t)) return '?'
+            const val = parseInt(t, 2)
+            return isNaN(val) ? '?' : String.fromCharCode(val)
+          })
+          .join('')
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `binary_decode: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto', 'forensics'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['binary_decode'] = {
+  domains: ['crypto', 'forensics'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
+/**
+ * braille — decode Braille Unicode patterns (U+2800 block) to ASCII.
+ */
+function brailleTool(): Tool {
+  const BRAILLE_TO_ASCII: Record<number, string> = {
+    0x01: 'a', 0x03: 'b', 0x09: 'c', 0x19: 'd', 0x11: 'e',
+    0x0b: 'f', 0x1b: 'g', 0x13: 'h', 0x0a: 'i', 0x1a: 'j',
+    0x05: 'k', 0x07: 'l', 0x0d: 'm', 0x1d: 'n', 0x15: 'o',
+    0x0f: 'p', 0x1f: 'q', 0x17: 'r', 0x0e: 's', 0x1e: 't',
+    0x25: 'u', 0x27: 'v', 0x3a: 'w', 0x2d: 'x', 0x3d: 'y',
+    0x35: 'z',
+    0x02: '1', 0x06: '2', 0x12: '3', 0x32: '4', 0x22: '5',
+    0x16: '6', 0x36: '7', 0x26: '8', 0x14: '9', 0x34: '0',
+    0x00: ' ', 0x28: '.', 0x10: ',', 0x2e: '?', 0x30: '!',
+    0x24: ':', 0x2c: ';', 0x38: '-', 0x0c: "'", 0x20: '"',
+    0x2b: '(', 0x33: ')', 0x2a: '/', 0x3c: '#', 0x3e: '+',
+    0x1c: '*', 0x08: '@', 0x18: '&', 0x31: '=', 0x21: '_',
+    0x29: '$', 0x2f: '%', 0x37: '^', 0x23: '~', 0x39: '<',
+    0x04: '>', 0x3f: '[', 0x3b: ']',
+  }
+
+  return makeUtilTool(
+    'braille',
+    'Decode Braille Unicode characters (U+2800-U+28FF) to ASCII text. Supports Grade 1 English Braille.',
+    {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text containing Braille Unicode characters to decode.' },
+      },
+      required: ['text'],
+    },
+    (input) => {
+      const text = String((input.text as string) ?? '')
+      try {
+        const out = text
+          .split('')
+          .map((c) => {
+            const code = c.codePointAt(0) ?? 0
+            if (code >= 0x2800 && code <= 0x28ff) {
+              const dotPattern = code - 0x2800
+              return BRAILLE_TO_ASCII[dotPattern] ?? '?'
+            }
+            return c
+          })
+          .join('')
+        return { isError: false, content: out }
+      } catch (e) {
+        return { isError: true, content: `braille: ${(e as Error).message}` }
+      }
+    },
+    {
+      domains: ['crypto', 'forensics'],
+      executionMode: 'foreground',
+      costClass: 'cheap',
+      outputMode: 'inline',
+      riskLevel: 'low',
+    },
+  )
+}
+
+TOOL_METADATA['braille'] = {
+  domains: ['crypto', 'forensics'],
+  executionMode: 'foreground',
+  costClass: 'cheap',
+  outputMode: 'inline',
+  riskLevel: 'low',
+}
+
 export function createCTFUtilTools(): Tool[] {
   return [
     base64DecodeTool(),
@@ -2596,5 +3330,14 @@ export function createCTFUtilTools(): Tool[] {
     xorSingleByteTool(),
     atbashTool(),
     reverseElfDecryptTool(),
+    rot13Tool(),
+    morseCodeTool(),
+    baconCipherTool(),
+    vigenereTool(),
+    multiByteXorTool(),
+    railFenceTool(),
+    base85Tool(),
+    binaryDecodeTool(),
+    brailleTool(),
   ]
 }

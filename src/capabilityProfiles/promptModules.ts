@@ -176,6 +176,33 @@ export const TRAFFIC_PROTOCOL: PromptModule = () => [
 - 每次 tshark 调用都进 Artifact (outputMode=artifact)`,
 ]
 
+export const ENCODING_PROTOCOL: PromptModule = () => [
+  `## Encoding 工作流
+
+**默认第一步**: workflow: \`encoding_sweep\`(尝试 base16/32/36/58/62/64/85/91/URL/HTML/ROT13/Morse/Bacon/二进制/八进制/十六进制)
+
+**识别编码类型**:
+- 大写字母+数字+padding(=) → Base32/Base64
+- 只有0-9a-f → Hex
+- 含% → URL编码
+- 含&# → HTML实体
+- 点划(. -)或空格分隔 → 摩斯电码
+- 只有AB字母 → Bacon密码
+- 只有01 → 二进制
+- 只有0-7 → 八进制
+- 长短交替的字母 → 凯撒/ROT
+
+**递归解码**:
+- 用 \`decode_tree\` 工具尝试多层嵌套解码
+- 常见组合: Base64→Base32, Hex→Base64, URL→Base64
+- 每层解码后检查是否包含 flag 模式
+
+**接力**:
+- 解码后是密文 → crypto
+- 解码后是二进制/归档 → file-forensics
+- 解码后是图片 → image-stego`,
+]
+
 export const BUILT_IN_PROMPT_MODULES: Record<string, PromptModule> = {
   'role.boundary': ROLE_BOUNDARY,
   'tool.first': TOOL_FIRST,
@@ -189,4 +216,5 @@ export const BUILT_IN_PROMPT_MODULES: Record<string, PromptModule> = {
   'pwn.protocol': PWN_PROTOCOL,
   'web.protocol': WEB_PROTOCOL,
   'traffic.protocol': TRAFFIC_PROTOCOL,
+  'encoding.protocol': ENCODING_PROTOCOL,
 }

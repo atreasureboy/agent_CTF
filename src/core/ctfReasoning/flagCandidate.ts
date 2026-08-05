@@ -41,8 +41,22 @@ export const DEFAULT_FLAG_PATTERNS: RegExp[] = [
   /DASCTF\{[^}]+\}/i,
   /XHLJ\{[^}]+\}/i,
   /西湖论剑\{[^}]+\}/i,
+  /HECTF\{[^}]+\}/i,
+  /NCTF\{[^}]+\}/i,
+  /WMCTF\{[^}]+\}/i,
+  /CISCN\{[^}]+\}/i,
+  /key\{[^}]+\}/i,
+  /secret\{[^}]+\}/i,
+  /password\{[^}]+\}/i,
+  /pwn\{[^}]+\}/i,
+  /shell\{[^}]+\}/i,
+  /admin\{[^}]+\}/i,
+  /hgame\{[^}]+\}/i,
+  /0xGame\{[^}]+\}/i,
+  /GKCTF\{[^}]+\}/i,
+  /MRCTF\{[^}]+\}/i,
+  /HSCTF\{[^}]+\}/i,
   // Generic prefix{...} pattern — requires minimum 8 chars inside braces
-  // to reduce false positives (was 4, now 8).
   /[A-Za-z0-9_]+\{[^}]{8,}\}/,
 ]
 
@@ -54,4 +68,18 @@ export function detectFlagLike(text: string): string | null {
     if (m) return m[0]
   }
   return null
+}
+
+/** Detect ALL flag-like values in text. Useful for bulk extraction. */
+export function detectAllFlags(text: string): string[] {
+  if (!text) return []
+  const found = new Set<string>()
+  for (const p of DEFAULT_FLAG_PATTERNS) {
+    const re = new RegExp(p.source, p.flags.includes('g') ? p.flags : p.flags + 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      found.add(m[0])
+    }
+  }
+  return [...found]
 }
