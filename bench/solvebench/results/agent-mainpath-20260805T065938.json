@@ -1,0 +1,52 @@
+[
+  {
+    "id": "encoding1",
+    "title": "Base64 Inception",
+    "category": "encoding",
+    "solved": true,
+    "flag": "flag{b4s3_64_1s_n0t_3ncrypt10n}",
+    "timeMs": 67161,
+    "exitCode": 0,
+    "outputTail": "in was: **hex \u2192 reverse \u2192 rot13 \u2192 base64**, yielding the flag.\n=== Verification ===\nExtracted flag: flag{b4s3_64_1s_n0t_3ncrypt10n}\nFlag SHA256: 5e19ee72564b8c4bfb2209c349ab4099958e710b2ba18ff0caa4c1a9cbcc2508\nExpected:      5e19ee72564b8c4bfb2209c349ab4099958e710b2ba18ff0caa4c1a9cbcc2508\n\n\u2713 SOLVED\n(node:1044533) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+    "id": "misc1",
+    "title": "LSB Steganography",
+    "category": "misc",
+    "solved": false,
+    "flag": null,
+    "timeMs": 120106,
+    "exitCode": -1,
+    "outputTail": "TIMEOUT"
+  },
+  {
+    "id": "pcap1",
+    "title": "HTTP Traffic Analysis",
+    "category": "pcap",
+    "solved": true,
+    "flag": "flag{pc4p_h77p_4n4lys1s}",
+    "timeMs": 26998,
+    "exitCode": 0,
+    "outputTail": "y: main agent turn finished: stop_sequence; +0 findings +0 artifacts\n\n=== Verification ===\nExtracted flag: flag{pc4p_h77p_4n4lys1s}\nFlag SHA256: cf829ae1e69d91f99e0b15c685054c85ae0916b7125a68135048b688dcee9ff3\nExpected:      cf829ae1e69d91f99e0b15c685054c85ae0916b7125a68135048b688dcee9ff3\n\n\u2713 SOLVED\n(node:1052136) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+    "id": "reverse1",
+    "title": "XOR Checker",
+    "category": "reverse",
+    "solved": true,
+    "flag": "flag{x0r_1s_34sy_t0_r3v3rs3}",
+    "timeMs": 57821,
+    "exitCode": 0,
+    "outputTail": "ain agent turn finished: stop_sequence; +0 findings +0 artifacts\n\n=== Verification ===\nExtracted flag: flag{x0r_1s_34sy_t0_r3v3rs3}\nFlag SHA256: 66a1d86aefcb7997b9071b3b586dfe302acda5ce69a90fbecd859ccded356535\nExpected:      66a1d86aefcb7997b9071b3b586dfe302acda5ce69a90fbecd859ccded356535\n\n\u2713 SOLVED\n(node:1054065) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  },
+  {
+    "id": "reverse2",
+    "title": "Atbash Cipher",
+    "category": "reverse",
+    "solved": true,
+    "flag": "flag{sub5t1tut10n_c1ph3r}",
+    "timeMs": 32246,
+    "exitCode": 0,
+    "outputTail": ": main agent turn finished: stop_sequence; +0 findings +0 artifacts\n\n=== Verification ===\nExtracted flag: flag{sub5t1tut10n_c1ph3r}\nFlag SHA256: 520e3826db6493db22b4c2c4829d595e535bd72ebef98179f8ac9f2e957c4943\nExpected:      520e3826db6493db22b4c2c4829d595e535bd72ebef98179f8ac9f2e957c4943\n\n\u2713 SOLVED\n(node:1062334) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n"
+  }
+]

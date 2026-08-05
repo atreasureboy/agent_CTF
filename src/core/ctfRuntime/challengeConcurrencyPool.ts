@@ -23,14 +23,45 @@ export interface ChallengeTaskHandle {
   foundFlag?: string
 }
 
+/**
+ * §Round-7 — `TaskExecutor` is the seam between the pool's queue
+ * management and the actual solver. The previous version of
+ * `spawnNext()` only built state stores and returned handles — the
+ * orchestrator / specialist / solver was never started. This
+ * callback lets callers plug in the real Agent runtime:
+ *
+ *   const pool = new ChallengeConcurrencyPool(4, {
+ *     executor: async (ch, handle) => {
+ *       const runtime = await createCTFTaskRuntime({...})
+ *       const result = await runtime.orchestrator.runMainAgent(ch.description)
+ *       pool.markCompleted(ch.id, result.foundFlag ? 'solved' : 'failed', result.foundFlag)
+ *     },
+ *   })
+ */
+export type TaskExecutor = (
+  challenge: QueuedChallenge,
+  handle: ChallengeTaskHandle,
+  signal: AbortSignal,
+) => Promise<{ status: 'solved' | 'failed'; flag?: string }>
+
+export interface ChallengeConcurrencyPoolOptions {
+  /** Real solver — required to actually start work; if omitted the
+   *  pool still functions as a queue but `spawnNext()` won't progress. */
+  executor?: TaskExecutor
+}
+
 export class ChallengeConcurrencyPool {
   private maxConcurrency: number
   private queue: QueuedChallenge[] = []
   private activeHandles = new Map<string, ChallengeTaskHandle>()
   private completedHandles = new Map<string, ChallengeTaskHandle>()
+  private readonly executor?: TaskExecutor
+  private readonly abortController = new AbortController()
+  private inFlight = new Set<Promise<void>>()
 
-  constructor(maxConcurrency = 5) {
+  constructor(maxConcurrency = 5, options: ChallengeConcurrencyPoolOptions = {}) {
     this.maxConcurrency = maxConcurrency
+    this.executor = options.executor
   }
 
   /**
@@ -55,6 +86,23 @@ export class ChallengeConcurrencyPool {
   }
 
   /**
+   * Cancel every running + queued task. The executor sees the abort
+   * signal and should unwind promptly (typical: orchestrator.cancel()).
+   */
+  public cancelAll(reason: string): void {
+    this.abortController.abort()
+    // Mark all active handles as failed (best-effort; real cleanup is
+    // the executor's responsibility via the signal).
+    for (const h of this.activeHandles.values()) {
+      h.status = 'failed'
+      h.endedAt = Date.now()
+      this.completedHandles.set(h.challenge.id, h)
+    }
+    this.activeHandles.clear()
+    this.queue.length = 0
+  }
+
+  /**
    * Get active concurrency slot count available.
    */
   public getAvailableSlots(): number {
@@ -63,6 +111,18 @@ export class ChallengeConcurrencyPool {
 
   /**
    * Spawn next available challenges up to maxConcurrency limit.
+   *
+   * §Round-7 — previously this method only built state stores and
+   * returned handles. Real solver work never started. Now: if a
+   * `TaskExecutor` was provided at construction, fire it for each
+   * newly-spawned handle in the background. The executor is awaited
+   * via the in-flight set; when it resolves, it should call
+   * `markCompleted()` itself (the pool doesn't infer flag discovery
+   * from the executor's return value, since some executors will
+   * complete via side-effects on the store).
+   *
+   * Returns the list of handles that were promoted from queued to
+   * running in this call.
    */
   public spawnNext(): ChallengeTaskHandle[] {
     const spawned: ChallengeTaskHandle[] = []
@@ -116,8 +176,42 @@ export class ChallengeConcurrencyPool {
 
       this.activeHandles.set(challenge.id, handle)
       spawned.push(handle)
+
+      // Fire the executor if provided. We track the in-flight
+      // promise so callers can await full settlement via
+      // `waitForAll()`. The executor's own contract is to call
+      // `pool.markCompleted(id, ...)` once the solve finishes.
+      if (this.executor) {
+        const signal = this.abortController.signal
+        const task: Promise<void> = this.executor(challenge, handle, signal)
+          .then(() => undefined)
+          .catch((err: unknown) => {
+            handle.status = 'failed'
+            handle.endedAt = Date.now()
+            this.completedHandles.set(handle.challenge.id, handle)
+            this.activeHandles.delete(handle.challenge.id)
+            // eslint-disable-next-line no-console
+            console.error(
+              `[concurrency-pool] executor for ${challenge.id} failed:`,
+              (err as Error)?.message ?? String(err),
+            )
+          })
+          .finally(() => {
+            this.inFlight.delete(task)
+          })
+        this.inFlight.add(task)
+      }
     }
     return spawned
+  }
+
+  /**
+   * Await every in-flight executor. Useful for tests / shutdown.
+   */
+  public async waitForAll(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled([...this.inFlight])
+    }
   }
 
   /**

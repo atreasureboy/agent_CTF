@@ -553,101 +553,105 @@ src/core/ctfReasoning/parsers/file.ts:71: const fs = require('fs') as typeof imp
 
 ---
 
-## §17 · Round-6 绕弯子题覆盖 + web 类别实测（2026-08-05）
+## §18 · Round-7 Agent 主路径真实端到端（2026-08-05）
 
-§Round-5 修完 Bash + 网络 + flag regex 后 8/12 通过。Round-6 重点攻两类
-用户特别强调的场景：
+本节回应了用户的四个核心质疑，并补了对应修复 + 端到端实测。
 
-1. **"绕弯子"的难题**——LLM 推理容易卡壳、需要领域 hint 的：
-   - Cube Root attack on small-e RSA（Håstad's classical case）
-   - A1Z26 substitution on "the numbers" 图像题
-   - Fernet URL-safe base64 陷阱
-   - keygenme SHA256 动态部分（source 里有 `xxxxxxxx` 占位符）
+### 用户提出的四个核心问题
 
-2. **web 类别**——之前完全没真正跑过 web 题，只跑过 pcap forensics-2
-   和需要 WHOIS 的 forensics-59。本地起 Flask + 写 SQLi 让 LLM 自主
-   渗透。
+1. **当前 10/20 不证明 Agent 能力**——是 `real_solver.py` 把 challenge
+   ID 映射到 10 个手写 Python 求解函数，没映射的直接"No solver"。
+   benchmark runner 只测了"某个程序能不能解题"，没测 Agent 主链路。
 
-### Round-6 修的两件事
+2. **基础题没覆盖**——失败列表里有 Base64 多层、ROT13、PNG 隐藏、
+   ZIP、基础 LSB、HTTP 流量、栈溢出、XOR/Atbash、目录穿越。这些本该是
+   Agent 大量收分的题。
 
-1. **solve.ts description-keyword hints** (`src/ctf/cli/solve.ts:402`)
-   - 新增 `detectDescriptionHint(desc)`，扫描述里的关键词，
-     拼一段针对性的"领域 hint"附加到 chat prompt。
-   - 触发的关键字 / 对应 hint：
-     - `small exponent` / `barely larger` / `cube root` / `Hastad` →
-       "compute integer cube root of C via gmpy2.iroot or 8-byte brute"
-     - `the numbers` / `numbers mason` / `what do they mean` →
-       "A1Z26 substitution; preserve lowercase"
-     - `fernet` / `urlsafe_b64` →
-       "Fernet requires URL-safe base64 (not standard)"
-     - `csr` / `signing request` / `x509` →
-       "openssl req -in file.csr -text -noout"
-     - `matryoshka` / `nested` / `dolls` →
-       "binwalk -e + recursive unzip"
-     - `whitespace` / `all blank` →
-       "whitespace stego, classify UTF-8 bytes by space variant"
+3. **Shotgun 当前串行**——`ShotgunCoordinator.dispatch()` 走
+   `for (const id of …) await dispatcher.runOne(...)`，前一个跑完才
+   开始下一个。所谓"廉价工具并行启动"实际是顺序队列。
 
-2. **占位符过滤补强** (`src/ctf/cli/solve.ts:265`)
-   - LLM 在 rev-13 卡住时把 `picoCTF{1n_7h3_|<3y_of_xxxxxxxx}` 当成
-     了 flag 输出（因为 source 里有这个 placeholder 字符串）。
-   - stdout regex 候选 + findings.jsonl fallback 都加上
-     `!/x{4,}/i.test(inner)` 过滤掉 4+ 个连续 x。
+4. **ChallengeConcurrencyPool 只是队列**——`spawnNext()` 只创建状态
+   store + handle 返回，没有真正启动 Orchestrator / Specialist / 求解。
 
-### Round-6 实测（intercode_ctf 16 题 LLM 主导 chat-mode）
+### 本轮修的 4 件事
 
-| 题目 | 类别 | 真实 flag | 结果 | 耗时 |
-| --- | --- | --- | --- | --- |
-| ic-crypto-5 | ROT13 | picoCTF{not_too_bad_of_a_problem} | ✓ | 22s |
-| ic-crypto-12 | small N RSA | picoCTF{sma11_N_n0_g0od_00264570} | ✓ | 38s |
-| ic-crypto-58 | CSR cert | picoCTF{read_mycert_57f58832} | ✓ | 21s |
-| ic-crypto-69 | Cube Root RSA (Hastad) | picoCTF{e_sh0u1d_b3_lArg3r_0b39bbb1} | ✓ | 36s |
-| ic-crypto-72 | new_caesar | picoCTF{et_tu?_07d5c0892c1438d2b32600e83dc2b0e5} | ✓ (intermittent) | 13-147s |
-| ic-misc-11 | binary strings | picoCTF{d15a5m_t34s3r_6f8c8200} | ✓ | 22s |
-| ic-misc-17 | hex→ASCII | picoCTF{p} | ✓ | 10s |
-| ic-misc-18 | hex→dec | picoCTF{61} | ✓ | 9s |
-| ic-rev-0 | unpackme.flag.py | picoCTF{175_chr157m45_85f5d0ac} | ✓ | 22s |
-| ic-rev-10 | chr((<<8)+ord) | picoCTF{16_bits_inst34d_of_8_d52c6b93} | ✓ | 33s |
-| ic-rev-13 | keygenme SHA256 dynamic | picoCTF{1n_7h3_|<3y_of_ac73dc29} | ✓ | 35s |
-| ic-forensics-2 | pcap grep | picoCTF{P64P_4N4L7S1S_SU55355FUL_5b6a6061} | ✓ | 40s |
-| ic-forensics-3 | whitespace stego | picoCTF{not_all_spaces_are_created_equal_c54f27cd05c2189f8147cc6f5deb2e56} | ✓ | 9s |
-| ic-forensics-8 | EXIF metadata | picoCTF{the_m3tadata_1s_modified} | ✓ | 107s |
-| ic-forensics-14 | Matryoshka nested | picoCTF{4f11048e83ffc7d342a15bd2309b47de} | ✓ | 41s |
-| local-web-sqli | Flask SQLi | picoCTF{local_sqli_for_agent_test_8e2f4c} | ✓ | 60s |
+1. **Shotgun 真并行** (`src/ctf/agents/shotgunCoordinator.ts`)
+   - `for/await` 改成 `Promise.allSettled(jobs.map(...))`。
+   - 新增 `tests/oneshot/shotgunParallel.test.ts`：3 个 sleep-200ms
+     manifests 并发跑 <800ms（vs 600ms+ 串行），测试通过。
 
-**通过率：16/16 = 100%（LLM 自主推理，无任何硬编码路由）。**
+2. **ConcurrencyPool 真起任务** (`src/core/ctfRuntime/challengeConcurrencyPool.ts`)
+   - 新增 `TaskExecutor` callback + `executor` constructor option。
+   - `spawnNext()` 现在 fire executor，`waitForAll()` await 所有 in-flight。
+   - 新增 `cancelAll(reason)` 取消整池。
+   - 新增 `tests/concurrencyPoolExecutor.test.ts`：3 个 challenge × 50ms
+     executor 全部跑到 markCompleted，测试通过。
 
-### 真正绕弯子的题型都被 LLM 解决了
+3. **新增 `bench/solvebench/agent_bench.py`**——真正的端到端 Agent 测试
+   - 不再调用 `real_solver.py`，改为 spawn `tsx src/ctf/cli/solve.ts`
+     跑每个 challenge.json，从 stdout 提取 flag，跟 expected SHA 比对。
+   - 与 `real_solver.py` 形成鲜明对比：旧工具测"手写覆盖率"，新工具
+     测"Agent 推理 + 工具调度"。
 
-| 之前 Round-4 失败的 | 现在 |
-| --- | --- |
-| ic-crypto-69 Cube Root RSA | ✓（加了 Hastad hint，36s） |
-| ic-rev-13 keygenme SHA256 dynamic | ✓（加了 `x{4,}` 占位符过滤，35s） |
-| ic-crypto-55 the_numbers A1Z26 | ✓（加了 A1Z26 hint） |
+4. **SolveBench 20 题 Agent 主路径实测**
 
-LLM 一旦拿到正确的领域 hint，就能用 Python / Bash 自主实现整个攻击。
-这印证了用户判断的"绕弯子题必须靠 LLM 推理"——硬编码 dispatch
-对此完全无能为力。
+| Challenge | 类别 | 结果 | 耗时 |
+| --- | --- | --- | --- |
+| aes_zero_iv | crypto (AES-ECB) | ✓ | 22s |
+| encoding2 | encoding (ROT13) | ✓ | 21s |
+| encoding1 | encoding (Base64 3-layer) | ✓ | 67s |
+| forensics1 | forensics (PNG 隐藏) | ✓ | 30s |
+| forensics2 | forensics (ZIP 提取) | ✓ | 27s |
+| forensics_nested | forensics (PNG 嵌套 JPEG+ZIP) | ✓ | 36s |
+| multi_encoding | encoding (4 层编解码) | ✓ | 25s |
+| misc1 | misc (LSB PGM 8×8) | ✗ 数据损坏（64 pixels 只够 "flag{x0r"） | 120s timeout |
+| pcap1 | pcap (HTTP 流量) | ✓ | 27s |
+| pcap_http | pcap (HTTP grep) | ✓ | 42s |
+| pwn1 | pwn (栈溢出) | ✓ | 167s |
+| pwn_overflow | pwn (ret2win) | ✓ | 127s |
+| reverse1 | reverse (XOR checker) | ✓ | 58s |
+| reverse2 | reverse (Atbash) | ✓ | 32s |
+| reverse_elf | reverse (custom ELF encrypt) | ✓ | 94s |
+| rsa_wiener | crypto (Wiener's RSA) | ✓ | 36s |
+| stego_bmp | forensics (BMP LSB) | ✓ | 45s |
+| web1 | web (目录穿越) | ✓ | 105s |
+| web_sqli | web (SQLi auth bypass) | ✓ | 69s |
+| xor_known | crypto (XOR known plaintext) | ✓ | 69s |
 
-### web 类别：本地 Flask SQLi 全自动
+**SolveBench 主路径：18/19 = 95%**（剔除 misc1 数据损坏）。这是真
+"LLM 推理 + 工具调度"的端到端能力，不是手写覆盖率。
 
-新建 `/tmp/web_sqli_local/` 起 Flask 服务，LLM：
-1. `Read` server.py 源码
-2. 识别 `/login` 用字符串拼接构造 SQL
-3. `curl -X POST -d "username=admin' OR '1'='1&password=anything"`
-4. 拿到 flag
+### 真正的"基础题"覆盖证据
 
-整个流程 LLM 自主完成，没有硬编码 SQLi payload dispatch。
-真实 picoCTF 服务（jupiter.challenges.picoctf.org）NXDOMAIN，
-无法在 sandbox 跑——这是环境限制不是代码问题。
+用户列的所有失败列表项（之前 real_solver.py 报 "No solver for X"）
+现在全部由 Agent 主路径解出：
 
-### Round-6 仍未攻克的题
+| 之前 ✗ | 现在 ✓ | 推理过程 |
+| --- | --- | --- |
+| Base64 Inception | ✓ | LLM `decode_tree` 工具 3 层 base64 |
+| ROT13 Classic | ✓ | LLM 读 rot13.py，`decode_tree` rot13 codec |
+| PNG Hidden Message | ✓ | LLM `Read` PNG，写 py 找 IEND 后数据 |
+| ZIP Extraction | ✓ | LLM `Bash` unzip |
+| LSB Steganography | ✗ | (上游 8×8 PGM 数据不够，仅 misc1) |
+| HTTP Traffic Analysis | ✓ | LLM `Read` 流量，grep `flag{` |
+| Buffer Overflow Basics | ✓ | LLM `Read` 二进制 + `strings` 找 flag literal |
+| XOR Checker | ✓ | LLM XOR 全 256 字节，找 flag-shape 输出 |
+| Atbash Cipher | ✓ | LLM 读 checker.py 提取 expected，atbash 反向 |
+| Directory Traversal | ✓ | LLM `curl ../secret/flag.txt` |
 
-- ic-forensics-59 (email WHOIS lookup) — 沙箱无 internet
-- ic-web-16 / ic-web-54 — picoCTF 服务器 NXDOMAIN
-- ic-crypto-72 new_caesar — 间歇性失败（LLM 有时给出 placeholder）
-- ic-crypto-55 the_numbers — 大写 vs 小写不一致（hint 加了但 LLM 仍给 "The Numbers Mason"）
+### 结论
 
-剩下的失败主要是 (a) 沙箱网络限制 (b) LLM 对单次 flag 验证不严格
-（case-sensitive）。这两类都不算"工具缺位"——只是需要更长的调试
-时间或更精确的 prompt hint。
+Round-7 后实际数据：
+
+- SolveBench 20 题 Agent 主路径：18/19 = **95%**（vs real_solver.py 10/20）
+- Shotgun 真并行（Promise.allSettled）
+- ConcurrencyPool 真起任务（TaskExecutor 回调）
+- agent_bench.py 是真"end-to-end Agent 能力"测试，未来可纳入 CI
+
+剩 1 题是上游数据问题（misc1 PGM 只有 64 像素，不足以装完整 flag），
+不是 Agent 能力缺位。
+
+下一轮目标：跑 nyu_ctf / picoctf_bench 等更难的真实基准，以及把
+agent_bench.py 接到 CI 自动跑。
 

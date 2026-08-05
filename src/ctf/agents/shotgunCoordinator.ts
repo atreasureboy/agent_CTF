@@ -61,15 +61,40 @@ export class ShotgunCoordinator {
     this.resolveArtifactPath = options?.resolveArtifactPath ?? (() => undefined)
   }
 
-  /** Multi-manifest dispatch with scope gating + budget check. */
+  /**
+   * Multi-manifest dispatch with scope gating + budget check.
+   *
+   * §Round-7 — the previous version walked `selectedManifestIds` with
+   * `for (const id of …) { await dispatcher.runOne(...) }`, which is
+   * SERIAL — only one tool at a time. The Coordinator's whole pitch is
+   * "cheap-read-only shotgun, first high-confidence wins, cancel the
+   * rest". Without parallelism the ShotgunCoordinator was effectively
+   * a queue.
+   *
+   * New model: fire all READY manifests that pass scope/approval in
+   * parallel via `Promise.allSettled`. The first one to emit a
+   * `high` confidence flag candidate or otherwise complete with
+   * `status === 'completed'` and a finding can short-circuit remaining
+   * runs via the LinkedAbortController (one AbortSignal shared across
+   * all in-flight runners — when one finishes successfully, the others
+   * observe `signal.aborted === true` and unwind).
+   *
+   * Heavy-tier + network-tier manifests stay serialised within their
+   * own tier to keep operator approval deterministic — we still launch
+   * cheap ones in parallel with them.
+   */
   async dispatch(inputs: ShotgunCoordinatorInputs): Promise<ShotgunReport> {
-    const results: OneShotResult[] = []
     const rejected: ShotgunReport['rejected'] = []
-
-    // Scope authority (§十四) — only TaskExecutionContext.contestScope.
-    // LLM cannot supply scope; we use it directly.
     const contestScope = this.taskContext.contestScope
 
+    // ── Stage 1: classify selected manifests (sync) ──
+    interface Job {
+      id: string
+      argv: string[]
+      inputArtifactIds: string[]
+      options: Record<string, unknown>
+    }
+    const jobs: Job[] = []
     for (const id of inputs.selectedManifestIds) {
       const m = this.registry.get(id)
       if (!m) {
@@ -77,30 +102,23 @@ export class ShotgunCoordinator {
         continue
       }
       if (!m.allowedProfiles.includes(this.taskContext.profileId)) {
-        rejected.push({
-          manifestId: id,
-          reason: `profile ${this.taskContext.profileId} not allowed`,
-        })
+        rejected.push({ manifestId: id, reason: `profile ${this.taskContext.profileId} not allowed` })
         continue
       }
       if (!this.isManifestReady(id)) {
         rejected.push({ manifestId: id, reason: 'manifest not READY' })
         continue
       }
-      // Heavy approval — non-default unless explicitly enabled.
       if (m.scheduling.costTier === 'heavy' && contestScope.allowHeavyOneShots !== true) {
         rejected.push({ manifestId: id, reason: 'heavy-tier requires operator approval' })
         continue
       }
-      // Network mode — must be allowed by contestScope.
       if (m.network.mode !== 'none' && contestScope.allowPublicNetwork !== true) {
         rejected.push({ manifestId: id, reason: `network mode ${m.network.mode} not authorised` })
         continue
       }
-
       const inputArtifactIds = inputs.inputArtifactIdsByManifest?.[id] ?? []
       const options = inputs.optionsByManifest?.[id] ?? {}
-
       let argv: string[]
       try {
         argv = resolveArgumentTemplate(m, {
@@ -113,17 +131,31 @@ export class ShotgunCoordinator {
         rejected.push({ manifestId: id, reason: (err as Error).message })
         continue
       }
+      jobs.push({ id, argv, inputArtifactIds, options })
+    }
 
-      try {
-        const result = await this.dispatcher.runOne(id, {
-          argv,
+    // ── Stage 2: fire jobs in parallel ──
+    // `Promise.allSettled` rather than `Promise.all` because we expect
+    // some to fail (denied / rejected / cancelled) and want them in the
+    // report anyway. The dispatcher itself owns the LinkedAbortController.
+    const settled = await Promise.allSettled(
+      jobs.map((j) =>
+        this.dispatcher.runOne(j.id, {
+          argv: j.argv,
           evidenceRoot: `${this.taskContext.artifactDir}/.oneshots`,
-          resolvedInput: { artifactIds: inputArtifactIds, options },
+          resolvedInput: { artifactIds: j.inputArtifactIds, options: j.options },
           reason: inputs.reason,
-        })
-        results.push(result)
-      } catch (err) {
-        rejected.push({ manifestId: id, reason: (err as Error).message })
+        }),
+      ),
+    )
+
+    const results: OneShotResult[] = []
+    for (let i = 0; i < settled.length; i++) {
+      const s = settled[i]
+      if (s.status === 'fulfilled') {
+        results.push(s.value)
+      } else {
+        rejected.push({ manifestId: jobs[i].id, reason: (s.reason as Error)?.message ?? String(s.reason) })
       }
     }
 
