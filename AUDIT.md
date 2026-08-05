@@ -553,51 +553,86 @@ src/core/ctfReasoning/parsers/file.ts:71: const fs = require('fs') as typeof imp
 
 ---
 
-## §14 · Round-3 实测战绩（2026-08-04，MiniMax-M3 实跑）
+## §15 · Round-4 真实 CTF 实测（2026-08-04，MiniMax-M3，LLM 主导）
 
-| Category | 题目 | 工具 | Flag |
+**方向纠正：** Round-1..Round-3 的"SolveBench 19/20 自造模板题"虽然工具
+齐全，但偏离了"解题 agent"的核心定位。真实 CTF 比赛题分类只是粗略引导，
+题目本体千变万化——同一类（如 crypto）下既可能是简单的 ROT13，也可能是
+非常规的多层混淆 + 自定义协议，必须让 LLM 推理而不是绕开它。
+
+### 真实基准盘点（仓库内已有）
+
+仓库里有现成的真实 CTF 基准——之前没利用：
+
+| 基准 | 题目数 | 类别分布 | 备注 |
 | --- | --- | --- | --- |
-| encoding | encoding1 | decode_tree (3x base64) | flag{b4s3_64_1s_n0t_3ncrypt10n} |
-| encoding | encoding2 | decode_tree | (also solved) |
-| encoding | multi_encoding | decode_tree (BFS over 4 codecs) | flag{mult1_l4y3r_3nc0d1ng} |
-| forensics | forensics1 | png_after_iend | flag{png_h1dd3n_m3ss4g3} |
-| forensics | forensics2 | unzip_inner | flag(z1p_cr4ck_m4st3r} |
-| forensics | forensics_nested | png_after_iend | flag{n3st3d_f1l3s_1n_png} |
-| forensics | stego_bmp | bmp_lsb_extract | flag{lsb_st3g0_in_bmp} |
-| pcap | pcap1 | grep_for_flag | flag{pc4p_h77p_4n4lys1s} |
-| pcap | pcap_http | grep_for_flag | flag{pc4p_h77p_4n4lys1s} |
-| web | web1 | web_shell_fetch (dir traversal) | flag{d1r_tr4v3rs4l_m4st3r} |
-| web | web_sqli | web_fetch (POST SQLi) | flag{sql1_1nj3ct10n_m4st3r} |
-| crypto | xor_known | xor_known_plaintext | flag{x0r_kn0wn_pl41nt3xt} |
-| crypto | aes_zero_iv | aes_ecb_decrypt | flag{iv_r3us3_br34ks_cbc} |
-| crypto | rsa_wiener | rsa_wiener_attack | flag{wi3n3r_4tt4ck_b34t5_sm4ll_d} |
-| reverse | reverse1 | xor_single_byte | flag{x0r_1s_34sy_t0_r3v3rs3} |
-| reverse | reverse2 | atbash | flag{sub5t1tut10n_c1ph3r} |
-| reverse | reverse_elf | reverse_elf_decrypt | flag{r3v3rs1ng_r34l_3lf} |
-| pwn | pwn1 | grep_for_flag | flag{buff3r_0v3rfl0w_b4s1cs} |
-| pwn | pwn_overflow | grep_for_flag | flag{r3turn_2_w1n_b0f} |
-| misc1 | misc1 | (image too short, 8x8 PGM) | data corruption -- skip |
+| `cyber-zero/benchmarks/intercode_ctf/` | **91** | crypto 16 / forensics 13 / misc 31 / pwn 2 / rev 27 / web 2 | 真实 picoCTF 比赛题，全部有标准 flag |
+| `cyber-zero/benchmarks/nyu_ctf/` | 多届 | 各年 NYU CTF | 2017-2023 |
+| `HackSynth/picoctf_bench/` | picoCTF | 真题 | benchmark.json + challenge_solver.py |
+| `BUUCTF_Agent/` | 多题 | 真题 | 国内 CTF 平台 |
 
-**Solve count: 19/20.** The only unsolved challenge (misc1) has a
-corrupt 8x8 PGM image; the file contains only 64 LSBs of payload
-data, which is enough to recover 8 characters ("flag{x0r") but not
-the full flag matching expectedFlagSha256. This is an upstream data
-bug, not a tool/workflow gap.
+### Round-4 实测战绩（LLM 主导 chat-mode，5 题子集）
 
-This is +19 over the previous baseline of 0. The solve-path goes
-through purpose-built tools (no LLM reasoning in the loop), so the
-solve count is reproducible across M3 model versions.
+| 题目 | 类别 | 真实 flag | LLM 主导结果 | 耗时 |
+| --- | --- | --- | --- | --- |
+| ic-crypto-5 | crypto (ROT13) | `picoCTF{not_too_bad_of_a_problem}` | ✓ SOLVED | ~60s |
+| ic-misc-18 | misc (hex→dec) | `picoCTF{61}` | ✓ SOLVED | ~30s |
+| ic-rev-0 | rev (unpackme.flag.py) | `picoCTF{175_chr157m45_85f5d0ac}` | ✓ SOLVED | ~120s |
+| ic-crypto-12 | crypto (small N RSA) | `picoCTF{sma11_N_n0_g0od_00264570}` | ✗ No flag (timeout; sympy 不可用，trial division 不收敛) | 240s |
+| ic-web-16 | web (远程 URL) | `picoCTF{tru3_d3t3ct1ve_0r_ju5t_lucky?f10be399}` | ✗ No flag (需访问 jupiter.challenges.picoctf.org，沙箱无外网) | 240s |
+| ic-forensics-2 | forensics (pcap) | `picoCTF{P64P_4N4L7S1S_SU55355FUL_5b6a6061}` | ✗ No flag (LLM 误用 Bash background mode 拿不到 stdout) | 240s |
+| ic-rev-13 | rev (keygenme-trial) | `picoCTF{1n_7h3_|<3y_of_ac73dc29}` | ✗ (LLM 卡在 Fernet 细节；token 截断) | 360s |
 
-SolveBench flag-extraction pipeline:
-- 12 tools in src/tools/ctfUtils.ts (decode_tree, xor_known_plaintext,
-  aes_ecb_decrypt, rsa_wiener_attack, png_after_iend, bmp_lsb_extract,
-  unzip_inner, grep_for_flag, web_fetch, xor_single_byte, atbash,
-  reverse_elf_decrypt).
-- 14 workflows in src/workflows/builtins.ts (encoding_sweep,
-  xor_known_attack, aes_ecb_attack, rsa_wiener_attack,
-  forensics_png_after_end, forensics_bmp_lsb, forensics_unzip,
-  pcap_grep_flag, web_fetch, web_shell_fetch, xor_single_byte,
-  atbash, reverse_elf, plus the older triage-style workflows).
-- src/ctf/cli/solve.ts planSolveDispatch expanded with category
-  detectors (rsa, pcap, forensics, web, pwn, reverse) that map
-  each challenge id + description to the right workflow and tool args.
+**LLM chat-mode 通过率：3/7（含两类非解题失败）。**
+
+### 本轮发现的真实 Bug
+
+1. **`createCTFTaskRuntime` 漏传 `modelConfig`** （`src/core/ctfRuntime/createCTFTaskRuntime.ts:307`）
+   - 现象：`modelConfig: { model: 'MiniMax-M3', ... }` 传到 runtime，但 `createHarness` 调用时未传，导致 harness.ts line 528 `input.modelConfig?.model ?? 'gpt-4o'` fallback。
+   - 结果：`ExecutionEngine.getToolDefinitions: Unknown model profile 'gpt-4o'` 抛出，runMainAgent 返回 failed。
+   - 修法：加 `modelConfig: input.modelConfig` 到 createHarness 参数。
+
+2. **`solve.ts` flag 正则误匹配 markdown 占位符**
+   - 现象：LLM 在 markdown 表格里写 `picoCTF{...}` 或 `flag{...}` 表示占位符，被 solve.ts 误判为真 flag。
+   - 结果：returncode=1（Wrong flag），但实际 flag 在输出里，只是被错的字符串先匹配。
+   - 修法：扩正则覆盖 `picoCTF{...}` 和 `ctf{...}`；过滤 literal placeholder（`...`、`..`、纯 `\.+\}`）；取最长非占位候选。
+
+3. **`solve.ts` 没告诉 LLM 输出 flag 包装格式**
+   - 现象：LLM 解出 "61" 就停了，不会包成 `picoCTF{61}`。
+   - 修法：chat-mode prompt 追加 "When you find the flag, write it in the standard wrapper (picoCTF{...} or flag{...}) and emit it as a finding."
+
+4. **`getProfileForCategory('misc') = 'triage'` 误派**
+   - 现象：triage profile 几乎所有工具 denied（base64_decode, file, exiftool, list_findings），LLM 无法解题。
+   - 修法：misc → orchestrator（带 Read/Glob/Grep/handoff_request 权限），triage 仅用于真正的"初筛路由"场景。
+
+5. **`getProfileForCategory('rev')` 不存在**
+   - 现象：rev 类题目落到默认 triage，所有工具被拒。
+   - 修法：加 `rev: 'reverse'` 映射。
+
+### 重构方案：solve.ts 默认 LLM 主导
+
+§Round-4 核心改动：
+
+- `planSolveDispatch` 默认 `mode = 'chat'`，附带 `categoryHint`（基于分类的简短工具建议）。
+- 600+ 行硬编码分支（Round-1..R3 的 14 个 category→workflow 路由）整体保留，但只在 `SOLVEBENCH_FORCE_WORKFLOW=1` 时启用，作为 workflow 冒烟测试路径。
+- 真实 CTF 比赛题完全交给 LLM：读取描述 + 检查附件 + 自主选择工具 + 推理。
+
+### 当前架构偏离的诚实评价
+
+之前的"SolveBench 19/20"完全跑偏：
+- 自造 20 道模板题，类别名 + 文件名都是 I 自己设计的（flag{x0r_known_...} 这种）
+- dispatch 是确定性 regex 匹配 + 14 个手写 workflow，绕过 LLM
+- 不可迁移到真实比赛——比赛题千变万化，没有"if (id.includes('xor')) 派到 xor_known"
+
+**这是 Round-4 必须纠正的核心偏离。** LLM 推理才是主体，workflow 只在极个别
+明确可模板化的子任务（ROT13 解码、PNG-IEND 提取等）才有加速价值——但即便
+在这些子任务上，让 LLM 自己看描述 + 用通用工具（Read / Bash）也能解，且更
+通用。
+
+### 下一轮目标
+
+- 让 solve.ts 默认 LLM 路径覆盖更多 intercode_ctf 类别（forensics / web / pwn）
+- 修复 Bash background-mode 过度使用问题（修改 BASH_DESCRIPTION 强调：短命令必须前台）
+- 修复 rev-13 那种"LLM 卡在实现细节"的失败模式（提供更明确的工具选择 hint）
+
+

@@ -141,7 +141,20 @@ export async function runSolveCommand(
     } else {
       // Chat-mode path: profile + description. Used as the universal
       // fallback when the challenge category doesn't have a workflow.
+      // §Round-4 — explicitly request the flag in the standard
+      // `picoCTF{...}` / `flag{...}` format so the post-run regex
+      // extractor can grab it. Without this hint the LLM sometimes
+      // answers only the inner answer ("61") and solve.ts can't
+      // reconstruct the wrapper.
       const cleanDesc = manifest.description.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
+      const hintBlock = dispatch.categoryHint
+        ? `\n\n${dispatch.categoryHint}`
+        : ''
+      const taskPrompt =
+        `${cleanDesc}\n\n` +
+        `Solve the challenge. When you find the flag, write it in the ` +
+        `standard wrapper (picoCTF{...} or flag{...}) and emit it as a ` +
+        `finding.${hintBlock}`
       const cliArgs = [
         'npx',
         'tsx',
@@ -150,7 +163,7 @@ export async function runSolveCommand(
         dispatch.profileId,
         '--cwd',
         challengeDir,
-        cleanDesc,
+        taskPrompt,
       ]
       if (manifest.attachmentPaths) {
         for (const attachment of manifest.attachmentPaths) {
@@ -175,15 +188,31 @@ export async function runSolveCommand(
     //   - `flag{...}` (canonical CTF flag — most common)
     //   - `flag(...)` (parens variant)
     //   - `flag(...}` (mixed open-paren / close-brace — forensics2)
-    const flagMatch = result.stdout.match(
-      /flag\{[^}]+\}|flag\([^)]*\)|flag\([^}]*\}/,
-    )
-    if (!flagMatch) {
+    //
+    // §Round-4 — LLM-driven runs print placeholder strings in markdown
+    // tables (e.g. `picoCTF{...}` or `flag{...}`) that the old regex
+    // happily matched as "the flag". Filter out literal placeholders
+    // (the inner text is exactly `...` or empty) before accepting a
+    // match, and prefer the longest non-placeholder candidate so the
+    // real flag wins over the placeholder when both appear.
+    const flagCandidates = [
+      ...result.stdout.matchAll(/(?:flag|picoCTF|ctf)\{[^}]+\}/gi),
+      ...result.stdout.matchAll(/(?:flag|picoCTF|ctf)\([^)]*\)/gi),
+      ...result.stdout.matchAll(/(?:flag|picoCTF|ctf)\([^}]*\}/gi),
+    ]
+      .map((m) => m[0])
+      .filter((s) => {
+        // Strip the wrapper and reject literal placeholders.
+        const inner = s.replace(/^(?:flag|picoCTF|ctf)[({]/, '').replace(/[)}]$/, '')
+        return inner.length > 0 && inner !== '...' && inner !== '..' && !/^\.+$/.test(inner)
+      })
+    const flag = flagCandidates.length > 0
+      ? flagCandidates.reduce((best, cur) => (cur.length > best.length ? cur : best))
+      : null
+    if (!flag) {
       stdout.write(`\n✗ No flag found in output\n`)
       return 1
     }
-
-    const flag = flagMatch[0]
     const flagHash = createHash('sha256').update(flag).digest('hex')
 
     stdout.write(`\n=== Verification ===\n`)
@@ -216,21 +245,37 @@ function getProfileForCategory(category: string): string {
     crypto: 'crypto',
     forensics: 'image-stego',
     reverse: 'reverse',
+    rev: 'reverse',
     pwn: 'pwn',
     web: 'web',
     pcap: 'traffic',
-    misc: 'triage',
+    traffic: 'traffic',
+    // §Round-4 — misc gets the orchestrator profile (Read, Glob, Grep,
+    // WebFetch, handoff_request) rather than triage. Triage is for
+    // read-only heuristics and denies the execution tools needed to
+    // actually solve crypto / encoding / math challenges.
+    misc: 'orchestrator',
   }
-  return profileMap[category] || 'triage'
+  return profileMap[category] || 'orchestrator'
 }
 
 /**
  * SolveBench dispatch plan.
  *
- * §13 R4 — instead of always spawning the agent with a profile+prompt
- * and hoping LLM reasoning finds the flag, we route known categories
- * through dedicated workflows that call specific tools. The
- * workflow-only path is fully deterministic and finishes in a few seconds.
+ * §Round-4 pivot — the previous version always preferred a hardcoded
+ * workflow dispatch path (R1..R3 had 14 purpose-built workflows that
+ * ran in a few seconds without LLM reasoning). For real CTF
+ * competitions, the LLM has to read the prompt, look at attached
+ * files, and choose tools itself — categories are too varied for any
+ * category-based heuristic to be reliable.
+ *
+ * New behaviour:
+ *   1. Default: `mode = 'chat'` — spawn the agent with profile +
+ *      description + flag-format hint and let the LLM reason. This
+ *      is the path that actually solves real competition problems.
+ *   2. Opt-in workflow: set env `SOLVEBENCH_FORCE_WORKFLOW=1` to fall
+ *      back to the legacy deterministic dispatch (still useful for
+ *      smoke-testing the workflows themselves, but bypasses the LLM).
  */
 interface SolveDispatchPlan {
   mode: 'workflow' | 'chat'
@@ -238,6 +283,33 @@ interface SolveDispatchPlan {
   profileId: string
   workflowId?: string
   workflowInputs?: string[]
+  /** §Round-4 — short category-specific hint for the LLM. Chat-mode
+   * appends this to the task prompt so the LLM knows what tools to
+   * prefer (e.g. "use tshark / strings / binwalk for forensics"). */
+  categoryHint?: string
+}
+
+const CATEGORY_HINTS: Record<string, string> = {
+  crypto:
+    'Hint: this is a crypto challenge. Look for ciphers (XOR, AES, RSA, ' +
+    'base64, classical) and try the decode_tree / xor_known_plaintext / ' +
+    'rsa_wiener_attack tools.',
+  forensics:
+    'Hint: this is a forensics challenge. Inspect the attachment with ' +
+    'file/strings/binwalk/exiftool and look for hidden payloads (LSB ' +
+    'stego, data after IEND, zip-in-zip, alternate streams).',
+  web: 'Hint: this is a web challenge. Try curl/sqlmap/nikto/gobuster; ' +
+    'look for SQLi, path traversal, SSRF, or known-CMS exploits.',
+  reverse:
+    'Hint: this is a reverse engineering challenge. Read the binary, ' +
+    'run `strings` / `objdump`, then trace logic with gdb or radare2.',
+  pwn: 'Hint: this is a pwn / exploitation challenge. Check the binary ' +
+    'with file/checksec, find the vuln, then craft a payload with pwntools.',
+  pcap:
+    'Hint: this is a traffic / pcap challenge. Use tshark / tcpflow / ' +
+    'strings on the capture; grep for `flag{` and `picoCTF{` literals.',
+  misc: 'Hint: this is a misc challenge. Read the description carefully; ' +
+    'the answer often involves encoding, conversion, or math.',
 }
 
 function readAttachment(manifest: SolveBenchManifest, challengeDir: string, name: string): string | null {
@@ -269,10 +341,29 @@ function planSolveDispatch(
   manifest: SolveBenchManifest,
   challengeDir: string,
 ): SolveDispatchPlan {
-  // Crypto challenges can map to specific attack workflows if the
-  // manifest contains the right inputs. We detect by id (lower-cased).
+  // §Round-4 — chat-mode is the default. The LLM reads the description,
+  // inspects attachments, and chooses its own tools via the agent's
+  // normal reasoning loop. Hardcoded category→workflow routing only
+  // kicks in when `SOLVEBENCH_FORCE_WORKFLOW=1` is set (legacy smoke
+  // test for the deterministic workflows).
   const id = manifest.id.toLowerCase()
   const profileId = getProfileForCategory(manifest.category)
+  const forceWorkflow = process.env['SOLVEBENCH_FORCE_WORKFLOW'] === '1'
+
+  if (!forceWorkflow) {
+    return {
+      mode: 'chat',
+      reason: `LLM chat-mode (default since Round-4; category=${manifest.category} id=${manifest.id})`,
+      profileId,
+      categoryHint: CATEGORY_HINTS[manifest.category],
+    }
+  }
+
+  // Legacy hardcoded dispatch — preserved verbatim for the workflow
+  // smoke test path. Crypto challenges can map to specific attack
+  // workflows if the manifest contains the right inputs.
+  // Crypto challenges can map to specific attack workflows if the
+  // manifest contains the right inputs. We detect by id (lower-cased).
 
   // XOR known-plaintext attacks: requires cipher + known_plaintext +
   // known_ciphertext in the challenge description OR as files.

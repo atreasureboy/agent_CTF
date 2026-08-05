@@ -787,7 +787,7 @@ export class CTFTaskOrchestrator {
           producedFindingIds: projection.newFindingIds,
           producedArtifactIds: projection.newArtifactIds,
         })
-        const summary = `main agent turn finished: ${r.result.reason}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
+        const summary = `main agent turn finished: ${r.result.reason}${r.result.error ? ` (${r.result.error.slice(0, 200)})` : ''}; +${projection.newFindingIds.length} findings +${projection.newArtifactIds.length} artifacts`
         this.safeApply({ type: 'AGENT_RUN_COMPLETED', agentRunId, summary })
         // §七 — Main Agent completion feeds the reasoning loop.
         // §C4 — fire-and-forget; never `await` a nested reasoning pass.

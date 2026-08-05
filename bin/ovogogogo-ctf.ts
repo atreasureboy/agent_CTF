@@ -499,6 +499,7 @@ ONEShot COMMANDS (six_goal §十四)
     unregisterSignals = installSignalHandlers(deps, runtime)
     const r = await runtime.orchestrator.runMainAgent(args.task)
     stdout.write(`\n${GREEN}run status:${RESET} ${r.status}\n`)
+    if (r.error) stderr.write(`${RED}run error:${RESET} ${r.error}\n`)
     if (r.summary) stdout.write(`  summary: ${r.summary}\n`)
     // Distinct exit codes so CI can distinguish outcomes. Mirrors the
     // workflow branch (success → 0; cancelled/failed → non-zero).

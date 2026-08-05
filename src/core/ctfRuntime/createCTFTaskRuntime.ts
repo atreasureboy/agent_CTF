@@ -316,6 +316,12 @@ export async function createCTFTaskRuntime(
     client: input.client,
     renderer: input.renderer,
     jobLimits: input.jobLimits,
+    // Forward modelConfig to the harness so identity.modelProfileId
+    // (harness.ts line 528) reflects the real model name. The previous
+    // call dropped this and the harness fell back to the hardcoded
+    // 'gpt-4o' default, causing `Unknown model profile 'gpt-4o'` when
+    // the user passed a non-OpenAI model like MiniMax-M3.
+    modelConfig: input.modelConfig,
     modelGateway: gateway,
     toolVisibilityPolicy,
     toolExposureResolver,
