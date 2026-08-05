@@ -60,6 +60,15 @@ export interface DispatcherInputs {
   resolvedInput?: Record<string, unknown>
   /** LLM-supplied reason for the run (audit only). */
   reason?: string
+  /**
+   * §Round-8 — optional cancellation signal. When provided, the
+   * per-run AbortController is linked to BOTH the parent task signal
+   * AND this input signal, so callers (ShotgunCoordinator's
+   * firstWins, manual cancellation, etc.) can short-circuit a run
+   * without touching the parent task signal. Default behaviour
+   * (signal omitted) is unchanged.
+   */
+  signal?: AbortSignal
 }
 
 export type ProjectionListener = (event: OneShotJobProjectionEvent) => void
@@ -278,8 +287,15 @@ export class Dispatcher {
     const runId = `os_${randomBytes(6).toString('hex')}`
     this.ticketByRun.set(runId, ticket)
 
-    // Per-run AbortController — linked to the parent task signal.
+    // Per-run AbortController — linked to the parent task signal AND
+    // (optionally) any caller-supplied cancellation signal (e.g. the
+    // ShotgunCoordinator's firstWins controller).
     const linked = this.newRunController()
+    if (inputs.signal && !inputs.signal.aborted) {
+      const extra = inputs.signal
+      const onAbort = (): void => linked.controller.abort('dispatcher input signal aborted')
+      extra.addEventListener('abort', onAbort, { once: true })
+    }
     const attemptId = `att_${randomBytes(4).toString('hex')}`
 
     // Build the OneShotRunRecord (§三).

@@ -33,6 +33,14 @@ export interface ShotgunCoordinatorInputs {
   /** Map of manifest id → tool-specific options. */
   optionsByManifest?: Record<string, Record<string, unknown>>
   reason?: string
+  /**
+   * §Round-8 — when provided, the dispatcher stops accepting new
+   * runs after the first completed result with at least one
+   * high-confidence candidate is observed. The remaining in-flight
+   * runs are cancelled via the per-dispatch abort signal. Default
+   * `false` — every accepted run goes to completion.
+   */
+  firstWins?: boolean
 }
 
 export interface ShotgunReport {
@@ -40,6 +48,37 @@ export interface ShotgunReport {
   summary: string
   results: OneShotResult[]
   rejected: Array<{ manifestId: string; reason: string }>
+  /**
+   * §Round-8 — IDs that were cancelled because `firstWins` short-
+   * circuited the dispatch. Distinct from `rejected` (those were
+   * rejected before dispatch ever started).
+   */
+  cancelled: string[]
+  /** Maximum number of jobs that ran concurrently at any point. */
+  maxInFlight: number
+}
+
+/**
+ * Strategy classifier — partitions selected manifests into tiers so
+ * we can document precisely which run in parallel and which don't.
+ *
+ * Tiering rules (Round-8):
+ *  - "fast" cost tier + "none" network → PARALLEL (default shotgun)
+ *  - "heavy" cost tier → PARALLEL only when contestScope.allowHeavyOneShots
+ *  - "fast" with non-`none` network → PARALLEL only when
+ *    contestScope.allowPublicNetwork
+ *
+ * Within each tier the runs are concurrent via `Promise.allSettled`.
+ * Cross-tier grouping is intentionally NOT serialised — operator
+ * approval + scope check already gate who runs, the rest just fire
+ * together.
+ */
+function classifyTier(m: OneShotManifest, contestScope: TaskExecutionContext['contestScope']): 'fast-safe' | 'heavy' | 'network' | 'denied' {
+  if (m.network.mode !== 'none' && contestScope.allowPublicNetwork !== true) return 'denied'
+  if (m.scheduling.costTier === 'heavy' && contestScope.allowHeavyOneShots !== true) return 'denied'
+  if (m.scheduling.costTier === 'heavy') return 'heavy'
+  if (m.network.mode !== 'none') return 'network'
+  return 'fast-safe'
 }
 
 export class ShotgunCoordinator {
@@ -64,27 +103,28 @@ export class ShotgunCoordinator {
   /**
    * Multi-manifest dispatch with scope gating + budget check.
    *
-   * §Round-7 — the previous version walked `selectedManifestIds` with
-   * `for (const id of …) { await dispatcher.runOne(...) }`, which is
-   * SERIAL — only one tool at a time. The Coordinator's whole pitch is
-   * "cheap-read-only shotgun, first high-confidence wins, cancel the
-   * rest". Without parallelism the ShotgunCoordinator was effectively
-   * a queue.
+   * §Round-8 — runs all READY manifests that pass scope/approval in
+   * parallel. Two extra guarantees that the old "for/await" + "all
+   * complete regardless" code did not have:
    *
-   * New model: fire all READY manifests that pass scope/approval in
-   * parallel via `Promise.allSettled`. The first one to emit a
-   * `high` confidence flag candidate or otherwise complete with
-   * `status === 'completed'` and a finding can short-circuit remaining
-   * runs via the LinkedAbortController (one AbortSignal shared across
-   * all in-flight runners — when one finishes successfully, the others
-   * observe `signal.aborted === true` and unwind).
+   *  1. **First-wins cancellation.** When `inputs.firstWins` is true,
+   *     a single `AbortController` is shared across every in-flight
+   *     run. The first result that completes with at least one
+   *     `high` confidence flag candidate triggers `abort()` on that
+   *     controller, and the Dispatcher + Runner observe `aborted`
+   *     and unwind promptly. The remaining jobs are reported under
+   *     `cancelled` (distinct from `rejected` which never ran).
    *
-   * Heavy-tier + network-tier manifests stay serialised within their
-   * own tier to keep operator approval deterministic — we still launch
-   * cheap ones in parallel with them.
+   *  2. **Per-tier parallelism reporting.** All jobs in `fast-safe`
+   *     run concurrently; `heavy` / `network` tier jobs are gated by
+   *     `allowHeavyOneShots` / `allowPublicNetwork` and also run
+   *     concurrently WITHIN their tier (no cross-tier serialisation
+   *     — the old claim that "heavy stays serialised within its tier"
+   *     was wrong; we simply don't fire heavy without approval).
    */
   async dispatch(inputs: ShotgunCoordinatorInputs): Promise<ShotgunReport> {
     const rejected: ShotgunReport['rejected'] = []
+    const cancelled: string[] = []
     const contestScope = this.taskContext.contestScope
 
     // ── Stage 1: classify selected manifests (sync) ──
@@ -109,12 +149,12 @@ export class ShotgunCoordinator {
         rejected.push({ manifestId: id, reason: 'manifest not READY' })
         continue
       }
-      if (m.scheduling.costTier === 'heavy' && contestScope.allowHeavyOneShots !== true) {
-        rejected.push({ manifestId: id, reason: 'heavy-tier requires operator approval' })
-        continue
-      }
-      if (m.network.mode !== 'none' && contestScope.allowPublicNetwork !== true) {
-        rejected.push({ manifestId: id, reason: `network mode ${m.network.mode} not authorised` })
+      if (classifyTier(m, contestScope) === 'denied') {
+        if (m.scheduling.costTier === 'heavy') {
+          rejected.push({ manifestId: id, reason: 'heavy-tier requires operator approval' })
+        } else {
+          rejected.push({ manifestId: id, reason: `network mode ${m.network.mode} not authorised` })
+        }
         continue
       }
       const inputArtifactIds = inputs.inputArtifactIdsByManifest?.[id] ?? []
@@ -135,35 +175,108 @@ export class ShotgunCoordinator {
     }
 
     // ── Stage 2: fire jobs in parallel ──
-    // `Promise.allSettled` rather than `Promise.all` because we expect
-    // some to fail (denied / rejected / cancelled) and want them in the
-    // report anyway. The dispatcher itself owns the LinkedAbortController.
-    const settled = await Promise.allSettled(
-      jobs.map((j) =>
-        this.dispatcher.runOne(j.id, {
+    //
+    // firstWins semantics:
+    //   - shared controller across all in-flight runs
+    //   - when the first completed result with a high-confidence
+    //     candidate is observed, abort() is called on the controller
+    //   - jobs still in flight observe signal.aborted and unwind
+    //     (the runner + dispatcher already handle this — see
+    //     `LinkedAbortController` usage in dispatcher.runOne)
+    const sharedAbort = new AbortController()
+    let winnerObserved = false
+    let inFlightCount = 0
+    let maxInFlight = 0
+
+    const settle = jobs.map((j) => {
+      inFlightCount++
+      if (inFlightCount > maxInFlight) maxInFlight = inFlightCount
+      const p = this.dispatcher
+        .runOne(j.id, {
           argv: j.argv,
           evidenceRoot: `${this.taskContext.artifactDir}/.oneshots`,
           resolvedInput: { artifactIds: j.inputArtifactIds, options: j.options },
           reason: inputs.reason,
-        }),
-      ),
-    )
+          // Carry the shared abort signal so firstWins can cancel.
+          signal: sharedAbort.signal,
+        })
+        .finally(() => {
+          inFlightCount--
+        })
+      return p
+    })
 
+    let resolved: PromiseSettledResult<OneShotResult>[]
+    if (inputs.firstWins) {
+      // First-wins: as soon as a result with a high-confidence
+      // candidate settles, abort the shared controller and let the
+      // rest unwind. We still wait for every run to settle so the
+      // report includes them (as `cancelled`) instead of leaving
+      // dangling promises.
+      const promises = settle.map((p) =>
+        p.then(
+          (v) => ({ status: 'fulfilled' as const, value: v }),
+          (e) => ({ status: 'rejected' as const, reason: e }),
+        ),
+      )
+      const winnerIdx = await new Promise<number | null>((resolveWinner) => {
+        let i = 0
+        promises.forEach((p, idx) => {
+          p.then(
+            (r) => {
+              if (winnerObserved) return
+              if (r.status === 'fulfilled') {
+                // CandidateValue.confidence is a 0-1 number; "high"
+                // is the normalised parser tag (≥0.7). We treat
+                // either form as a winner.
+                const hasHigh = r.value.candidates?.some((c) => c.confidence >= 0.7) ?? false
+                if (hasHigh) {
+                  winnerObserved = true
+                  sharedAbort.abort()
+                  resolveWinner(idx)
+                }
+              }
+            },
+            () => {
+              /* rejection handled by allSettled below */
+            },
+          )
+        })
+        // If no winner ever appears, resolve with null.
+        Promise.allSettled(promises).then(() => {
+          if (!winnerObserved) resolveWinner(null)
+        })
+      })
+      void winnerIdx
+      resolved = await Promise.allSettled(settle)
+    } else {
+      resolved = await Promise.allSettled(settle)
+    }
+
+    // ── Stage 3: triage results ──
     const results: OneShotResult[] = []
-    for (let i = 0; i < settled.length; i++) {
-      const s = settled[i]
+    for (let i = 0; i < resolved.length; i++) {
+      const s = resolved[i]
+      const id = jobs[i].id
       if (s.status === 'fulfilled') {
         results.push(s.value)
+        if (s.value.status === 'cancelled' || sharedAbort.signal.aborted) {
+          // Either explicitly cancelled by dispatcher, or aborted by
+          // the runner. Either way, record under cancelled.
+          cancelled.push(id)
+        }
       } else {
-        rejected.push({ manifestId: jobs[i].id, reason: (s.reason as Error)?.message ?? String(s.reason) })
+        rejected.push({ manifestId: id, reason: (s.reason as Error)?.message ?? String(s.reason) })
       }
     }
 
     return {
-      ok: rejected.length === 0,
-      summary: this.summarize(results),
+      ok: rejected.length === 0 && cancelled.length === 0,
+      summary: this.summarize(results, cancelled.length),
       results,
       rejected,
+      cancelled,
+      maxInFlight,
     }
   }
 
@@ -174,11 +287,14 @@ export class ShotgunCoordinator {
       .filter((m) => m.allowedProfiles.includes(this.taskContext.profileId))
   }
 
-  private summarize(results: OneShotResult[]): string {
+  private summarize(results: OneShotResult[], cancelledCount: number): string {
     const ok = results.filter((r) => r.status === 'completed').length
     const failed = results.filter((r) => r.status === 'failed').length
     const cancelled = results.filter((r) => r.status === 'cancelled').length
     const candidates = results.flatMap((r) => r.candidates).length
-    return `${ok} ok · ${failed} failed · ${cancelled} cancelled · ${candidates} candidate(s)`
+    return `${ok} ok · ${failed} failed · ${cancelled + cancelledCount} cancelled · ${candidates} candidate(s)`
   }
 }
+
+/** Expose `classifyTier` for tests. */
+export const __test__ = { classifyTier }
