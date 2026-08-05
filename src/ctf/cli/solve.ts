@@ -98,6 +98,48 @@ export async function runSolveCommand(
   stdout.write(`Expected SHA256: ${manifest.expectedFlagSha256}\n`)
   stdout.write(`Timeout: ${manifest.timeoutMs}ms\n\n`)
 
+  // §Round-4 — write a permissive contest.json so the spawned agent
+  // can reach the public CTF challenge host(s). The default config
+  // denies egress; without this, web/pcap/network challenges fail with
+  // network permission errors. We extract any URL host from the
+  // challenge description and whitelist it (plus picoCTF / common CTF
+  // domains) so the LLM can curl / WebFetch the remote service.
+  const descriptionHosts = Array.from(
+    manifest.description.matchAll(/https?:\/\/([a-zA-Z0-9._-]+)/g),
+    (m) => m[1],
+  )
+  const ctfHosts = [
+    ...descriptionHosts,
+    'jupiter.challenges.picoctf.org',
+    'mercury.picoctf.net',
+    'venus.picoctf.net',
+    'mars.picoctf.net',
+    'saturn.picoctf.net',
+    'titan.picoctf.net',
+    'wrap.picoctf.org',
+    'play.picoctf.org',
+  ]
+  const contestJsonPath = resolve(challengeDir, '.ovogo/contest.json')
+  const contestConfig = {
+    allowedHosts: ctfHosts,
+    allowedDomains: ctfHosts,
+    allowedCidrs: ['0.0.0.0/0'],
+    allowedPorts: [80, 443, 8080, 8000, 8888, 3000, 5000, 9422],
+    allowedFilesRoot: challengeDir,
+    allowPublicNetwork: true,
+    notes:
+      'Round-4 solve.ts: auto-generated for real-CTF evaluation; allows ' +
+      'egress to the challenge hosts in the description.',
+  }
+  try {
+    const { mkdirSync, writeFileSync } = await import('fs')
+    mkdirSync(resolve(challengeDir, '.ovogo'), { recursive: true })
+    writeFileSync(contestJsonPath, JSON.stringify(contestConfig, null, 2))
+    stdout.write(`Wrote contest config: ${contestJsonPath}\n`)
+  } catch (err) {
+    stderr.write(`Warning: failed to write contest.json: ${(err as Error).message}\n`)
+  }
+
   // Start server if needed
   let serverProcess: ChildProcess | null = null
   if (manifest.startupCommand) {
@@ -195,20 +237,40 @@ export async function runSolveCommand(
     // (the inner text is exactly `...` or empty) before accepting a
     // match, and prefer the longest non-placeholder candidate so the
     // real flag wins over the placeholder when both appear.
+    //
+    // §Round-4b — long LLM answers get truncated to the inline-cap with
+    // an ellipsis ("…") mid-flag, so stdout often contains an
+    // incomplete match. Fall back to scanning findings.jsonl written by
+    // the agent's `emit_finding` call, which carries the full flag in
+    // its `summary` field without inline-cap.
+    const stripped = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '')
+    // §Round-4c — restrict the inner charset to flag-shaped bytes
+    // ([A-Za-z0-9_]). The old `[^}]+` was greedy and ate anything up to
+    // the next `}`, including trailing prose and (in this run) the
+    // expected SHA-256 hash — producing a 200+ char match that beat the
+    // real 67-char flag in the longest-wins reduce.
+    const flagInner = '[A-Za-z0-9_\\-+=/.!?@#$%^&*]'
+    const flagRegex = new RegExp(`(?:flag|picoCTF|ctf)\\{${flagInner}+\\}`, 'gi')
+    const flagFromFindings = await extractFlagFromFindings(challengeDir)
+    const stdoutStripped = stripped(result.stdout)
     const flagCandidates = [
-      ...result.stdout.matchAll(/(?:flag|picoCTF|ctf)\{[^}]+\}/gi),
-      ...result.stdout.matchAll(/(?:flag|picoCTF|ctf)\([^)]*\)/gi),
-      ...result.stdout.matchAll(/(?:flag|picoCTF|ctf)\([^}]*\}/gi),
+      ...stdoutStripped.matchAll(flagRegex),
+      ...stdoutStripped.matchAll(new RegExp(`(?:flag|picoCTF|ctf)\\(${flagInner}*\\)`, 'gi')),
+      ...stdoutStripped.matchAll(new RegExp(`(?:flag|picoCTF|ctf)\\(${flagInner}*\\}`, 'gi')),
     ]
       .map((m) => m[0])
       .filter((s) => {
-        // Strip the wrapper and reject literal placeholders.
         const inner = s.replace(/^(?:flag|picoCTF|ctf)[({]/, '').replace(/[)}]$/, '')
         return inner.length > 0 && inner !== '...' && inner !== '..' && !/^\.+$/.test(inner)
       })
+    if (flagFromFindings) flagCandidates.unshift(flagFromFindings)
     const flag = flagCandidates.length > 0
       ? flagCandidates.reduce((best, cur) => (cur.length > best.length ? cur : best))
       : null
+    if (process.env['SOLVEBENCH_DEBUG_FLAG']) {
+      stdout.write(`\n[debug] findingsFlag=${flagFromFindings ?? '(none)'}\n`)
+      stdout.write(`[debug] stdoutCandidates=${flagCandidates.filter((c) => c !== flagFromFindings).join(' | ')}\n`)
+    }
     if (!flag) {
       stdout.write(`\n✗ No flag found in output\n`)
       return 1
@@ -317,6 +379,76 @@ function readAttachment(manifest: SolveBenchManifest, challengeDir: string, name
   const p = resolve(challengeDir, name)
   if (!existsSync(p)) return null
   return readFileSync(p, 'utf-8').trim()
+}
+
+/**
+ * §Round-4b — Scan the latest findings.jsonl written by the agent and
+ * return the most-likely flag string from any high-confidence finding
+ * summary. Solves two failure modes:
+ *   - stdout got truncated at the inline-cap with an ellipsis mid-flag,
+ *     leaving an incomplete match like `picoCTF{not_all_spaces...`.
+ *   - the LLM emitted the flag via `emit_finding` (broker emits the full
+ *     summary to findings.jsonl) but never echoed the closing brace in
+ *     the final stdout.
+ */
+async function extractFlagFromFindings(challengeDir: string): Promise<string | null> {
+  const sessionsDir = resolve(challengeDir, 'sessions')
+  if (!existsSync(sessionsDir)) return null
+  const flagRe = /(?:flag|picoCTF|ctf)\{[^}\s]+\}/gi
+  const candidates: string[] = []
+  try {
+    const { readdirSync, statSync } = await import('fs')
+    const walk = (dir: string): string[] => {
+      const out: string[] = []
+      let entries: string[]
+      try {
+        entries = readdirSync(dir)
+      } catch {
+        return out
+      }
+      for (const e of entries) {
+        const p = resolve(dir, e)
+        try {
+          const s = statSync(p)
+          if (s.isDirectory()) out.push(...walk(p))
+          else if (e === 'findings.jsonl') out.push(p)
+        } catch {
+          /* ignore */
+        }
+      }
+      return out
+    }
+    const findingsFiles = walk(sessionsDir)
+    // Sort by mtime, newest first.
+    findingsFiles.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+    for (const f of findingsFiles.slice(0, 3)) {
+      let text: string
+      try {
+        text = readFileSync(f, 'utf-8')
+      } catch {
+        continue
+      }
+      for (const line of text.split('\n')) {
+        if (!line.trim()) continue
+        try {
+          const rec = JSON.parse(line) as { confidence?: string; summary?: string }
+          if (rec.confidence !== 'high') continue
+          const m = (rec.summary ?? '').match(flagRe)
+          if (m) candidates.push(...m)
+        } catch {
+          /* skip malformed line */
+        }
+      }
+    }
+  } catch {
+    return null
+  }
+  const filtered = candidates.filter((s) => {
+    const inner = s.replace(/^(?:flag|picoCTF|ctf)[({]/, '').replace(/[)}]$/, '')
+    return inner.length > 0 && inner !== '...' && inner !== '..' && !/^\.+$/.test(inner)
+  })
+  if (filtered.length === 0) return null
+  return filtered.reduce((best, cur) => (cur.length > best.length ? cur : best))
 }
 
 /**

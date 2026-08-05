@@ -26,32 +26,38 @@ When you do set an explicit timeout, use milliseconds:
 - Test suites: timeout=600000 (10 min)
 - Long-running tasks: timeout=3600000+ (1 h+)
 
-## Background Pattern for Long-Running Commands
+## DEFAULT MODE = FOREGROUND (the common case)
 
-For commands expected to run >5 minutes, ALWAYS use background mode to avoid blocking:
+Do NOT set run_in_background=true unless the command is expected to take
+>30 SECONDS. For stat, ls, cat, file, exiftool, strings, python3 -c, head,
+tail, wc, xxd, grep, sed, awk, jq, base64, sha256sum, and similar short
+inspection commands — just call Bash WITHOUT run_in_background. The result
+returns synchronously with stdout/stderr in the same turn.
 
-\`\`\`
-# Step 1: Launch in background, redirect output to file
-run_in_background=true
-command: "npm run build > /tmp/build.log 2>&1"
+Background mode hides stdout and returns only a job id; you must then call
+collect_background_result before seeing any output. Using background mode
+for short commands is a wasteful two-step dance — call Bash directly.
 
-# Step 2 (later): Check progress or read results
-command: "tail -50 /tmp/build.log"
+When to use run_in_background=true (rare):
+  - Compilations / builds expected to take >30s (make, npm install, gcc on
+    a large file, cargo build)
+  - Long-running servers (nc -l, python3 -m http.server) the user asked you
+    to keep running across turns
+  - Loops that iterate >100 times
+  - Anything you genuinely expect to take more than half a minute
 
-# Or wait for completion and read
-command: "wait && cat /tmp/build.log"
-\`\`\`
+When NOT to use run_in_background (most calls):
+  - File inspection: stat, file, ls, head, tail, cat, wc, xxd, strings
+  - Quick checks: python3 -c "...", curl with timeout, sha256sum, base64
+  - Standard CTF tools: tshark -r file.pcap, binwalk, exiftool, pdfinfo
+  - Anything you expect to finish in under 30 seconds
 
 ## Parallel Execution
 
-To run multiple commands simultaneously, call Bash multiple times with run_in_background=true in the SAME response.
-All background jobs start simultaneously. Check results later by reading their output files.
-
-Example: Run build + lint + test all at once:
-- Call 1: build → /tmp/build.log (background)
-- Call 2: lint → /tmp/lint.log (background)
-- Call 3: test → /tmp/test.log (background)
-Then in next turn: read all three output files.
+To run multiple commands simultaneously, call Bash multiple times in the
+SAME response — each call runs in parallel and returns its own output.
+Do not abuse run_in_background for parallelism; the framework already
+parallelises independent foreground calls.
 
 ## Interactive Processes — CRITICAL WARNING
 

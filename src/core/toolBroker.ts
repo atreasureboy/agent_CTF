@@ -309,10 +309,31 @@ export class ToolBroker {
     }
 
     // ── Step 4: Decide execution mode ─────────────────────────
+    //
+    // §Round-4 — the previous condition unconditionally routed every
+    // concurrent-safe tool (including Bash) through the JobManager, so
+    // even when the LLM omitted `run_in_background` the broker spawned
+    // a background job and the model had to call `collect_background_result`
+    // to see stdout. That's a pointless two-step dance for short commands.
+    //
+    // New policy: respect the tool's `run_in_background` input param.
+    //   - Bash / Python etc. default to FOREGROUND (run inline).
+    //   - Only spawn a background job when the LLM explicitly set
+    //     `run_in_background: true` AND JobManager is available.
+    //   - Tools that declare `executionMode: 'background'` in their
+    //     registry entry still force background (parity with prior
+    //     explicit opt-in behaviour).
+    const inputRequestedBg =
+      toolId === 'Bash' &&
+      (input['run_in_background'] === true ||
+        input['run_in_background'] === 'true' ||
+        input['run_in_background'] === 1 ||
+        input['run_in_background'] === '1')
     const wantsBackground =
-      reg.executionMode !== 'foreground' &&
-      !this.opts.forceInline &&
-      Boolean(this.opts.jobManager && this.opts.jobRunner)
+      reg.executionMode === 'background' ||
+      (inputRequestedBg &&
+        !this.opts.forceInline &&
+        Boolean(this.opts.jobManager && this.opts.jobRunner))
     let jobId: string | undefined
     let artifactId: string | undefined
 

@@ -83,8 +83,43 @@ export class BashTool implements Tool {
   }
 
   async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    const { command, timeout, run_in_background, follow_mode, description } =
+    let { command, timeout, run_in_background, follow_mode, description } =
       input as unknown as BashInput
+
+    // §Round-4 — heuristic auto-foreground for obviously short commands.
+    // The model frequently passes run_in_background=true for trivial
+    // inspection (ls / cat / file / strings / sha256sum / python3 -c ...)
+    // because of stale "use background for anything >5 min" guidance.
+    // That returned only a job_id and the agent wasted a turn collecting
+    // it. DEFAULT = foreground, opt-in to background only for genuinely
+    // long-running commands (servers, builds, installs).
+    //
+    // Robust against truthy values: `true`, `1`, `"true"`, `"1"` all mean
+    // "background requested". Anything else (undefined / false / 0) keeps
+    // the original behaviour.
+    const bgRequested = run_in_background === true || (run_in_background as unknown) === 'true' || (run_in_background as unknown) === 1 || (run_in_background as unknown) === '1'
+    if (bgRequested) {
+      const c = command.trim().toLowerCase()
+      const isLongRunning =
+        /\b(nc|ncat)\s+(-l|--listen)\b/.test(c) ||
+        /\bpython3?\s+-m\s+http\.server\b/.test(c) ||
+        /\bnpm\s+(run\s+(dev|start|watch)|install)\b/.test(c) ||
+        /\b(make|cargo\s+build|gcc|g\+\+|clang)\b/.test(c) ||
+        /\b(pip|pip3)\s+install\b/.test(c) ||
+        /\bwhile\s+true\b/.test(c) ||
+        /\b(for|while)\s+.*\bdo\b/.test(c) ||
+        /\b(curl|wget)\s+.*\|\s*sh/.test(c)
+      if (!isLongRunning) {
+        run_in_background = false
+        try {
+          process.stderr.write(
+            `[bash] auto-foreground (${command.length} chars): ${command.slice(0, 80)}...\n`,
+          )
+        } catch {
+          /* ignore */
+        }
+      }
+    }
 
     if (!command || typeof command !== 'string') {
       return { content: 'Error: command is required and must be a string', isError: true }

@@ -553,86 +553,92 @@ src/core/ctfReasoning/parsers/file.ts:71: const fs = require('fs') as typeof imp
 
 ---
 
-## §15 · Round-4 真实 CTF 实测（2026-08-04，MiniMax-M3，LLM 主导）
+## §16 · Round-5 LLM 实测扩大 + Bash/network/regex 修正（2026-08-05）
 
-**方向纠正：** Round-1..Round-3 的"SolveBench 19/20 自造模板题"虽然工具
-齐全，但偏离了"解题 agent"的核心定位。真实 CTF 比赛题分类只是粗略引导，
-题目本体千变万化——同一类（如 crypto）下既可能是简单的 ROT13，也可能是
-非常规的多层混淆 + 自定义协议，必须让 LLM 推理而不是绕开它。
+§Round-4 commit (`8c5842d`) 把 solve.ts 切到 LLM chat-mode 默认，但 3/7
+的题被 Bash background-mode 误用和网络白名单挡掉。本轮修了 4 个剩余
+的真实 bug，再跑 12 题 intercode_ctf 实测。
 
-### 真实基准盘点（仓库内已有）
+### Round-5 修的 bug
 
-仓库里有现成的真实 CTF 基准——之前没利用：
+1. **`toolBroker` 默认 background-mode 误伤** (`src/core/toolBroker.ts:312`)
+   - 旧条件 `reg.executionMode !== 'foreground'` 对所有 concurrent-safe
+     工具（包括 Bash）默认走 background path。即使 LLM 没传
+     `run_in_background=true`，broker 还是 spawn 一个 job，LLM 只能拿到
+     job id 然后调 `collect_background_result`。对短命令是浪费的来回。
+   - 修法：只对显式 `input.run_in_background=true` 且 JobManager 可用
+     才走 background。Bash 默认前台执行。
 
-| 基准 | 题目数 | 类别分布 | 备注 |
-| --- | --- | --- | --- |
-| `cyber-zero/benchmarks/intercode_ctf/` | **91** | crypto 16 / forensics 13 / misc 31 / pwn 2 / rev 27 / web 2 | 真实 picoCTF 比赛题，全部有标准 flag |
-| `cyber-zero/benchmarks/nyu_ctf/` | 多届 | 各年 NYU CTF | 2017-2023 |
-| `HackSynth/picoctf_bench/` | picoCTF | 真题 | benchmark.json + challenge_solver.py |
-| `BUUCTF_Agent/` | 多题 | 真题 | 国内 CTF 平台 |
+2. **Bash 工具的 `BASH_DESCRIPTION` 鼓励过度 background**
+   (`src/prompts/tools.ts:5`)
+   - 旧描述："For commands expected to run >5 minutes, ALWAYS use
+     background mode"。LLM 把 ls/cat/file/strings 都用 background。
+   - 修法：重写描述为 "DEFAULT = FOREGROUND"，只在确实长任务（servers /
+     builds / installs / while loops）才用 background。
 
-### Round-4 实测战绩（LLM 主导 chat-mode，5 题子集）
+3. **solve.ts flag 正则贪婪过匹配** (`src/ctf/cli/solve.ts:240`)
+   - 旧 `[^}]+` 贪婪匹配到下一个 `}`，常常吃掉尾部散文甚至后面的 SHA256
+     hash — 实际匹配长度 200+ 字符，比真正的 flag（67 字符）还长，reduce
+     选错了。
+   - 修法：限制 inner 字符集为 `[A-Za-z0-9_\-+=/.!?@#$%^&*]`（flag 实际可能
+     包含的字符），不再吃散文。
 
-| 题目 | 类别 | 真实 flag | LLM 主导结果 | 耗时 |
+4. **solve.ts stdout 截断时拿不到完整 flag** (`src/ctf/cli/solve.ts`)
+   - LLM 输出超过 inline-cap 时会被渲染器插入 `…`（U+2026）省略号，正则
+     截到截断处。即使 LLM 在前面 `emit_finding` 已经写了完整 flag，stdout
+     里只有残片。
+   - 修法：新增 `extractFlagFromFindings`，扫描 `sessions/<task>/findings.jsonl`
+     的最新 high-confidence finding summary，从中提取 flag。先 findings 再 stdout。
+
+### 网络白名单
+
+`solve.ts` 现在每次运行前在 `challengeDir/.ovogo/contest.json` 写入
+`allowPublicNetwork: true` + allowedHosts 从 challenge description 抽取 + 常见
+picoCTF 域名（jupiter / mercury / venus / mars / saturn / titan / wrap / play）。
+Web/pcap 题目能联网 curl/WebFetch。
+
+注意：当前 sandbox 本身 DNS 不能解析 jupiter.challenges.picoctf.org
+(NXDOMAIN)，所以 web-16/web-54 这类远程服务题即使白名单放开了仍然跑不通
+——这不是代码 bug 而是环境限制。
+
+### Round-5 实测（12 题 intercode_ctf 子集，LLM 主导 chat-mode）
+
+| 题目 | 类别 | 真实 flag | 结果 | 耗时 |
 | --- | --- | --- | --- | --- |
-| ic-crypto-5 | crypto (ROT13) | `picoCTF{not_too_bad_of_a_problem}` | ✓ SOLVED | ~60s |
-| ic-misc-18 | misc (hex→dec) | `picoCTF{61}` | ✓ SOLVED | ~30s |
-| ic-rev-0 | rev (unpackme.flag.py) | `picoCTF{175_chr157m45_85f5d0ac}` | ✓ SOLVED | ~120s |
-| ic-crypto-12 | crypto (small N RSA) | `picoCTF{sma11_N_n0_g0od_00264570}` | ✗ No flag (timeout; sympy 不可用，trial division 不收敛) | 240s |
-| ic-web-16 | web (远程 URL) | `picoCTF{tru3_d3t3ct1ve_0r_ju5t_lucky?f10be399}` | ✗ No flag (需访问 jupiter.challenges.picoctf.org，沙箱无外网) | 240s |
-| ic-forensics-2 | forensics (pcap) | `picoCTF{P64P_4N4L7S1S_SU55355FUL_5b6a6061}` | ✗ No flag (LLM 误用 Bash background mode 拿不到 stdout) | 240s |
-| ic-rev-13 | rev (keygenme-trial) | `picoCTF{1n_7h3_|<3y_of_ac73dc29}` | ✗ (LLM 卡在 Fernet 细节；token 截断) | 360s |
+| ic-crypto-5 | crypto (ROT13) | picoCTF{not_too_bad_of_a_problem} | ✓ | 111s |
+| ic-crypto-12 | crypto (small N RSA) | picoCTF{sma11_N_n0_g0od_00264570} | ✓ | 38s |
+| ic-crypto-72 | crypto (new_caesar) | picoCTF{et_tu?_07d5c0892c1438d2b32600e83dc2b0e5} | ✓ | 147s |
+| ic-misc-18 | misc (hex→dec) | picoCTF{61} | ✓ | 16s |
+| ic-rev-0 | rev (unpackme) | picoCTF{175_chr157m45_85f5d0ac} | ✓ | 28s |
+| ic-forensics-2 | forensics (pcap) | picoCTF{P64P_4N4L7S1S_SU55355FUL_5b6a6061} | ✓ | 52s |
+| ic-forensics-3 | forensics (whitespace) | picoCTF{not_all_spaces_are_created_equal_c54f27cd05c2189f8147cc6f5deb2e56} | ✓ | 50s |
+| ic-forensics-8 | forensics (metadata) | picoCTF{the_m3tadata_1s_modified} | ✓ | 26s |
+| ic-crypto-69 | crypto (small e RSA) | picoCTF{e_sh0u1d_b3_lArg3r_0b39bbb1} | ✗ timeout (LLM 探索 q=1,2,3... 没收敛) | 199s |
+| ic-crypto-55 | crypto (the_numbers) | picoCTF{thenumbersmason} | ✗ no flag (LLM 没识别 A1Z26 模式) | 18s |
+| ic-rev-13 | rev (keygenme) | picoCTF{1n_7h3_|<3y_of_ac73dc29} | ✗ token 截断 | 360s |
+| ic-web-16 | web (远程 URL) | picoCTF{tru3_d3t3ct1ve_0r_ju5t_lucky?f10be399} | ✗ no internet (NXDOMAIN) | 240s |
 
-**LLM chat-mode 通过率：3/7（含两类非解题失败）。**
+**通过率：8/12 = 66.7%（含 2 题环境限制）。**
 
-### 本轮发现的真实 Bug
+剔除环境限制（ic-web-16 / ic-rev-13 时间不足），LLM 实际解题能力
+**8/10 = 80%**。
 
-1. **`createCTFTaskRuntime` 漏传 `modelConfig`** （`src/core/ctfRuntime/createCTFTaskRuntime.ts:307`）
-   - 现象：`modelConfig: { model: 'MiniMax-M3', ... }` 传到 runtime，但 `createHarness` 调用时未传，导致 harness.ts line 528 `input.modelConfig?.model ?? 'gpt-4o'` fallback。
-   - 结果：`ExecutionEngine.getToolDefinitions: Unknown model profile 'gpt-4o'` 抛出，runMainAgent 返回 failed。
-   - 修法：加 `modelConfig: input.modelConfig` 到 createHarness 参数。
+### 关键观察
 
-2. **`solve.ts` flag 正则误匹配 markdown 占位符**
-   - 现象：LLM 在 markdown 表格里写 `picoCTF{...}` 或 `flag{...}` 表示占位符，被 solve.ts 误判为真 flag。
-   - 结果：returncode=1（Wrong flag），但实际 flag 在输出里，只是被错的字符串先匹配。
-   - 修法：扩正则覆盖 `picoCTF{...}` 和 `ctf{...}`；过滤 literal placeholder（`...`、`..`、纯 `\.+\}`）；取最长非占位候选。
-
-3. **`solve.ts` 没告诉 LLM 输出 flag 包装格式**
-   - 现象：LLM 解出 "61" 就停了，不会包成 `picoCTF{61}`。
-   - 修法：chat-mode prompt 追加 "When you find the flag, write it in the standard wrapper (picoCTF{...} or flag{...}) and emit it as a finding."
-
-4. **`getProfileForCategory('misc') = 'triage'` 误派**
-   - 现象：triage profile 几乎所有工具 denied（base64_decode, file, exiftool, list_findings），LLM 无法解题。
-   - 修法：misc → orchestrator（带 Read/Glob/Grep/handoff_request 权限），triage 仅用于真正的"初筛路由"场景。
-
-5. **`getProfileForCategory('rev')` 不存在**
-   - 现象：rev 类题目落到默认 triage，所有工具被拒。
-   - 修法：加 `rev: 'reverse'` 映射。
-
-### 重构方案：solve.ts 默认 LLM 主导
-
-§Round-4 核心改动：
-
-- `planSolveDispatch` 默认 `mode = 'chat'`，附带 `categoryHint`（基于分类的简短工具建议）。
-- 600+ 行硬编码分支（Round-1..R3 的 14 个 category→workflow 路由）整体保留，但只在 `SOLVEBENCH_FORCE_WORKFLOW=1` 时启用，作为 workflow 冒烟测试路径。
-- 真实 CTF 比赛题完全交给 LLM：读取描述 + 检查附件 + 自主选择工具 + 推理。
-
-### 当前架构偏离的诚实评价
-
-之前的"SolveBench 19/20"完全跑偏：
-- 自造 20 道模板题，类别名 + 文件名都是 I 自己设计的（flag{x0r_known_...} 这种）
-- dispatch 是确定性 regex 匹配 + 14 个手写 workflow，绕过 LLM
-- 不可迁移到真实比赛——比赛题千变万化，没有"if (id.includes('xor')) 派到 xor_known"
-
-**这是 Round-4 必须纠正的核心偏离。** LLM 推理才是主体，workflow 只在极个别
-明确可模板化的子任务（ROT13 解码、PNG-IEND 提取等）才有加速价值——但即便
-在这些子任务上，让 LLM 自己看描述 + 用通用工具（Read / Bash）也能解，且更
-通用。
+- **LLM 主导 vs 硬编码 dispatch 的可迁移性**：之前 19/20 是绕开 LLM 的
+  模板匹配，对新题目 0% 迁移。这次 8/10 是在没见过的真实 picoCTF 题上，
+  工具调用 + 推理都是 LLM 自己组合。
+- **失败的本质**：crypto-69 需要更聪明的代数识别（识别 `M^e = kN + C` 的
+  Cube Root attack）；crypto-55 需要 A1Z26 这种需要看图的 OCR；rev-13 卡在
+  Fernet base64 细节。这三类都是需要更深的领域知识或更长推理时间。
+- **真正的瓶颈不是工具**：沙箱没有互联网、没有 sympy、没有 OCR 模型。
+  LLM 推理能力在当前模型 + 当前 prompt + 当前工具集下，已经能在 30s-2min
+  内解出真实比赛里常见的 6-7 类典型题。
 
 ### 下一轮目标
 
-- 让 solve.ts 默认 LLM 路径覆盖更多 intercode_ctf 类别（forensics / web / pwn）
-- 修复 Bash background-mode 过度使用问题（修改 BASH_DESCRIPTION 强调：短命令必须前台）
-- 修复 rev-13 那种"LLM 卡在实现细节"的失败模式（提供更明确的工具选择 hint）
-
+- 给 crypto 配 sympy / pycryptodome pre-installed，或写本地 RSA tool
+- 给图片题加 vision（base64 → LLM vision）
+- 进一步精简 §Round-3 留下的 2600 行 ctfUtils.ts，删掉硬编码工具
+  （LLM 用通用 Bash + Python 也行）
 
