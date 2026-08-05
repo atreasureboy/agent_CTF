@@ -531,8 +531,8 @@ export class ExecutionEngine {
           ...(messages as OpenAI.Chat.ChatCompletionMessageParam[]),
         ],
         tools: toolDefs,
-        temperature: this.config.temperature ?? 0,
-        maxOutputTokens: this.config.maxOutputTokens ?? 8192,
+        temperature: this.config.temperature ?? parseFloat(process.env.OVOGO_TEMPERATURE ?? '0'),
+        maxOutputTokens: this.config.maxOutputTokens ?? (parseInt(process.env.OVOGO_MAX_OUTPUT_TOKENS ?? '8192', 10) || 8192),
         signal: turnAbortSignal,
       })
     } catch (err: unknown) {

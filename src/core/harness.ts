@@ -478,8 +478,9 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
       // env-derived defaults only if the caller did not supply.
       apiKey: input.modelConfig?.apiKey ?? process.env.OPENAI_API_KEY ?? '',
       baseURL: input.modelConfig?.baseURL ?? process.env.OPENAI_BASE_URL,
-      model: input.modelConfig?.model ?? 'gpt-4o',
-      maxIterations: 60,
+      model: input.modelConfig?.model ?? process.env.OVOGO_MODEL ?? 'gpt-4o',
+      maxIterations:
+        parseInt(process.env.OVOGO_MAX_ITERATIONS ?? process.env.OVOGO_MAX_ITER ?? '60', 10) || 60,
       permissionMode: 'auto',
       broker,
       taskId,

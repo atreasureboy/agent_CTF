@@ -19,8 +19,13 @@ export interface CompletionPolicy {
 }
 
 export const DEFAULT_COMPLETION_POLICY: CompletionPolicy = {
-  autoCompleteLocalFixtures: false,
-  requirePlatformVerification: true,
+  autoCompleteLocalFixtures: process.env.OVOGO_AUTO_COMPLETE === 'true',
+  requirePlatformVerification: process.env.OVOGO_REQUIRE_PLATFORM_VERIFY !== 'false',
+}
+
+export const COMPETITION_COMPLETION_POLICY: CompletionPolicy = {
+  autoCompleteLocalFixtures: true,
+  requirePlatformVerification: false,
 }
 
 export const LOCAL_FIXTURE_COMPLETION_POLICY: CompletionPolicy = {

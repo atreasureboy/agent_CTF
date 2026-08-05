@@ -52,15 +52,15 @@ export interface ReasoningBudgetLimits {
 }
 
 export const DEFAULT_REASONING_BUDGET_LIMITS: ReasoningBudgetLimits = {
-  maxStrategyCycles: 8,
-  maxActions: 32,
-  maxCheapActions: 24,
-  maxNormalActions: 12,
-  maxExpensiveActions: 4,
-  maxWorkflowRuns: 8,
-  maxOneShotRuns: 8,
-  maxHandoffs: 4,
-  maxEstimatedCostUnits: 64,
+  maxStrategyCycles: parseInt(process.env.OVOGO_MAX_STRATEGY_CYCLES ?? '12', 10) || 12,
+  maxActions: parseInt(process.env.OVOGO_MAX_STRATEGY_ACTIONS ?? '48', 10) || 48,
+  maxCheapActions: parseInt(process.env.OVOGO_MAX_CHEAP_ACTIONS ?? '32', 10) || 32,
+  maxNormalActions: parseInt(process.env.OVOGO_MAX_NORMAL_ACTIONS ?? '18', 10) || 18,
+  maxExpensiveActions: parseInt(process.env.OVOGO_MAX_EXPENSIVE_ACTIONS ?? '6', 10) || 6,
+  maxWorkflowRuns: parseInt(process.env.OVOGO_MAX_WORKFLOW_RUNS ?? '12', 10) || 12,
+  maxOneShotRuns: parseInt(process.env.OVOGO_MAX_ONESHOT_RUNS ?? '12', 10) || 12,
+  maxHandoffs: parseInt(process.env.OVOGO_MAX_HANDOFFS ?? '6', 10) || 6,
+  maxEstimatedCostUnits: parseInt(process.env.OVOGO_MAX_COST_UNITS ?? '96', 10) || 96,
 }
 
 export function createInitialReasoningBudgetState(): ReasoningBudgetState {

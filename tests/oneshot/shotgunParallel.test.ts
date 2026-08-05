@@ -26,7 +26,7 @@ import {
   Dispatcher,
   BudgetManager,
 } from '../../src/ctf/oneshot/index.js'
-import type { OneShotManifest } from '../../src/ctf/oneshot/manifestSchema.js'
+import type { OneShotManifest } from '../../src/ctf/oneshot/types.js'
 import type { TaskExecutionContext } from '../../src/core/ctfRuntime/taskExecutionContext.js'
 import { ShotgunCoordinator } from '../../src/ctf/agents/shotgunCoordinator.js'
 import { BackgroundJobManager } from '../../src/core/backgroundJobs.js'

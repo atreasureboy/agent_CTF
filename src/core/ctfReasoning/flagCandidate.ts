@@ -38,7 +38,12 @@ export const DEFAULT_FLAG_PATTERNS: RegExp[] = [
   /flag\{[^}]+\}/i,
   /CTF\{[^}]+\}/i,
   /FLAG\{[^}]+\}/i,
-  /[A-Za-z0-9_]+\{[^}]{4,}\}/,
+  /DASCTF\{[^}]+\}/i,
+  /XHLJ\{[^}]+\}/i,
+  /西湖论剑\{[^}]+\}/i,
+  // Generic prefix{...} pattern — requires minimum 8 chars inside braces
+  // to reduce false positives (was 4, now 8).
+  /[A-Za-z0-9_]+\{[^}]{8,}\}/,
 ]
 
 /** Detect a flag-like value in a piece of text. */

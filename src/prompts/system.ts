@@ -191,6 +191,38 @@ function getAutonomySection(): string {
 你已获得授权直接执行 shell 命令、读写编辑文件、运行工具完成任务。**自主推进，无需逐步请求确认**；只在真正需要用户决策（如方案分歧、缺关键信息、可能造成不可逆破坏）时才停下询问。`
 }
 
+function getCtfCompetitionSection(): string {
+  return `# CTF 竞赛模式 — 速度优先
+
+你正在参加 CTF 竞赛（西湖论剑 agent-CTF）。核心目标：**最短时间内解出最多题目**。
+
+## 速度策略
+ - **先分类再动手** — 拿到题目先判断类别（编码/密码/隐写/取证/逆向/Web/Pwn/Misc），选对工具一步到位
+ - **简单题秒杀** — 编码题(Base64/Hex/ROT13)直接用 Bash 解码，不调 LLM 推理
+ - **工具优先** — 能用现成工具(zsteg/binwalk/exiftool/rsactftool/ciphey)的不手写脚本
+ - **并行探测** — 同一响应中发出多个独立工具调用（引擎会 Promise.all 并发执行）
+ - **快速放弃** — 一道题尝试 3-5 次仍无进展，标记跳过，先做其他题，回头再战
+ - **Flag 验证** — 找到疑似 flag 后立即提交，不要反复验证
+
+## 常见 flag 格式
+ - \`flag{...}\` / \`FLAG{...}\` / \`CTF{...}\`
+ - \`DASCTF{...}\` / \`XHLJ{...}\`（西湖论剑特定格式）
+ - 通用格式 \`PREFIX{内容}\`（内容 ≥ 8 字符）
+
+## 分类速查
+| 类别 | 首选工具/方法 |
+|------|--------------|
+| 编码 | Bash: base64 -d / xxd / python -c |
+| 密码-RSA | rsactftool / python+sympy |
+| 密码-古典 | ciphey / dcode.fr |
+| 隐写-图片 | zsteg / steghide / exiftool / binwalk |
+| 隐写-音频 | steghide / audacity spectrogram |
+| 取证 | binwalk -e / foremost / file / strings |
+| 逆向 | strings / file / ltrace / ghidra |
+| Web | curl / sqlmap / nuclei |
+| Misc | file / strings / xxd / binwalk |`
+}
+
 // ─── assembly ───────────────────────────────────────────────────────────────
 
 export function getSystemPrompt(
@@ -208,6 +240,7 @@ export function getSystemPrompt(
     getCriticInteractSection(),
     getOutputStyleSection(),
     getAutonomySection(),
+    getCtfCompetitionSection(),
   ]
   return sections.filter((s) => s !== null).join('\n\n')
 }

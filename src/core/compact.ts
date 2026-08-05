@@ -14,9 +14,12 @@ import type { OpenAIMessage } from './types.js'
 // Rough chars-per-token estimate (conservative — better to compact early)
 const CHARS_PER_TOKEN = 3.5
 
-// Model max context window (tokens). Matches claude-sonnet-4-x 200k context.
-// Sub-agents inherit the same model so one constant is sufficient here.
-export const MODEL_MAX_CONTEXT_TOKENS = 200_000
+// Model max context window (tokens). Override via OVOGO_MAX_CONTEXT_TOKENS
+// for models with different context windows. Default 200k (claude-sonnet-4).
+export const MODEL_MAX_CONTEXT_TOKENS = parseInt(
+  process.env.OVOGO_MAX_CONTEXT_TOKENS ?? '200000',
+  10,
+)
 
 // Percentage-based thresholds — the SINGLE source of truth for context pressure.
 // Both the engine (evaluateContextBudget) and tests read these constants so the

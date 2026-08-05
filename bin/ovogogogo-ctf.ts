@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * ovogogogo-ctf — CTF-harness entry point.
  *
@@ -78,6 +78,8 @@ interface CtfArgs {
   help: boolean
   version: boolean
   cwd: string
+  /** Competition mode — max concurrent tasks. */
+  concurrency?: number
 }
 
 const VERSION = '0.1.0'
@@ -97,13 +99,23 @@ OPTIONS
   --input <path>            FILE_INPUT for the workflow
   --text <str>              TEXT_INPUT for the workflow
   --cwd <path>              Project root (default: cwd)
+  --concurrency <N>         Max concurrent tasks in competition mode (default: OVOGO_MAX_CONCURRENCY or 4)
   -v, --version             Print version
   -h, --help                Show this help
+
+COMMANDS
+  batch <dir>               Solve all challenge manifests in a directory concurrently
+  solve <challenge.json>    Solve a single challenge manifest
+  oneshot list              List available one-shot manifests
+  doctor [--oneshot]        Check environment health
+  benchmark [runs]          Run benchmarking suite
 
 EXAMPLES
   ovogogogo-ctf --profile image-stego --run-workflow image_quick_scan --input ctf-sample.png
   ovogogogo-ctf --profile crypto --run-workflow encoding_sweep --text "RkxBR3t..."
   ovogogogo-ctf --profile orchestrator "decide how to solve this puzzle"
+  ovogogogo-ctf --concurrency 8 batch ./challenges/
+  ovogogogo-ctf solve ./challenges/crypto1.json
 `)
 }
 
@@ -124,6 +136,7 @@ function parseArgs(argv: string[]): CtfArgs {
   let help = false
   let version = false
   let cwd = process.env.OVOGO_CWD ?? process.cwd()
+  let concurrency: number | undefined
   const positional: string[] = []
   let afterDoubleDash = false
 
@@ -216,6 +229,13 @@ function parseArgs(argv: string[]): CtfArgs {
       cwd = takeValue(arg)
       continue
     }
+    if (arg === '--concurrency' || arg.startsWith('--concurrency=')) {
+      concurrency = parseInt(takeValue(arg), 10)
+      if (!Number.isFinite(concurrency) || concurrency < 1) {
+        throw new Error(`--concurrency must be a positive integer, got ${concurrency}`)
+      }
+      continue
+    }
     if (arg.startsWith('-')) {
       // Phase 1.7 — surface unknown flags as a real error.
       throw new Error(`unknown flag: ${arg}`)
@@ -237,6 +257,7 @@ function parseArgs(argv: string[]): CtfArgs {
     help,
     version,
     cwd,
+    concurrency,
   }
 }
 
@@ -313,6 +334,13 @@ ONEShot COMMANDS (six_goal §十四)
       ) => Promise<number>
     } = await import('../src/ctf/cli/solve.js')
     return solveModule.runSolveCommand(argv[3], { stdout, stderr })
+  }
+  if (argv[2] === 'batch') {
+    if (!argv[3]) {
+      stderr.write(`${RED}error:${RESET} batch requires a manifest directory\n`)
+      return 1
+    }
+    return runBatchCommand(argv[3], argv.slice(4), { stdout, stderr, env })
   }
 
   // §十四 — parseArgs inside the try block so missing-value / unknown-flag
@@ -495,6 +523,7 @@ ONEShot COMMANDS (six_goal §十四)
       renderer,
       modelConfig: { model, apiKey: apiKey ?? '', baseURL },
       mode: 'llm',
+      maxConcurrency: args.concurrency,
     })
     unregisterSignals = installSignalHandlers(deps, runtime)
     const r = await runtime.orchestrator.runMainAgent(args.task)
@@ -511,6 +540,92 @@ ONEShot COMMANDS (six_goal §十四)
     const stack = (err as Error)?.stack
     stderr.write(`${RED}fatal:${RESET} ${msg}\n`)
     if (stack) stderr.write(`${stack}\n`)
+    return 1
+  } finally {
+    if (unregisterSignals) unregisterSignals()
+    if (runtime) {
+      await runtime.dispose()
+    }
+  }
+}
+
+
+// ── Batch command — competition multi-task solver ──────────────────────
+async function runBatchCommand(
+  manifestDir: string,
+  extraArgs: string[],
+  deps: { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream; env: NodeJS.ProcessEnv },
+): Promise<number> {
+  const { stdout, stderr, env } = deps
+  const apiKey = env['OPENAI_API_KEY']
+  const baseURL = env['OPENAI_BASE_URL']
+  const model = env['OVOGO_MODEL'] ?? 'gpt-4o'
+
+  if (!apiKey) {
+    stderr.write(`${RED}error:${RESET} batch mode requires OPENAI_API_KEY\n`)
+    return 3
+  }
+
+  const { ensureProfilesRegistered } = await import('../src/capabilityProfiles/index.js')
+  const { resolveContestConfig } = await import('../src/core/contestConfig.js')
+  const { createCTFTaskRuntime } = await import('../src/core/ctfRuntime/createCTFTaskRuntime.js')
+  ensureProfilesRegistered()
+
+  const { scope: mergedScope } = resolveContestConfig({
+    cwd: resolve(process.cwd()),
+    cliOverride: {},
+  })
+
+  // Parse extra args for --concurrency
+  let concurrency: number | undefined
+  for (let i = 0; i < extraArgs.length; i++) {
+    if (extraArgs[i] === '--concurrency' && extraArgs[i + 1]) {
+      concurrency = parseInt(extraArgs[++i], 10)
+    } else if (extraArgs[i].startsWith('--concurrency=')) {
+      concurrency = parseInt(extraArgs[i].split('=')[1], 10)
+    }
+  }
+
+  const client = new OpenAI({ apiKey, baseURL, timeout: 120_000, maxRetries: 5 })
+  const { Renderer } = await import('../src/ui/renderer.js')
+
+  const runtime = await createCTFTaskRuntime({
+    cwd: resolve(process.cwd()),
+    profileId: 'orchestrator',
+    contestScope: mergedScope,
+    client,
+    renderer: new Renderer(),
+    modelConfig: { model, apiKey, baseURL },
+    mode: 'llm',
+    maxConcurrency: concurrency,
+  })
+
+  let unregisterSignals: (() => void) | undefined
+  try {
+    unregisterSignals = installSignalHandlers({}, runtime)
+    stdout.write(`${CYAN}${BOLD}ovogogogo-ctf batch solver${RESET}\n`)
+    stdout.write(`manifest dir: ${resolve(manifestDir)}\n`)
+    stdout.write(`concurrency:  ${concurrency ?? env['OVOGO_MAX_CONCURRENCY'] ?? '4'}\n`)
+    stdout.write(`model:        ${model}\n\n`)
+
+    const result = await runtime.batchSolve(manifestDir)
+
+    stdout.write(`${BOLD}── Results ──${RESET}\n`)
+    stdout.write(`${GREEN}  Solved: ${result.solved.length}${RESET}\n`)
+    for (const s of result.solved) {
+      stdout.write(`    ✅ ${GREEN}${s.taskId}${RESET} → ${BOLD}${s.flag}${RESET}\n`)
+    }
+    stdout.write(`${RED}  Failed: ${result.failed.length}${RESET}\n`)
+    for (const f of result.failed) {
+      stdout.write(`    ❌ ${RED}${f.taskId}${RESET} — ${f.reason}\n`)
+    }
+    stdout.write(`\n  Total:  ${result.total}\n`)
+    stdout.write(`  Rate:   ${((result.solved.length / Math.max(result.total, 1)) * 100).toFixed(0)}%\n`)
+
+    return result.solved.length > 0 ? 0 : 1
+  } catch (err) {
+    const msg = (err as Error)?.message ?? String(err)
+    stderr.write(`${RED}fatal:${RESET} ${msg}\n`)
     return 1
   } finally {
     if (unregisterSignals) unregisterSignals()

@@ -273,6 +273,11 @@ export class ChallengeConcurrencyPool {
     return this.cancelled
   }
 
+  /** Get all completed handles for result collection. */
+  public getCompletedHandles(): ChallengeTaskHandle[] {
+    return [...this.completedHandles.values()]
+  }
+
   public getMaxConcurrency(): number {
     return this.maxConcurrency
   }

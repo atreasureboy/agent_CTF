@@ -1,4 +1,4 @@
-/**
+﻿/**
  * createCTFTaskRuntime — single public entry that wires the full CTF Task
  * runtime. Every CTF CLI / REPL / test MUST go through this factory.
  *
@@ -17,6 +17,8 @@
  */
 
 import type OpenAI from 'openai'
+import { readdirSync, existsSync, readFileSync } from 'fs'
+import { resolve as resolvePath, join } from 'path'
 
 import type { CapabilityProfile } from '../capabilityProfile.js'
 import type { ContestScope } from '../contestScope.js'
@@ -63,6 +65,11 @@ import { runnerFor } from '../../ctf/oneshot/runner.js'
 import { OneShotRegistry } from '../../ctf/oneshot/registry.js'
 import { OneShotCatalog } from '../../ctf/oneshot/catalog.js'
 import { loadManifestsFromDir } from '../../ctf/oneshot/manifestLoader.js'
+import {
+  ChallengeConcurrencyPool,
+  type QueuedChallenge,
+  type TaskExecutorResult,
+} from './challengeConcurrencyPool.js'
 
 export type CTFTaskRuntimeMode = 'workflow-only' | 'llm'
 
@@ -111,6 +118,8 @@ export interface CreateCTFTaskRuntimeInput {
     id: string
     options?: Partial<GenericProcessSolverOptions>
   }>
+  /** Competition mode — max concurrent tasks (default 4 via OVOGO_MAX_CONCURRENCY). */
+  maxConcurrency?: number
 }
 
 export interface CTFTaskRuntime {
@@ -130,6 +139,20 @@ export interface CTFTaskRuntime {
   solverPortfolio: SolverPortfolio
   toolVisibilityPolicy: ToolVisibilityPolicy
   trajectoryRecorder: TrajectoryRecorder
+  /** Competition multi-task concurrency pool. */
+  concurrencyPool: ChallengeConcurrencyPool
+  /**
+   * Competition batch solve — solve all challenges in a directory concurrently.
+   * Returns a summary of solved, failed, and queued tasks.
+   */
+  batchSolve: (
+    manifestDir: string,
+    options?: { maxConcurrency?: number; timeoutMs?: number },
+  ) => Promise<{
+    solved: Array<{ taskId: string; flag: string }>
+    failed: Array<{ taskId: string; reason: string }>
+    total: number
+  }>
   getState(): Readonly<CTFTaskState>
   cancel(reason: string): Promise<void>
   dispose(): Promise<void>
@@ -425,6 +448,143 @@ export async function createCTFTaskRuntime(
     }
   }
 
+  // ── Competition concurrency pool ──────────────────────────────────────
+  const maxConcurrency =
+    input.maxConcurrency ??
+    (parseInt(process.env.OVOGO_MAX_CONCURRENCY ?? '4', 10) || 4)
+
+  const concurrencyPool = new ChallengeConcurrencyPool(maxConcurrency, {
+    executor: async (challenge, _handle, _signal): Promise<TaskExecutorResult> => {
+      const taskId = `task_${challenge.id}_${Date.now()}`
+      const taskRuntime = await createCTFTaskRuntime({
+        cwd: input.cwd,
+        profileId: input.profileId,
+        profile: input.profile,
+        contestScope: input.contestScope,
+        contestId: input.contestId,
+        taskId,
+        sessionsRoot: input.sessionsRoot,
+        client: input.client,
+        renderer: input.renderer,
+        modelConfig: input.modelConfig,
+        mode: input.mode,
+        challenge: {
+          description: challenge.description,
+          category: challenge.category,
+          flagPattern: challenge.flagPattern,
+        },
+        jobLimits: input.jobLimits,
+        maxConcurrency: 1, // leaf tasks run single-threaded
+      })
+      try {
+        const taskDesc = challenge.description ?? challenge.title
+        const result = await taskRuntime.orchestrator.runMainAgent(taskDesc)
+        if (result.status === 'completed') {
+          // Scan findings for flag
+          const state = taskRuntime.orchestrator.store.getState()
+          const flagFinding = state.findings.find(
+            (f) =>
+              String(f.category) === 'flag' ||
+              f.title?.toLowerCase().includes('flag') ||
+              (f as unknown as Record<string, unknown>).flagValue !== undefined,
+          )
+          const flag =
+            ((flagFinding as unknown as Record<string, unknown> | undefined)?.flagValue as
+              | string
+              | undefined) ?? 'unknown'
+          return { status: 'solved', flag }
+        }
+        return { status: 'failed', flag: undefined }
+      } catch {
+        return { status: 'failed', flag: undefined }
+      } finally {
+        await taskRuntime.dispose()
+      }
+    },
+  })
+
+  /**
+   * Competition batch solve — load all challenge manifests from a directory
+   * and solve them concurrently using the concurrency pool.
+   * Uses the pool's auto-fill executor + waitForAll() pattern.
+   */
+  async function batchSolve(
+    manifestDir: string,
+    _options?: { maxConcurrency?: number; timeoutMs?: number },
+  ): Promise<{
+    solved: Array<{ taskId: string; flag: string }>
+    failed: Array<{ taskId: string; reason: string }>
+    total: number
+  }> {
+    const dir = resolvePath(manifestDir)
+    if (!existsSync(dir)) {
+      throw new Error(`Manifest directory not found: ${dir}`)
+    }
+
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'))
+    if (files.length === 0) {
+      throw new Error(`No JSON manifest files found in: ${dir}`)
+    }
+
+    const challenges: QueuedChallenge[] = []
+    for (const file of files) {
+      try {
+        const raw = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as Record<string, unknown>
+        /* eslint-disable @typescript-eslint/no-base-to-string */
+        challenges.push({
+          id: String(raw.id ?? file.replace('.json', '')),
+          title: String(raw.title ?? raw.id ?? file),
+          category: String(raw.category ?? 'misc'),
+          description: String(raw.description ?? ''),
+          flagPattern: raw.flagPattern ? String(raw.flagPattern) : undefined,
+          priority: challenges.length === 0 ? 10 : 0,
+        })
+        /* eslint-enable @typescript-eslint/no-base-to-string */
+      } catch {
+        // skip invalid manifests
+      }
+    }
+
+    if (challenges.length === 0) {
+      throw new Error(`No valid challenge manifests found in: ${dir}`)
+    }
+
+    // Sort: easy/predictable categories first (misc, encoding) → harder later
+    const easyCategories = ['misc', 'encoding', 'forensics']
+    challenges.sort((a, b) => {
+      const aEasy = easyCategories.includes(a.category) ? 0 : 1
+      const bEasy = easyCategories.includes(b.category) ? 0 : 1
+      return aEasy - bEasy
+    })
+
+    concurrencyPool.addChallenges(challenges)
+    concurrencyPool.spawnNext()
+
+    // Wait for all tasks to complete (pool auto-fills)
+    await concurrencyPool.waitForAll()
+
+    // Collect results
+    const solved: Array<{ taskId: string; flag: string }> = []
+    const failed: Array<{ taskId: string; reason: string }> = []
+
+    for (const handle of concurrencyPool.getCompletedHandles()) {
+      if (handle.status === 'solved') {
+        solved.push({ taskId: handle.challenge.id, flag: handle.foundFlag ?? 'unknown' })
+      } else {
+        failed.push({
+          taskId: handle.challenge.id,
+          reason: handle.status === 'failed' ? 'execution failed' : 'unknown',
+        })
+      }
+    }
+
+    return {
+      solved,
+      failed,
+      total: challenges.length,
+    }
+  }
+
   // Microtask yield so the resolved promise fires after the current tick —
   // see doc-comment on `createCTFTaskRuntime`. Real work above has no awaits.
   await Promise.resolve()
@@ -446,6 +606,8 @@ export async function createCTFTaskRuntime(
     solverPortfolio: portfolio,
     toolVisibilityPolicy,
     trajectoryRecorder,
+    concurrencyPool,
+    batchSolve,
     getState: () => orchestrator.getState(),
     async cancel(reason: string): Promise<void> {
       await orchestrator.cancel(reason)
