@@ -507,7 +507,7 @@ ONEShot COMMANDS (six_goal §十四)
     }
     const client = deps.createClient
       ? deps.createClient(apiKey ?? '', baseURL)
-      : new OpenAI({ apiKey: apiKey ?? '', baseURL, timeout: 120_000, maxRetries: 5 })
+      : new OpenAI({ apiKey: apiKey ?? '', baseURL, timeout: parseInt(env['OVOGO_LLM_TIMEOUT_MS'] ?? '120000', 10) || 120_000, maxRetries: parseInt(env['OVOGO_LLM_MAX_RETRIES'] ?? '5', 10) || 5 })
 
     const renderer = deps.createRenderer
       ? deps.createRenderer()
@@ -586,7 +586,7 @@ async function runBatchCommand(
     }
   }
 
-  const client = new OpenAI({ apiKey, baseURL, timeout: 120_000, maxRetries: 5 })
+  const client = new OpenAI({ apiKey, baseURL, timeout: parseInt(env['OVOGO_LLM_TIMEOUT_MS'] ?? '120000', 10) || 120_000, maxRetries: parseInt(env['OVOGO_LLM_MAX_RETRIES'] ?? '5', 10) || 5 })
   const { Renderer } = await import('../src/ui/renderer.js')
 
   const runtime = await createCTFTaskRuntime({
