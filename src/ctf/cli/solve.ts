@@ -261,7 +261,19 @@ export async function runSolveCommand(
       .map((m) => m[0])
       .filter((s) => {
         const inner = s.replace(/^(?:flag|picoCTF|ctf)[({]/, '').replace(/[)}]$/, '')
-        return inner.length > 0 && inner !== '...' && inner !== '..' && !/^\.+$/.test(inner)
+        return (
+          inner.length > 0 &&
+          inner !== '...' &&
+          inner !== '..' &&
+          !/^\.+$/.test(inner) &&
+          // Reject placeholders with 4+ repeated `x` characters — CTF
+          // source code commonly uses "xxxxxxxx" / "XXXXXXXX" as a blank
+          // slot the solver is supposed to fill in. The LLM often echoes
+          // the literal placeholder back when it doesn't compute the
+          // dynamic part. (Note: a single-char inner like "p" for
+          // picoCTF{p} is intentionally NOT rejected — see misc-17.)
+          !/x{4,}/i.test(inner)
+        )
       })
     if (flagFromFindings) flagCandidates.unshift(flagFromFindings)
     const flag = flagCandidates.length > 0
@@ -312,13 +324,14 @@ function getProfileForCategory(category: string): string {
     web: 'web',
     pcap: 'traffic',
     traffic: 'traffic',
-    // §Round-4 — misc gets the orchestrator profile (Read, Glob, Grep,
-    // WebFetch, handoff_request) rather than triage. Triage is for
-    // read-only heuristics and denies the execution tools needed to
-    // actually solve crypto / encoding / math challenges.
-    misc: 'orchestrator',
+    // §Round-5 — misc challenges frequently need Bash / file / strings /
+    // python3 to inspect binaries or run conversion scripts. The
+    // orchestrator profile denies execution tools, leaving the LLM
+    // unable to solve anything. Route misc to the triage profile which
+    // DOES permit Bash.
+    misc: 'triage',
   }
-  return profileMap[category] || 'orchestrator'
+  return profileMap[category] || 'triage'
 }
 
 /**
@@ -372,6 +385,72 @@ const CATEGORY_HINTS: Record<string, string> = {
     'strings on the capture; grep for `flag{` and `picoCTF{` literals.',
   misc: 'Hint: this is a misc challenge. Read the description carefully; ' +
     'the answer often involves encoding, conversion, or math.',
+}
+
+/**
+ * §Round-6 — additional hints triggered by keywords in the challenge
+ * description. These cover "twisty" patterns the LLM has historically
+ * failed on when left to its own devices:
+ *   - "small exponent" / "small e" / "barely larger than N" → Cube Root
+ *     attack on RSA (Håstad's broadcast / classic Hastad).
+ *   - "the numbers" / "what do they mean" → A1Z26 alphabet substitution
+ *     (1=A, 2=B, ... 26=Z). Common in misc.
+ *   - "fernet" / "Fernet" / "urlsafe_b64" → Fernet uses URL-safe base64
+ *     (NOT standard base64) for the key. `cryptography.fernet.Fernet()`
+ *     will reject standard base64 keys.
+ *   - "cert" / "csr" / "signing request" → `openssl req -in file.csr -text`
+ *     reveals the embedded Common Name (CN) which often contains the flag.
+ *   - "matryoshka" / "nested" / "dolls" → nested archives or stego; try
+ *     binwalk -e then recursively unzip.
+ *   - "whitespace" / "spaces" / "tabs" → whitespace steganography
+ *     (encode bits in U+0020 SPACE vs U+2003 EM SPACE etc).
+ */
+function detectDescriptionHint(desc: string): string | null {
+  const d = desc.toLowerCase()
+  const hints: string[] = []
+  if (/small\s*(exponent|e\b)|barely\s*larger|just\s*barely|h[æa]stad|cube\s*root/.test(d))
+    hints.push(
+      'The description hints at a small RSA exponent (e.g. e=3). If ' +
+        'M^e < N, the ciphertext C is just M^3 with no modular reduction. ' +
+        'Compute the integer cube root of C (Python: `gmpy2.iroot(C, 3)` ' +
+        'or brute-force 8-byte chunks) to recover M directly.',
+    )
+  if (/the\s*numbers|what\s*do\s*(they|the\s*numbers)\s*mean|numbers\s*mason/.test(d))
+    hints.push(
+      'The numbers in the image almost certainly map A=1, B=2, ..., ' +
+        'Z=26 (A1Z26). The decoded flag is usually LOWERCASE only (no ' +
+        'camel-case). Apply the mapping and wrap the result in ' +
+        'picoCTF{...} preserving the lowercase form.',
+    )
+  if (/fernet|urlsafe_b64|url[- ]safe\s*base64/.test(d))
+    hints.push(
+      'Fernet keys must be URL-safe base64 (using - and _), NOT ' +
+        'standard base64 (which uses + and /). Python Fernet will throw ' +
+        '`InvalidToken` if you pass standard base64 — encode the key with ' +
+        '`base64.urlsafe_b64encode` not `base64.b64encode`.',
+    )
+  if (/\b(csr|certificate\s*signing\s*request|x509|cert\.pem|signing\s*request)\b/.test(d))
+    hints.push(
+      '`openssl req -in file.csr -text -noout` dumps the full CSR ' +
+        'including Common Name / Subject — the flag is usually in the CN.',
+    )
+  if (/matryoshka|nested|dolls|nesting/.test(d))
+    hints.push(
+      'The image likely contains a hidden file appended (binwalk -e) ' +
+        'or has a smaller image nested inside (exiftool / unzip / 7z). ' +
+        'Extract recursively.',
+    )
+  if (/whitespace|spaces?\s+steg|all\s*blank/.test(d))
+    hints.push(
+      'Whitespace steganography: treat each space variant (U+0020, ' +
+        'U+2003, U+2002, U+200B, etc.) as a bit. Read the file as UTF-8 ' +
+        'bytes, classify each, and decode.',
+    )
+  if (/\bnumbers?\b.*\bdecipher|decipher.*\bnumbers/.test(d) && hints.length === 0)
+    hints.push(
+      'Try simple A1Z26 substitution (1=A, ..., 26=Z) or ROT13.',
+    )
+  return hints.length === 0 ? null : 'Domain-specific hints:\n- ' + hints.join('\n- ')
 }
 
 function readAttachment(manifest: SolveBenchManifest, challengeDir: string, name: string): string | null {
@@ -445,7 +524,13 @@ async function extractFlagFromFindings(challengeDir: string): Promise<string | n
   }
   const filtered = candidates.filter((s) => {
     const inner = s.replace(/^(?:flag|picoCTF|ctf)[({]/, '').replace(/[)}]$/, '')
-    return inner.length > 0 && inner !== '...' && inner !== '..' && !/^\.+$/.test(inner)
+    return (
+      inner.length > 0 &&
+      inner !== '...' &&
+      inner !== '..' &&
+      !/^\.+$/.test(inner) &&
+      !/x{4,}/i.test(inner)
+    )
   })
   if (filtered.length === 0) return null
   return filtered.reduce((best, cur) => (cur.length > best.length ? cur : best))
@@ -483,11 +568,14 @@ function planSolveDispatch(
   const forceWorkflow = process.env['SOLVEBENCH_FORCE_WORKFLOW'] === '1'
 
   if (!forceWorkflow) {
+    const catHint = CATEGORY_HINTS[manifest.category]
+    const descHint = detectDescriptionHint(manifest.description)
+    const combinedHint = [catHint, descHint].filter(Boolean).join('\n\n')
     return {
       mode: 'chat',
       reason: `LLM chat-mode (default since Round-4; category=${manifest.category} id=${manifest.id})`,
       profileId,
-      categoryHint: CATEGORY_HINTS[manifest.category],
+      categoryHint: combinedHint || undefined,
     }
   }
 
