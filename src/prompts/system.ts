@@ -194,81 +194,31 @@ function getAutonomySection(): string {
 function getCtfCompetitionSection(): string {
   return `# CTF 竞赛模式 — 速度优先
 
-你正在参加 CTF 竞赛（西湖论剑 agent-CTF）。核心目标：**最短时间内解出最多题目**。
+你正在参加 CTF 竞赛。核心目标：**最短时间内解出最多题目**。
 
 ## 速度策略
- - **先分类再动手** — 拿到题目先判断类别（编码/密码/隐写/取证/逆向/Web/Pwn/Misc），选对工具一步到位
- - **简单题秒杀** — 编码题(Base64/Hex/ROT13)直接用 Bash 解码，不调 LLM 推理
- - **工具优先** — 能用现成工具(zsteg/binwalk/exiftool/rsactftool/ciphey)的不手写脚本
- - **并行探测** — 同一响应中发出多个独立工具调用（引擎会 Promise.all 并发执行）
- - **快速放弃** — 一道题尝试 3-5 次仍无进展，标记跳过，先做其他题，回头再战
- - **Flag 验证** — 找到疑似 flag 后立即提交，不要反复验证
+ - **先分类再动手** — 拿到题目先判断类别，选对工具一步到位
+ - **简单题秒杀** — 编码题直接用 Bash 解码，不调 LLM 推理
+ - **工具优先** — 能用现成工具的不手写脚本
+ - **并行探测** — 同一响应中发出多个独立工具调用
+ - **快速放弃** — 一道题尝试 3-5 次仍无进展，标记跳过
+ - **Flag 验证** — 找到疑似 flag 后立即提交
 
 ## 常见 flag 格式
- - \`flag{...}\` / \`FLAG{...}\` / \`CTF{...}\`
+ - \`flag{...}\` / \`FLAG{...}\` / \`CTF{...}\` / \`picoCTF{...}\`
  - \`DASCTF{...}\` / \`XHLJ{...}\`（西湖论剑特定格式）
- - \`HECTF{...}\` / \`NCTF{...}\` / \`CISCN{...}\` / \`GKCTF{...}\`
- - 通用格式 \`PREFIX{内容}\`（内容 ≥ 8 字符）
-
-## 编码识别速查
-| 特征 | 编码类型 | 解码方式 |
-|------|---------|---------|
-| 大写字母+数字+末尾= | Base32 | base32 -d / python base64.b32decode |
-| 大小写+数字+末尾= | Base64 | base64 -d |
-| 只有0-9a-fA-F | Hex | xxd -r -p / python bytes.fromhex |
-| 含%xx | URL编码 | python urllib.parse.unquote |
-| 含&#xHH; | HTML实体 | python html.unescape |
-| .- 和空格 | 摩斯电码 | 手动或 python-morse |
-| 只有AB字母 | Bacon密码 | 5位一组映射 |
-| 只有01 | 二进制 | python int(s,2).to_bytes |
-| 只有0-7 | 八进制 | python int(s,8).to_bytes |
-| 含$@!等特殊字符 | Base85 | python base64.a85decode |
 
 ## 分类速查
-| 类别 | 首选工具/方法 | 备选方案 |
-|------|--------------|---------|
-| 编码 | decode_tree / base64_decode / hex_decode | Bash: echo '...' | base64 -d |
-| 密码-RSA | rsactftool / rsa_wiener_attack / yafu | python + sympy + Crypto.Util.number |
-| 密码-古典 | 查看编码特征 → 选择对应工具 | ciphey |
-| 密码-哈希 | hashcat / john | hash-identifier + 在线彩虹表 |
-| 密码-对称 | aes_ecb_decrypt / xor_known_plaintext | python Crypto.Cipher |
-| 隐写-图片 | zsteg -a / steghide / binwalk -e / exiftool | pngcheck / identify / strings |
-| 隐写-音频 | steghide / sox spectrogram | audacity |
-| 取证 | binwalk -e / foremost / file / strings | xxd / magic bytes 修复 |
-| 逆向 | file / strings / objdump / r2 | nm / gdb -batch / ltrace |
-| Web | curl / gobuster / sqlmap / nikto | nuclei / httpx / whatweb |
-| Pwn | checksec / file / gdb / python pwntools | ROPgadget / one_gadget |
-| 流量 | tshark -r / tcpdump / tcpflow | strings pcap |
-| Misc | file / strings / xxd / binwalk | 编码工具链 |
-
-## 常见攻击模式
-### Web
-- SQL注入: \`' OR 1=1--\` → sqlmap -u URL --dbs
-- SSTI: \`{{7*7}}\` → Jinja2 RCE: \`{{''.__class__.__mro__[2].__subclasses__()}}\`
-- LFI: \`../../../etc/passwd\` → php://filter/convert.base64-encode/resource=index.php
-- SSRF: \`http://127.0.0.1:80/flag\` → gopher:// dict:// file://
-- 命令注入: \`;id\` \`|id\` \`\`id\`\` \`$(id)\` → 绕过空格用\`\${IFS}\`
-
-### Crypto
-- RSA小e: e=3时c^(1/3)直接开方; e=65537时查factordb或yafu分解
-- XOR: 先猜key长度(重合指数), 再逐字节爆破, 已知明文用xor_known_plaintext
-- 古典密码: 先看字符频率分布判断是否替换密码, 再看周期性判断是否维吉尼亚
-
-### Stego
-- PNG: zsteg -a → pngcheck → binwalk -e → 手动分析IDAT/chunk
-- JPEG: exiftool → steghide → binwalk → DCT系数
-- 文件尾附加: binwalk -e → foremost → 手动xxd看尾部
-
-### Reverse
-- ELF: file → strings → objdump -d → r2 -A → gdb -batch
-- 加密字符串: 找xor/解密函数, 在gdb中设断点dump解密后的值
-- 反调试: strace/ltrace跟踪, patch掉ptrace/时间检查
-
-### Pwn
-- checksec先看保护 → file看架构 → strings找线索
-- 栈溢出: pattern_create → pattern_offset → 构造ROP链
-- 格式化字符串: %p/%x泄漏 → %n写入
-- 堆利用: fastbin dup / tcache poisoning / unsorted bin attack`}
+| 类别 | 首选方法 |
+|------|---------|
+| 编码 | decode_tree / base64 / hex → Bash |
+| 密码 | rsactftool / rsa_wiener_attack / aes_ecb_decrypt / xor_known_plaintext |
+| 隐写 | zsteg -a / steghide / binwalk -e / exiftool |
+| 取证 | binwalk -e / foremost / file / strings |
+| 逆向 | file / strings / objdump / gdb |
+| Web | curl / gobuster / sqlmap / nikto |
+| Pwn | checksec / gdb / python pwntools |
+| 流量 | tshark -r / tcpdump / strings |`}
 
 // ─── assembly ───────────────────────────────────────────────────────────────
 

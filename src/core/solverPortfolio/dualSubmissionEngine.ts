@@ -55,14 +55,25 @@ export class DualSubmissionEngine {
       return CTFPlatformAdapter.mapToSubmissionResponse(res)
     }
 
-    // Manual Verification Queue Protocol
+    return this.enqueueManual(req, discrimination.confidence)
+  }
+
+  /**
+   * Submit multiple flag candidates concurrently. In auto mode, all
+   * valid candidates are submitted in parallel via Promise.allSettled.
+   */
+  public async processCandidates(reqs: SubmissionRequest[]): Promise<SubmissionResponse[]> {
+    return Promise.all(reqs.map((req) => this.processCandidate(req)))
+  }
+
+  private enqueueManual(req: SubmissionRequest, confidence: number): SubmissionResponse {
     const manualRecord: ManualCandidateRecord = {
       id: `cand_${req.taskId}_${Date.now()}`,
       taskId: req.taskId,
       candidateValue: req.candidateValue,
-      confidence: discrimination.confidence,
+      confidence,
       source: req.solverId,
-      formattedMarkdown: `### 🚩 [CONFIRMED FLAG CANDIDATE]\n- **Task ID**: \`${req.taskId}\`\n- **Candidate Flag**: \`${req.candidateValue}\`\n- **Confidence**: \`${(discrimination.confidence * 100).toFixed(0)}%\`\n- **Provenance**: \`${req.solverId}\` (Model: ${req.modelId})`,
+      formattedMarkdown: `### 🚩 [CONFIRMED FLAG CANDIDATE]\n- **Task ID**: \`${req.taskId}\`\n- **Candidate Flag**: \`${req.candidateValue}\`\n- **Confidence**: \`${(confidence * 100).toFixed(0)}%\`\n- **Provenance**: \`${req.solverId}\` (Model: ${req.modelId})`,
       timestamp: new Date().toISOString(),
     }
 

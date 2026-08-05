@@ -222,12 +222,6 @@ export class ChallengeSwarm {
   public async cancelAllActive(reason: string): Promise<void> {
     const handles = Array.from(this.activeHandles.values())
     this.activeHandles.clear()
-    for (const handle of handles) {
-      try {
-        await handle.cancel(reason)
-      } catch {
-        /* best-effort */
-      }
-    }
+    await Promise.all(handles.map((handle) => handle.cancel(reason).catch(() => {})))
   }
 }

@@ -25,6 +25,13 @@ export class StagnationDetector {
       }
     }
 
+    if (signals.millisecondsWithoutNewEvidence >= 600_000) {
+      return {
+        action: 'pause',
+        reason: `No new evidence for ${Math.round(signals.millisecondsWithoutNewEvidence / 1000)}s. Hard timeout — pausing challenge.`,
+      }
+    }
+
     if (signals.repeatedAttemptFingerprints >= 5 || signals.repeatedActionFamilies >= 5) {
       return {
         action: 'spawn_branch',
@@ -39,7 +46,7 @@ export class StagnationDetector {
       }
     }
 
-    if (signals.cyclesWithoutNewEvidence >= 4 || signals.consecutiveToolFailures >= 3) {
+    if (signals.cyclesWithoutNewEvidence >= 2 || signals.consecutiveToolFailures >= 3) {
       return {
         action: 'switch_model',
         targetModelId: 'escalated-model-tier',

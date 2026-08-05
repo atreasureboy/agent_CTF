@@ -51,6 +51,7 @@ export class CTFPlatformAdapter {
           Authorization: `Bearer ${this.config.apiToken}`,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
       })
 
       if (res.status === 429) {
@@ -98,6 +99,12 @@ export class CTFPlatformAdapter {
         message: `[CTFd Unknown Status] ${status}: ${message}`,
       }
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'TimeoutError') {
+        return {
+          verdict: 'error',
+          message: 'CTFd submission timed out after 10s.',
+        }
+      }
       const errMsg = err instanceof Error ? err.message : String(err)
       return {
         verdict: 'error',

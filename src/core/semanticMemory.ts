@@ -47,7 +47,7 @@ function sourceRank(source: string): number {
 }
 
 function contentHash(content: string): string {
-  return createHash('md5').update(content).digest('hex').slice(0, 12)
+  return createHash('sha256').update(content).digest('hex').slice(0, 12)
 }
 
 export class SemanticMemory {

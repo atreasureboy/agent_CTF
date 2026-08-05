@@ -25,11 +25,11 @@ import {
 
 describe('SubmissionCooldown (A1)', () => {
   it('returns the next delay per the schedule', () => {
-    expect(COOLDOWN_SCHEDULE_SEC).toEqual([0, 30, 120, 300, 600])
+    expect(COOLDOWN_SCHEDULE_SEC).toEqual([0, 5, 15, 30, 60])
     expect(nextCooldownDelaySec(0)).toBe(0)
-    expect(nextCooldownDelaySec(1)).toBe(30)
-    expect(nextCooldownDelaySec(2)).toBe(120)
-    expect(nextCooldownDelaySec(99)).toBe(600)
+    expect(nextCooldownDelaySec(1)).toBe(5)
+    expect(nextCooldownDelaySec(2)).toBe(15)
+    expect(nextCooldownDelaySec(99)).toBe(60)
   })
 
   it('throttles until the cooldown window passes', () => {

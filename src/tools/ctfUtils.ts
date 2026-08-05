@@ -3,13 +3,16 @@ import { TOOL_METADATA } from '../core/toolMetadata.js'
 import type { CTFToolMetadata } from '../core/toolDefinition.js'
 import { createDecipheriv } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
-import { execSync } from 'node:child_process'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execAsync = promisify(exec)
 
 function makeUtilTool(
   name: string,
   description: string,
   parameters: unknown,
-  handler: (input: Record<string, unknown>) => ToolResult,
+  handler: (input: Record<string, unknown>) => ToolResult | Promise<ToolResult>,
   _metadata: CTFToolMetadata,
 ): Tool {
   return {
@@ -18,7 +21,6 @@ function makeUtilTool(
       type: 'function',
       function: { name, description, parameters },
     } as ToolDefinition,
-    // eslint-disable-next-line @typescript-eslint/require-await
     execute: async (input) => handler(input),
     concurrencySafe: true,
   }
@@ -1355,7 +1357,7 @@ function unzipInnerTool(): Tool {
       },
       required: ['filePath'],
     },
-    (input) => {
+    async (input) => {
       try {
         const filePath = String((input.filePath as string) ?? '').trim()
         const innerName = String((input.innerName as string) ?? 'secret.txt')
@@ -1365,11 +1367,10 @@ function unzipInnerTool(): Tool {
         if (!existsSync(filePath)) {
           return { isError: true, content: `unzip_inner: filePath not found: ${filePath}` }
         }
-        // Shell out to the platform unzip. Adds no new dep; works on
-        // any *nix or WSL env that has unzip(1) installed.
-        const stdout = execSync(`unzip -p ${JSON.stringify(filePath)} ${JSON.stringify(innerName)}`, {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        }).toString('utf-8')
+        const { stdout } = await execAsync(`unzip -p ${JSON.stringify(filePath)} ${JSON.stringify(innerName)}`, {
+          encoding: 'utf-8',
+          timeout: 10_000,
+        })
         return {
           isError: false,
           content: JSON.stringify({
@@ -1661,7 +1662,7 @@ function webFetchTool(): Tool {
       },
       required: ['url'],
     },
-    (input) => {
+    async (input) => {
       try {
         const url = String((input.url as string) ?? '').trim()
         const method = (String((input.method as string) ?? 'GET').toUpperCase() === 'POST') ? 'POST' : 'GET'
@@ -1669,10 +1670,10 @@ function webFetchTool(): Tool {
         if (!url) return { isError: true, content: 'web_fetch: url is required' }
         const args = ['-sS', '-X', method, url]
         if (method === 'POST' && body) args.push('-d', body)
-        const stdout = execSync(`curl ${args.map((a) => JSON.stringify(a)).join(' ')}`, {
-          stdio: ['ignore', 'pipe', 'pipe'],
+        const { stdout } = await execAsync(`curl ${args.map((a) => JSON.stringify(a)).join(' ')}`, {
+          encoding: 'utf-8',
           timeout: 30_000,
-        }).toString('utf-8')
+        })
         return {
           isError: false,
           content: JSON.stringify({ url, method, body: stdout }, null, 2),

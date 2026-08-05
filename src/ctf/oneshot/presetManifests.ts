@@ -12,6 +12,10 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['crypto', 'default'],
+    inputMatchers: {
+      taskTags: ['rsa', 'cipher', 'modulus', 'n=', 'e=', 'public exponent', 'wiener'],
+      taskCategories: ['crypto'],
+    },
     runner: {
       type: 'process',
       command: ['python3', 'oneshot/scripts/crypto_rsa_small_e.py', '--n', '${n}', '--e', '${e}', '--c', '${c}'],
@@ -45,6 +49,10 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['crypto', 'default'],
+    inputMatchers: {
+      taskTags: ['encoding', 'cipher', 'base64', 'decode', 'encoded', 'rot13', 'hex', 'base32', 'base85'],
+      taskCategories: ['crypto'],
+    },
     runner: {
       type: 'process',
       command: ['python3', 'oneshot/scripts/crypto_cipher_cascade.py', '--input', '${encoded}'],
@@ -78,6 +86,11 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['forensics', 'image-stego', 'default'],
+    inputMatchers: {
+      extensions: ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.tif'],
+      mimeTypes: ['image/'],
+      taskTags: ['image', 'photo', 'picture', 'stego', 'exif', 'metadata'],
+    },
     runner: {
       type: 'process',
       command: ['exiftool'],
@@ -110,6 +123,10 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['reverse', 'pwn', 'default'],
+    inputMatchers: {
+      extensions: ['.exe', '.dll', '.so', '.bin', '.out', '.o', '.class'],
+      taskTags: ['binary', 'reverse', 'executable', 'elf', 'pe', 'compiled'],
+    },
     runner: {
       type: 'process',
       command: ['strings', '-n', '6'],
@@ -142,6 +159,10 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['web', 'default'],
+    inputMatchers: {
+      taskTags: ['web', 'http', 'url', 'website', 'endpoint', 'server'],
+      taskCategories: ['web'],
+    },
     runner: {
       type: 'process',
       command: ['curl', '-s'],
@@ -175,6 +196,11 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['forensics', 'image-stego', 'default'],
+    inputMatchers: {
+      extensions: ['.png', '.bmp'],
+      mimeTypes: ['image/png', 'image/bmp'],
+      taskTags: ['stego', 'lsb', 'hidden', 'steganography', 'image'],
+    },
     runner: {
       type: 'process',
       command: ['python3', 'oneshot/scripts/image_stego_lsb.py', '--file', '${filePath}'],
@@ -192,7 +218,7 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
       flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|DASCTF\\{[^}]+\\}|XHLJ\\{[^}]+\\})'],
     },
     scheduling: {
-      costTier: 'fast',
+      costTier: 'medium',
       falsePositiveRisk: 'medium',
     },
   },
@@ -208,6 +234,10 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['forensics', 'reverse', 'default'],
+    inputMatchers: {
+      extensions: ['.txt', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.bin', '.zip', '.pcap', '.pcapng'],
+      taskTags: ['flag', 'forensics', 'file', 'attachment', 'download'],
+    },
     runner: {
       type: 'process',
       command: ['python3', 'oneshot/scripts/general_strings_flag.py', '--file', '${filePath}'],
@@ -241,6 +271,10 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     maturity: 'stable',
     enabledByDefault: true,
     allowedProfiles: ['forensics', 'default'],
+    inputMatchers: {
+      extensions: ['.bin', '.img', '.fw', '.rom', '.dump', '.raw', '.ubi', '.squashfs'],
+      taskTags: ['firmware', 'embedded', 'binwalk', 'extract', 'carve'],
+    },
     runner: {
       type: 'process',
       command: ['python3', 'oneshot/scripts/forensics_binwalk_extract.py', '--file', '${filePath}'],

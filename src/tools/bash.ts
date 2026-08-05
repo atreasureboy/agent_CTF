@@ -385,7 +385,7 @@ export class BashTool implements Tool {
           cwd: context.cwd,
           timeout: timeoutMs,
           maxBuffer: 50 * 1024 * 1024,
-          env: { ...process.env, TERM: 'dumb' },
+          env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG, TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP, TERM: 'dumb' },
           shell: SHELL,
         },
         (err, stdout, stderr) => {

@@ -308,7 +308,9 @@ export function evaluateCommandPolicy(input: CommandPolicyInput): CommandPolicyR
   // would pass the first token (`echo`) and bypass deniedCommands.
   // We extract every executable from the command and apply the
   // denied/allowed checks against each.
-  const allExecs = allExecutables(cmd)
+  const allExecs = parse.segments
+    .map((s) => s.firstExecutable)
+    .filter((e): e is string => Boolean(e))
   for (const exec of allExecs) {
     if (exec === first) continue // already checked above
     if (denied && denied.includes(exec)) {

@@ -37,6 +37,17 @@ export interface FlagDiscriminationResult {
   canCancelOtherSolvers: boolean
 }
 
+const patternCache = new Map<string, RegExp>()
+
+function cachedPattern(source: string): RegExp {
+  let cached = patternCache.get(source)
+  if (!cached) {
+    cached = new RegExp(source)
+    patternCache.set(source, cached)
+  }
+  return cached
+}
+
 export class FlagDiscriminator {
   public static discriminate(input: FlagDiscriminationInput): FlagDiscriminationResult {
     const rawVal = input.value || input.candidateValue || ''
@@ -91,7 +102,7 @@ export class FlagDiscriminator {
 
     const expectedPat = input.expectedPattern || input.challengePattern
     if (expectedPat) {
-      const pattern = typeof expectedPat === 'string' ? new RegExp(expectedPat) : expectedPat
+      const pattern = typeof expectedPat === 'string' ? cachedPattern(expectedPat) : expectedPat
 
       if (!pattern.test(val)) {
         return {

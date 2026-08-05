@@ -435,7 +435,7 @@ export class ToolBroker {
         // Matches `flag{...}`, `flag(...)`, and `flag(...}` (open-paren /
         // close-brace — forensics2 variant).
         const flagMatch = result.content.match(
-          /flag\{[^}]+\}|flag\([^)]*\)|flag\([^}]*\}/,
+          /flag\{[^}]+\}|FLAG\{[^}]+\}|CTF\{[^}]+\}|picoCTF\{[^}]+\}|flag\([^)]*\)|flag\([^}]*\}/i,
         )
         if (process.env.OVOGO_DEBUG_TOOL_BROKER) {
           // eslint-disable-next-line no-console
@@ -472,7 +472,7 @@ export class ToolBroker {
         typeof result.content === 'string' &&
         result.content.length > inlineMax
       ) {
-        const meta: ArtifactMeta = this.opts.artifactStore.writeSync(
+        const meta: ArtifactMeta = await this.opts.artifactStore.write(
           {
             taskId: ctx.taskId,
             producerAgentId: ctx.agentId,
@@ -497,7 +497,7 @@ export class ToolBroker {
         result.content.length > inlineMax
       ) {
         // Inline mode but content exceeded threshold — convert opportunistically.
-        const meta: ArtifactMeta = this.opts.artifactStore.writeSync(
+        const meta: ArtifactMeta = await this.opts.artifactStore.write(
           {
             taskId: ctx.taskId,
             producerAgentId: ctx.agentId,

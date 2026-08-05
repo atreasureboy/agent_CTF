@@ -10,11 +10,11 @@ export interface ModelCircuitBreakerPolicy {
 }
 
 export const DEFAULT_CIRCUIT_BREAKER_POLICY: ModelCircuitBreakerPolicy = {
-  maxConsecutiveSchemaFailures: 2,
-  maxConsecutiveToolArgumentFailures: 2,
-  maxTimeoutsPerWindow: 3,
-  maxRepeatedLoops: 5,
-  cooldownMs: 60000,
+  maxConsecutiveSchemaFailures: 5,
+  maxConsecutiveToolArgumentFailures: 3,
+  maxTimeoutsPerWindow: 5,
+  maxRepeatedLoops: 8,
+  cooldownMs: 5000,
 }
 
 export class ModelCircuitBreaker {
