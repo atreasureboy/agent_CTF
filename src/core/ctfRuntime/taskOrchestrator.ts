@@ -608,8 +608,11 @@ export class CTFTaskOrchestrator {
           // §C4 — do NOT `await` a nested reasoning pass here. Awaiting
           // would deadlock against the outer reasoning pass that
           // invoked runWorkflow() (the same task lock is held in both
-          // directions). Fire-and-forget — the executor emits the
-          // REASONING_FAILED event if anything goes wrong.
+          // directions). Fire-and-forget with a diagnostic catch —
+          // the executor emits a DIAGNOSTIC_ADDED event (not
+          // REASONING_FAILED) so the task does not enter a degraded
+          // state just because post-workflow reasoning could not
+          // reschedule.
           this.processReasoningInput({
             source: 'workflow',
             runContext: { workflowRunId: id },
@@ -627,10 +630,10 @@ export class CTFTaskOrchestrator {
             ],
           }).catch((err: unknown) => {
             this.safeApply({
-              type: 'REASONING_FAILED',
+              type: 'DIAGNOSTIC_ADDED',
+              kind: 'workflow_projection_dropped',
               source: 'workflow',
-              workflowRunId: id,
-              error: { message: err instanceof Error ? err.message : String(err) },
+              message: `post-workflow reasoning failed for ${workflowId}: ${err instanceof Error ? err.message : String(err)}`,
               at: Date.now(),
             })
           })

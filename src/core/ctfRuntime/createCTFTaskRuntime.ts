@@ -255,8 +255,8 @@ export async function createCTFTaskRuntime(
         }
       }
     }
-  } else if (input.client || input.modelConfig) {
-    const provider = new OpenAICompatibleProvider(input.client!)
+  } else if (input.client) {
+    const provider = new OpenAICompatibleProvider(input.client)
     providersMap.set(provider.id, provider)
 
     const modelName = input.modelConfig?.model ?? 'gpt-4o'
@@ -637,28 +637,30 @@ export async function createCTFTaskRuntime(
         if (!profileId) break
 
         const taskId = `task_${challenge.id}_${Date.now()}`
-        const taskRuntime = await createCTFTaskRuntime({
-          cwd: input.cwd,
-          profileId,
-          profile: input.profile,
-          contestScope: input.contestScope,
-          contestId: input.contestId,
-          taskId,
-          sessionsRoot: input.sessionsRoot,
-          client: input.client,
-          renderer: input.renderer,
-          modelConfig: input.modelConfig,
-          mode: input.mode,
-          challenge: {
-            description: challenge.description,
-            category: challenge.category,
-            flagPattern: challenge.flagPattern,
-          },
-          jobLimits: input.jobLimits,
-          maxConcurrency: 1,
-        })
+        let taskRuntime: Awaited<ReturnType<typeof createCTFTaskRuntime>> | undefined
 
         try {
+          taskRuntime = await createCTFTaskRuntime({
+            cwd: input.cwd,
+            profileId,
+            profile: input.profile,
+            contestScope: input.contestScope,
+            contestId: input.contestId,
+            taskId,
+            sessionsRoot: input.sessionsRoot,
+            client: input.client,
+            renderer: input.renderer,
+            modelConfig: input.modelConfig,
+            mode: input.mode,
+            challenge: {
+              description: challenge.description,
+              category: challenge.category,
+              flagPattern: challenge.flagPattern,
+            },
+            jobLimits: input.jobLimits,
+            maxConcurrency: 1,
+          })
+
           const flag = await attemptLlmSolve(taskRuntime, challenge)
           if (flag) {
             crossCache.recordSuccess(
@@ -682,7 +684,7 @@ export async function createCTFTaskRuntime(
           )
           crossCache.recordFailure(profileId)
         } finally {
-          await taskRuntime.dispose()
+          if (taskRuntime) await taskRuntime.dispose()
 
           // §Round-4 — Apply delay between retry attempts
           const delay = retryConfig.retryDelayMs

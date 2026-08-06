@@ -674,16 +674,22 @@ export class Dispatcher {
    *  a `ScopeDeniedError` rather than permit a private-IP SSRF. */
   private looksLikeNetworkTarget(arg: string): boolean {
     if (!arg) return false
-    // IPv4: 1.2.3.4
-    if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(arg)) return true
+    // IPv4: 1.2.3.4 (also catches octal like 0177.0.0.1)
+    if (/^\d{1,4}(\.\d{1,4}){3}(:\d+)?$/.test(arg)) return true
+    // Hex-encoded IPv4: 0x7f000001 → 127.0.0.1
+    if (/^0x[0-9a-fA-F]{8}$/.test(arg)) return true
+    // Decimal-encoded IPv4: 2130706433 → 127.0.0.1 (large integer)
+    if (/^\d{8,12}$/.test(arg) && Number(arg) <= 0xffffffff) return true
     // Bracketed IPv6: [::1]:443
     if (/^\[[0-9a-fA-F:]+\](:\d+)?$/.test(arg)) return true
     // Bare IPv6: ::1
     if (/^[0-9a-fA-F:]+$/.test(arg) && arg.includes(':')) return true
     // URL with scheme
     if (/^[a-z][a-z0-9+.-]*:\/\//.test(arg)) return true
-    // host:port or host
+    // host:port or host (qualified domain name)
     if (/^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(:\d+)?$/.test(arg)) return true
+    // localhost with optional port
+    if (/^localhost(:\d+)?$/i.test(arg)) return true
     return false
   }
 
