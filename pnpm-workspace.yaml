@@ -11,3 +11,9 @@
 # of npm sees a non-misleading config (an empty `packages:` would also
 # be valid; we set it explicitly to make the intent obvious).
 packages: []
+
+# pnpm 10 blocks dependency install scripts by default. esbuild (used by
+# tsx and vitest/vite) needs its postinstall to verify the platform
+# binary; explicitly approve it so fresh installs don't warn.
+onlyBuiltDependencies:
+  - esbuild

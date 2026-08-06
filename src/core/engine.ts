@@ -564,8 +564,7 @@ export class ExecutionEngine {
     const toolCallsMap = new Map<number, StreamingToolCall>()
     let firstToken = true
     let usage:
-      | { prompt_tokens: number; completion_tokens: number; total_tokens: number }
-      | undefined
+      { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
 
     try {
       for await (const chunk of stream) {

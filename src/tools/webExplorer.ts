@@ -6,12 +6,7 @@ const FETCH_TIMEOUT_MS = 30_000
 interface WebExplorerInput {
   url: string
   action:
-    | 'extract_js'
-    | 'extract_forms'
-    | 'extract_links'
-    | 'extract_apis'
-    | 'guess_paths'
-    | 'full_scan'
+    'extract_js' | 'extract_forms' | 'extract_links' | 'extract_apis' | 'guess_paths' | 'full_scan'
   commonPaths?: string[]
 }
 

@@ -68,13 +68,11 @@ export function createSolverSwarmExecutor(options: SolverSwarmOptions): Strategy
       try {
         type SwarmTaskResult = { memberId: string; res: ActionExecutionResult; index: number }
         const tasks: Array<Promise<SwarmTaskResult>> = members.map((m, i) =>
-          runMember(m, ctx, ac.signal, isFlagCheck).then(
-            (res): SwarmTaskResult => ({
-              memberId: m.id,
-              res,
-              index: i,
-            }),
-          ),
+          runMember(m, ctx, ac.signal, isFlagCheck).then((res): SwarmTaskResult => ({
+            memberId: m.id,
+            res,
+            index: i,
+          })),
         )
         // First resolve that has at least one flag-candidate draft wins.
         const winnerP = waitForWinner(tasks, ac)

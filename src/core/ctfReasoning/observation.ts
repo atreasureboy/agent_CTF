@@ -36,12 +36,7 @@ export type ObservationKind =
   | 'generic'
 
 export type ObservationSourceType =
-  | 'tool'
-  | 'workflow'
-  | 'oneshot'
-  | 'agent'
-  | 'specialist'
-  | 'manual'
+  'tool' | 'workflow' | 'oneshot' | 'agent' | 'specialist' | 'manual'
 
 export interface ObservationSource {
   type: ObservationSourceType

@@ -1,10 +1,5 @@
 export type ModelHealthStatus =
-  | 'healthy'
-  | 'degraded'
-  | 'circuit_open'
-  | 'half_open'
-  | 'quota_limited'
-  | 'unavailable'
+  'healthy' | 'degraded' | 'circuit_open' | 'half_open' | 'quota_limited' | 'unavailable'
 
 export interface ModelHealthRecord {
   modelId: string

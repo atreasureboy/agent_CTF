@@ -32,12 +32,7 @@ export type EvidenceKind =
   | 'generic'
 
 export type EvidenceProducerType =
-  | 'parser'
-  | 'workflow'
-  | 'oneshot'
-  | 'agent'
-  | 'specialist'
-  | 'manual'
+  'parser' | 'workflow' | 'oneshot' | 'agent' | 'specialist' | 'manual'
 
 export interface EvidenceProducer {
   type: EvidenceProducerType

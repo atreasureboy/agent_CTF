@@ -10,11 +10,7 @@ export interface CTFdConfig {
 }
 
 export type PlatformVerdict =
-  | 'accepted'
-  | 'incorrect'
-  | 'already_submitted'
-  | 'rate_limited'
-  | 'error'
+  'accepted' | 'incorrect' | 'already_submitted' | 'rate_limited' | 'error'
 
 export interface PlatformSubmissionResult {
   verdict: PlatformVerdict

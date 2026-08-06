@@ -16,10 +16,7 @@ import type { SuggestedAction } from './suggestedAction.js'
 export interface ToolSelectionDecision {
   allowed: boolean
   reason?:
-    | 'insufficient_evidence'
-    | 'already_completed'
-    | 'triage_exists'
-    | 'lower_value_alternative'
+    'insufficient_evidence' | 'already_completed' | 'triage_exists' | 'lower_value_alternative'
   alternativeId?: string
 }
 
