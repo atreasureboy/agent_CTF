@@ -1034,3 +1034,40 @@ SSH/网络上下文中的 OneShot 工具可能将这些形式作为连接目标�
 | `npx tsc --noEmit` | ✅ 0 errors                                     |
 | `npx vitest run`   | ✅ 92/94 pass, 764/765 tests (2 BOM 预存在失败) |
 | Competition tests  | ✅ 39/39 pass                                   |
+
+---
+
+## §21 · 第四次全面审计复核 — 2026-08-06 (v0.4.0)
+
+### 审计范围
+
+对当前 `main` 分支做端到端复核：`format:check` / `lint` / `build` / `test` 全量实跑 +
+CI 工作流静态审查 + 仓库卫生（secrets、tracked artifacts、LICENSE、README 一致性）。
+
+### 本轮发现与修复
+
+| #   | 严重级  | 发现                                                                                                                                                                                                   | 修复                                                                                                                                                                          |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 🔴 HIGH | `tests/phase16.test.ts §14` 超时失败（唯一红灯）：`bin/ovogogogo-ctf.ts` 在**模块导入期**即把仓库 `.env` 灌入 `process.env`，导致 hermetic CLI 测试拿到真实 API key，走真实 LLM 网络调用，超 5s 超时。 | `.env` 自动加载器由模块作用域改为 `runCtfCli()` 内惰性执行，且当调用方注入 `deps.env` 时跳过；测试同时显式传 `env: { OPENAI_API_KEY: '' }` 保证与本机环境无关。819/819 全绿。 |
+| 2   | 🟠 MED  | CI `build` 的 `require()` 回归守卫会**误报**：`grep` 未限定文件类型，命中 `src/knowledge/web-exploits.md` 的示例代码与两处 `(no require('fs'))` 注释，真实 CI 会红灯。                                 | 守卫改为仅扫 `.ts/.js/.mjs`、跳过 `.d.ts` 与注释行、忽略 "no/without require" 措辞；本地复跑通过。                                                                            |
+| 3   | 🟠 MED  | `README` 声明 MIT 且 `package.json#files` 引用 `LICENSE`，但仓库**无 LICENSE 文件**。                                                                                                                  | 新增标准 MIT `LICENSE`（atreasureboy + contributors）。                                                                                                                       |
+| 4   | 🟡 LOW  | README badge "92 files passed" 与实测（94 文件 / 819 tests）不符。                                                                                                                                     | 更新为实测数。                                                                                                                                                                |
+| 5   | 🟡 LOW  | `AUDIT.md` 上一轮门禁表仍写 "92/94 pass, 764/765（2 BOM 预存在失败）"，但 BOM 已在 `5b935ae` 修复。                                                                                                    | 由本节实测数据覆盖（见下表）。                                                                                                                                                |
+
+### 安全与卫生复查（本轮实测）
+
+- `git ls-files` 无 `.env` / 密钥 / 上传脚本（均被 `.gitignore` 覆盖）✅
+- 全仓 secret 模式扫描：仅命中 `tests/redaction.test.ts` 等的**脱敏测试夹具**，无真实凭据 ✅
+- vendored 对比仓（`CAI`/`HackSynth`/`swe-agent`/…）未被 track，仅本地参考 ✅
+- `dist/`、`sessions/` 均 gitignore，不入库 ✅
+- `tsconfig.build.json` 已排除 `tests/`，产物不再混入测试代码 ✅
+
+### 当前质量门禁 (v0.4.0 实测)
+
+| 检查项                  | 结果                                               |
+| ----------------------- | -------------------------------------------------- |
+| `pnpm run format:check` | ✅ 全部符合 Prettier                               |
+| `pnpm run lint`         | ✅ 0 errors（304 type-safety warnings，已知/接受） |
+| `pnpm run build`        | ✅ 成功                                            |
+| `pnpm test`             | ✅ 94/94 files, 819/819 tests                      |
+| 仓库 secret 扫描        | ✅ 无真实凭据                                      |

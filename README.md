@@ -4,7 +4,7 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7%20strict-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-92%20files%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/Tests-94%20files%20%C2%B7%20819%20tests%20passed-brightgreen.svg)](#-quality--testing)
 [![Lint](https://img.shields.io/badge/ESLint-P0%20crash%20bugs%20fixed-success.svg)](#-quality--testing)
 [![Architecture](https://img.shields.io/badge/Architecture-Orchestrator%20%E2%86%92%20Specialists-orange.svg)](#-system-architecture)
 [![Prod Deps](https://img.shields.io/badge/Prod%20deps-3-blueviolet.svg)](#-technology-stack)
@@ -218,7 +218,7 @@ npx tsx bin/ovogogogo-ctf.ts --profile orchestrator "Analyze the provided pcap f
 
 `agent_CTF` maintains rigorous software engineering standards:
 
-- **92 Vitest Test Files**: 100% passing across unit, integration, and E2E scenarios.
+- **94 Vitest Test Files / 819 tests**: 100% passing across unit, integration, and E2E scenarios.
 - **ESLint Strict**: Adherence to TypeScript best practices.
 - **Prettier Formatted**: Consistent code style enforced via CI.
 

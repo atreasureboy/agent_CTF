@@ -31,8 +31,14 @@ import type {
   CTFTaskRuntime,
 } from '../src/core/ctfRuntime/createCTFTaskRuntime.js'
 
-// ── .env auto-loader (mirrors the main CLI's)
-{
+// ── .env auto-loader (mirrors the main CLI's).
+// Lazily invoked from runCtfCli() instead of at module scope: importing
+// this module (e.g. from tests) must not leak the local `.env` credentials
+// into process.env and turn hermetic CLI tests into real LLM calls.
+let __dotEnvLoaded = false
+function loadDotEnvIntoProcessEnv(): void {
+  if (__dotEnvLoaded) return
+  __dotEnvLoaded = true
   const __scriptDir = dirname(fileURLToPath(import.meta.url))
   const __projectRoot = resolve(__scriptDir, '..', '..')
   for (const dir of [process.cwd(), __projectRoot]) {
@@ -287,6 +293,7 @@ export async function runCtfCli(
 ): Promise<number> {
   const stdout = deps.stdout ?? process.stdout
   const stderr = deps.stderr ?? process.stderr
+  if (!deps.env) loadDotEnvIntoProcessEnv()
   const env = deps.env ?? process.env
 
   // Fast-path help/version (no arg parsing required).

@@ -743,6 +743,9 @@ describe('§4 — Abort chain', () => {
       {
         stdout: makeCollector(writes),
         stderr: makeCollector([]),
+        // Hermetic: no API key so the chat path fails fast instead of
+        // hitting a real LLM endpoint and timing out.
+        env: { OPENAI_API_KEY: '' },
       },
     )
     // --literal-flag becomes the task input; with no api key the chat

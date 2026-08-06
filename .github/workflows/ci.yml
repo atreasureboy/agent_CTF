@@ -58,9 +58,17 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
-      # Verify no require() in ESM source (regression guard)
+      # Verify no require() in ESM source (regression guard).
+      # Only scan .ts/.js/.mjs; skip doc-block/comment lines so knowledge
+      # markdown samples and `(no require('fs'))` comments never trip it.
       - run: |
-          if grep -rn "require(" src/ bin/ 2>/dev/null | grep -v "//.*require" | grep -v '"require"' | grep -v "'require'" | grep -v node_modules | grep -v "\.d\.ts"; then
+          hits=$(grep -rnE "require\(" src/ bin/ 2>/dev/null \
+            --include='*.ts' --include='*.js' --include='*.mjs' \
+            | grep -v '\.d\.ts' \
+            | grep -vE ':[0-9]+:\s*(\*|//|/\*)' \
+            | grep -vE '\b(no|without|never|avoid)\s+require' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
             echo "::error::CommonJS require() detected in ESM TypeScript source"
             exit 1
           fi
