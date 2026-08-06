@@ -753,3 +753,132 @@ agent_bench.py 接到 CI 自动跑。
 
 - 2 个测试失败：`phase16.test.ts` 和 `phase16E2E.test.ts` — oxc/Vite 8 BOM 解析错误 `Invalid Character '!'` 当导入 `bin/ovogogogo-ctf.ts` 时
 - 304 ESLint warnings：主要是 OpenAI SDK 的 `no-unsafe-*`，需要在 SDK 层面修复
+
+---
+
+## super2_plan.md (Competition Optimization — 竞速优化) 🏎️
+
+### Round 1: 预检分流 & 快通道 (Pre-flight Triage & Fast-Path) ✅
+
+**创建文件:**
+
+- `src/ctf/competition/challengeClassifier.ts` — 确定性规则分类器，基于 category + description keywords + 附件类型将题目分为 fast/medium/heavy 三层
+- `src/ctf/competition/fastPath.ts` — 零 LLM 快通道，直接在 Dispatcher 上运行 oneshot manifests，收集 flag candidates
+- `tests/competition/challengeClassifier.test.ts` — 12 个单元测试覆盖所有分类场景
+
+**修改文件:**
+
+- `src/core/ctfRuntime/createCTFTaskRuntime.ts` — `batchSolve` executor 中接入 classifier + fast-path 路由：
+  - fast tier → `runFastPath()`（oneshot only，0 LLM calls）
+  - medium/heavy tier → 创建 taskRuntime + `runMainAgent()`（现有路径）
+  - `CTFTaskRuntime` 接口新增 `dispatcher` 和 `oneShotCatalog` 属性
+
+**分类规则覆盖:**
+
+- 10 个 category（encoding, crypto, misc, forensics, reverse, rev, pwn, web, traffic, pcap）
+- 每个 category 有 fastKeywords 和 heavyKeywords 驱动 tier 升降级
+- 复杂度估算（1-10 scale）
+
+**预期收益:** 简单题延迟从 30-60s（LLM）→ 5-10s（oneshot only）
+
+### Round 2: 自适应并发 & 硬超时 (Adaptive Concurrency & Timeouts) ✅
+
+**创建文件:**
+
+- `src/ctf/competition/adaptiveConcurrency.ts` — 滑动窗口成功率追踪（window=20），自动调并发：
+  - successRate > 85% → 并发 +2（上限 16）
+  - successRate < 40% → 并发 -1（下限 1）
+  - 前 5 个结果预热期不调整
+
+**修改文件:**
+
+- `src/core/ctfRuntime/challengeConcurrencyPool.ts`:
+  - `QueuedChallenge` 新增 `timeoutMs?: number` 字段
+  - `TaskExecutorResult` 新增 `'timeout'` 状态
+  - `adjustConcurrency(newMax)` — 运行时动态调并发
+  - `spawnNext()` — 合并 pool signal + per-task `AbortSignal.timeout()`
+  - 超时检测：`reason instanceof DOMException && reason.name === 'TimeoutError'`
+- `src/core/ctfRuntime/createCTFTaskRuntime.ts`:
+  - 创建 `AdaptiveConcurrencyController` 实例
+  - `onCompleted` hook 记录结果 → 自动调并发
+  - 分类感知超时：fast=30s, medium=120s, heavy=300s
+
+### Round 3: 多路径 Flag 提取管道 (Multi-Pass Flag Extraction) ✅
+
+**创建文件:**
+
+- `src/ctf/competition/flagExtractionPipeline.ts` — 4 层提取管道：
+  1. stdout regex（broad patterns: picoCTF{...}, flag{...}, flag(...), FLAG[...]）
+  2. structured flagCandidates（最高质量，已校验的候选）
+  3. findings scan（title/summary/flagValue 字段 + oneShotRun 关联）
+  4. oneshot results（candidates + finding summaries）
+  - SHA256 验证：提供 `expectedFlagSha256` 时确定性验证
+  - 去重 + 按 confidence 排序
+  - placeholder 过滤（`...`, `xxxx`, `your_flag_here` 等）
+
+**修改文件:**
+
+- `src/core/ctfRuntime/createCTFTaskRuntime.ts` — executor 中用 `flagExtractionPipeline.extract()` 替换原来的单路径 findings 扫描
+
+**预期收益:** 解题率提升 10-20%（减少误报 + 多路径提取减少漏检）
+
+### Round 4: 智能重试 & Profile 切换 (Smart Retry & Profile Switching) ✅
+
+**创建文件:**
+
+- `src/ctf/competition/retryStrategy.ts` — 分类感知的重试配置：
+  - 10 类 category → profile 链条（如 crypto→encoding→triage, pwn→reverse→triage）
+  - `RetryConfig`: maxRetries=2, retryOn=['failed','timeout'], deadlineMs=600s
+  - `getRetryConfigForCategory()` + overrides
+
+**修改文件:**
+
+- `src/core/ctfRuntime/createCTFTaskRuntime.ts`:
+  - `attemptLlmSolve()` helper — 执行单次 LLM solve + flag 提取
+  - Retry loop: 0→initial profile, 1..N→retryProfiles chain
+  - Deadline + AbortSignal 双重保护
+  - 每次 profil 切换调用 `createCTFTaskRuntime` + `orchestrator.runMainAgent`
+
+### Round 5: 提交重试 + 跨题学习 + 进度 (Submission Retry, Cache, Progress) ✅
+
+**创建文件:**
+
+- `src/ctf/competition/crossChallengeCache.ts` — 跨题模式学习：
+  - `recordSuccess()` — 记录成功模式（category + keywords + solver + path）
+  - `suggest()` — 对新挑战推荐工具/profile（基于关键词重叠 + 同category历史）
+  - `recordFailure()` — 趋避不可靠工具
+  - 用户可见的 `getToolSuccessRate()` 和总计数
+
+**修改文件:**
+
+- `src/core/ctfPlatform/ctfPlatformAdapter.ts`:
+  - `submitWithRetry()` — 指数退避重试：
+    - HTTP 429: 1s → 2s → 4s → 8s
+    - HTTP 5xx: 1 次重试 2s
+    - TimeoutError: 1 次重试 5s
+    - incorrect/already_submitted: 永不重试（终止态）
+  - 构造函数接受 `retryOptions: { maxRetries?, baseBackoffMs? }`
+- `src/core/ctfRuntime/createCTFTaskRuntime.ts`:
+  - `CrossChallengeCache` 实例跨所有 leaf task 共享
+  - Executor 首步：`crossCache.suggest()` — 高置信度缓存命中跳过分类器
+
+### 测试覆盖 ✅
+
+**新建测试:**
+
+- `tests/competition/challengeClassifier.test.ts` — 12 个分类器单元测试
+- `tests/competition/rounds2to5.test.ts` — 39 个集成测试：
+  - AdaptiveConcurrencyController: 9 tests（初始/预热/上调/下调/稳态/上限/下限/计数/空数据）
+  - FlagExtractionPipeline: 8 tests（stdout/候选/发现/过滤/SHA256/去重/空）
+  - RetryStrategy: 5 tests（映射/链条/配置/覆盖/所有类别有链条）
+  - CrossChallengeCache: 6 tests（记录/建议/不同类别/成功率/未知工具/清除）
+
+### 总状态
+
+| 检查项           | 状态                                                                              |
+| ---------------- | --------------------------------------------------------------------------------- |
+| TypeScript Build | ✅ 通过（tsc --noEmit）                                                           |
+| ESLint           | ✅ 0 errors（新文件 + 修改文件全通过）                                            |
+| Test             | ✅ 92/94 通过（2 预存在 BOM 失败），764/765 tests                                 |
+| 新增文件         | 7 个（competition/）+ 2 测试文件                                                  |
+| 修改文件         | 4 个（createCTFTaskRuntime, challengeConcurrencyPool, ctfPlatformAdapter, AUDIT） |

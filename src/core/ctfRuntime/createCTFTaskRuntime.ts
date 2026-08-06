@@ -37,6 +37,7 @@ import { assertLlmDependencies } from './agentRuntimeDependencies.js'
 import type { CTFTaskState } from './taskState.js'
 import {
   BackgroundJobRunnerRegistryImpl,
+  Dispatcher,
   type BackgroundJobRunnerRegistry,
 } from '../../ctf/oneshot/dispatcher.js'
 import type { RuntimeModelConfiguration } from '../modelReliability/modelRegistry.js'
@@ -70,6 +71,12 @@ import {
   type QueuedChallenge,
   type TaskExecutorResult,
 } from './challengeConcurrencyPool.js'
+import { createChallengeClassifier } from '../../ctf/competition/challengeClassifier.js'
+import { runFastPath } from '../../ctf/competition/fastPath.js'
+import { AdaptiveConcurrencyController } from '../../ctf/competition/adaptiveConcurrency.js'
+import { flagExtractionPipeline } from '../../ctf/competition/flagExtractionPipeline.js'
+import { getRetryConfigForCategory } from '../../ctf/competition/retryStrategy.js'
+import { CrossChallengeCache } from '../../ctf/competition/crossChallengeCache.js'
 
 export type CTFTaskRuntimeMode = 'workflow-only' | 'llm'
 
@@ -129,6 +136,9 @@ export interface CTFTaskRuntime {
   mainHarness: HarnessBundle
   mode: CTFTaskRuntimeMode
   oneShotRunnerRegistry: BackgroundJobRunnerRegistry
+  /** Competition oneshot dispatcher — used by fast-path executor. */
+  dispatcher: Dispatcher
+  oneShotCatalog: OneShotCatalog
   modelReliability: {
     registry: ModelCapabilityRegistry
     healthStore: ModelHealthStore
@@ -437,6 +447,19 @@ export async function createCTFTaskRuntime(
     }
   })
 
+  // ── Competition: Dispatcher + Classifier for fast-path routing ────────
+  const dispatcher = new Dispatcher({
+    registry: oneShotRegistry,
+    catalog: oneShotCatalog,
+    jobManager: harness.jobManager,
+    workspace: harness.taskWorkspace.paths.root,
+    signal: abort.signal,
+    orchestrator,
+    taskContext: harness.context,
+    runnerRegistry,
+  })
+  const classifier = createChallengeClassifier(oneShotCatalog)
+
   const baseDispose = orchestrator.dispose.bind(orchestrator)
   const wrappedDispose = async (): Promise<void> => {
     try {
@@ -452,53 +475,184 @@ export async function createCTFTaskRuntime(
   const maxConcurrency =
     input.maxConcurrency ?? (parseInt(process.env.OVOGO_MAX_CONCURRENCY ?? '4', 10) || 4)
 
+  // §Round-2 — Adaptive concurrency: auto-scale based on success rate
+  const adaptiveController = new AdaptiveConcurrencyController({
+    initialConcurrency: maxConcurrency,
+    minConcurrency: 1,
+    maxConcurrency: 16,
+  })
+
+  // §Round-2 — Classification-aware timeouts
+  const TIER_TIMEOUTS: Record<string, number> = {
+    fast: 30_000,
+    medium: 120_000,
+    heavy: 300_000,
+  }
+
+  // §Round-5 — Cross-challenge cache for learning across tasks
+  const crossCache = new CrossChallengeCache()
+
+  // §Round-4 — Category to profile mapping (inline, avoid solve.ts side-effects)
+  const PROFILE_MAP: Record<string, string> = {
+    encoding: 'crypto',
+    crypto: 'crypto',
+    forensics: 'image-stego',
+    reverse: 'reverse',
+    rev: 'reverse',
+    pwn: 'pwn',
+    web: 'web',
+    pcap: 'traffic',
+    traffic: 'traffic',
+    misc: 'triage',
+  }
+  const getProfile = (cat: string) => PROFILE_MAP[cat] || 'triage'
+
+  /** §Round-4 — Attempt LLM solve with flag extraction; returns flag or undefined. */
+  async function attemptLlmSolve(
+    taskRuntime: CTFTaskRuntime,
+    challenge: QueuedChallenge,
+  ): Promise<string | undefined> {
+    const taskDesc = challenge.description ?? challenge.title
+    const result = await taskRuntime.orchestrator.runMainAgent(taskDesc)
+    if (result.status !== 'completed') return undefined
+    const state = taskRuntime.orchestrator.store.getState()
+    const extraction = flagExtractionPipeline.extract(state)
+    if (extraction.best && extraction.best.confidence >= 0.55) {
+      return extraction.best.value
+    }
+    return undefined
+  }
+
   const concurrencyPool = new ChallengeConcurrencyPool(maxConcurrency, {
-    executor: async (challenge, _handle, _signal): Promise<TaskExecutorResult> => {
-      const taskId = `task_${challenge.id}_${Date.now()}`
-      const taskRuntime = await createCTFTaskRuntime({
-        cwd: input.cwd,
-        profileId: input.profileId,
-        profile: input.profile,
-        contestScope: input.contestScope,
-        contestId: input.contestId,
-        taskId,
-        sessionsRoot: input.sessionsRoot,
-        client: input.client,
-        renderer: input.renderer,
-        modelConfig: input.modelConfig,
-        mode: input.mode,
-        challenge: {
-          description: challenge.description,
-          category: challenge.category,
-          flagPattern: challenge.flagPattern,
-        },
-        jobLimits: input.jobLimits,
-        maxConcurrency: 1, // leaf tasks run single-threaded
-      })
-      try {
-        const taskDesc = challenge.description ?? challenge.title
-        const result = await taskRuntime.orchestrator.runMainAgent(taskDesc)
-        if (result.status === 'completed') {
-          // Scan findings for flag
-          const state = taskRuntime.orchestrator.store.getState()
-          const flagFinding = state.findings.find(
-            (f) =>
-              String(f.category) === 'flag' ||
-              f.title?.toLowerCase().includes('flag') ||
-              (f as unknown as Record<string, unknown>).flagValue !== undefined,
-          )
-          const flag =
-            ((flagFinding as unknown as Record<string, unknown> | undefined)?.flagValue as
-              | string
-              | undefined) ?? 'unknown'
-          return { status: 'solved', flag }
+    defaultTimeoutMs: 300_000, // 5min global default
+    onCompleted: (handle) => {
+      const success = handle.status === 'solved'
+      const newConcurrency = adaptiveController.recordResult(success)
+      concurrencyPool.adjustConcurrency(newConcurrency)
+    },
+    executor: async (challenge, _handle, signal): Promise<TaskExecutorResult> => {
+      const startTime = Date.now()
+
+      // §Round-5 — Cross-challenge cache: try known patterns first
+      const cachedApproach = crossCache.suggest(challenge.category, challenge.description ?? '')
+      if (cachedApproach && cachedApproach.confidence >= 0.7) {
+        // Fast-path based on prior success
+        const suggestedManifests = cachedApproach.manifests.filter(
+          (id) => oneShotCatalog.get(id) !== undefined,
+        )
+        if (suggestedManifests.length > 0) {
+          try {
+            const fastResult = await runFastPath(suggestedManifests, dispatcher, signal, {
+              maxManifests: 2,
+              perManifestTimeoutMs: 20_000,
+              minConfidence: 0.7,
+            })
+            if (fastResult.flag) {
+              crossCache.recordSuccess(
+                challenge.category,
+                challenge.description ?? '',
+                fastResult.solvedBy ?? 'cached_fast',
+                'fast',
+                Date.now() - startTime,
+              )
+              return { status: 'solved', flag: fastResult.flag }
+            }
+          } catch {
+            /* fall through */
+          }
         }
-        return { status: 'failed', flag: undefined }
-      } catch {
-        return { status: 'failed', flag: undefined }
-      } finally {
-        await taskRuntime.dispose()
       }
+
+      // ── Pre-flight classification ──────────────────────────────────
+      const classification = classifier.classify(challenge)
+
+      // Assign tier-based timeout to the challenge
+      challenge.timeoutMs = challenge.timeoutMs ?? TIER_TIMEOUTS[classification.tier] ?? 300_000
+
+      // Fast path: oneshot-only, zero LLM calls
+      if (classification.tier === 'fast' && classification.recommendedManifests.length > 0) {
+        try {
+          const fastResult = await runFastPath(
+            classification.recommendedManifests,
+            dispatcher,
+            signal,
+            { maxManifests: 3, perManifestTimeoutMs: 30_000, minConfidence: 0.7 },
+          )
+          if (fastResult.flag) {
+            crossCache.recordSuccess(
+              challenge.category,
+              challenge.description ?? '',
+              fastResult.solvedBy ?? 'fast_path',
+              'fast',
+              Date.now() - startTime,
+            )
+            return { status: 'solved', flag: fastResult.flag }
+          }
+          // Fast path didn't find a flag — fall through to LLM
+        } catch {
+          /* fall through */
+        }
+      }
+
+      // §Round-4 — Retry loop with profile switching
+      const retryConfig = getRetryConfigForCategory(challenge.category)
+      const deadline = Date.now() + retryConfig.deadlineMs
+      const initialProfile = getProfile(challenge.category)
+
+      for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+        if (Date.now() > deadline || signal.aborted) break
+
+        const profileId = attempt === 0 ? initialProfile : retryConfig.retryProfiles[attempt - 1]
+        if (!profileId) break
+
+        const taskId = `task_${challenge.id}_${Date.now()}`
+        const taskRuntime = await createCTFTaskRuntime({
+          cwd: input.cwd,
+          profileId,
+          profile: input.profile,
+          contestScope: input.contestScope,
+          contestId: input.contestId,
+          taskId,
+          sessionsRoot: input.sessionsRoot,
+          client: input.client,
+          renderer: input.renderer,
+          modelConfig: input.modelConfig,
+          mode: input.mode,
+          challenge: {
+            description: challenge.description,
+            category: challenge.category,
+            flagPattern: challenge.flagPattern,
+          },
+          jobLimits: input.jobLimits,
+          maxConcurrency: 1,
+        })
+
+        try {
+          const flag = await attemptLlmSolve(taskRuntime, challenge)
+          if (flag) {
+            crossCache.recordSuccess(
+              challenge.category,
+              challenge.description ?? '',
+              profileId,
+              classification.tier,
+              Date.now() - startTime,
+            )
+            return { status: 'solved', flag }
+          }
+          // No flag found — will retry with next profile
+          if (attempt > 0) {
+            crossCache.recordFailure(profileId)
+          }
+        } catch {
+          crossCache.recordFailure(profileId)
+        } finally {
+          await taskRuntime.dispose()
+        }
+      }
+
+      // All attempts exhausted
+      crossCache.recordFailure('all_profiles')
+      return { status: 'failed', flag: undefined }
     },
   })
 
@@ -595,6 +749,8 @@ export async function createCTFTaskRuntime(
     mainHarness: harness,
     mode,
     oneShotRunnerRegistry: runnerRegistry,
+    dispatcher,
+    oneShotCatalog,
     modelReliability: {
       registry,
       healthStore,

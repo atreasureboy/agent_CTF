@@ -10,9 +10,11 @@ export interface QueuedChallenge {
   flagPattern?: string
   inputArtifactPaths?: string[]
   priority?: number
+  /** Hard timeout per-challenge in ms. Pool enforces this automatically. */
+  timeoutMs?: number
 }
 
-export type ChallengeTaskStatus = 'queued' | 'running' | 'solved' | 'failed' | 'paused'
+export type ChallengeTaskStatus = 'queued' | 'running' | 'solved' | 'failed' | 'timeout' | 'paused'
 
 export interface ChallengeTaskHandle {
   challenge: QueuedChallenge
@@ -39,7 +41,7 @@ export interface ChallengeTaskHandle {
  *     },
  *   })
  */
-export type TaskExecutorResult = { status: 'solved' | 'failed'; flag?: string }
+export type TaskExecutorResult = { status: 'solved' | 'failed' | 'timeout'; flag?: string }
 export type TaskExecutor = (
   challenge: QueuedChallenge,
   handle: ChallengeTaskHandle,
@@ -60,16 +62,22 @@ export interface ChallengeConcurrencyPoolOptions {
    * no-op.
    */
   onCompleted?: (handle: ChallengeTaskHandle) => void
+  /**
+   * Default per-task timeout in ms. Applied to every challenge that
+   * does not have its own `timeoutMs` set. Default: no timeout.
+   */
+  defaultTimeoutMs?: number
 }
 
 export class ChallengeConcurrencyPool {
-  private readonly maxConcurrency: number
+  private maxConcurrency: number
   private queue: QueuedChallenge[] = []
   private activeHandles = new Map<string, ChallengeTaskHandle>()
   private completedHandles = new Map<string, ChallengeTaskHandle>()
   private readonly executor?: TaskExecutor
   private readonly onCompleted?: (handle: ChallengeTaskHandle) => void
   private readonly abortController = new AbortController()
+  private readonly defaultTimeoutMs?: number
   private inFlight = new Set<Promise<void>>()
   /** When `cancelAll()` has fired, the pool is dead — no further
    *  tasks will run and `addChallenge` is a no-op. */
@@ -85,6 +93,21 @@ export class ChallengeConcurrencyPool {
     this.maxConcurrency = maxConcurrency
     this.executor = options.executor
     this.onCompleted = options.onCompleted
+    this.defaultTimeoutMs = options.defaultTimeoutMs
+  }
+
+  /**
+   * §Round-2 — Dynamically adjust the concurrency cap. Running tasks
+   * are unaffected; only subsequent `spawnNext()` calls observe the
+   * new limit.
+   */
+  public adjustConcurrency(newMax: number): void {
+    if (!Number.isInteger(newMax) || newMax <= 0) {
+      return
+    }
+    this.maxConcurrency = newMax
+    // Kick auto-fill in case we just increased capacity
+    if (!this.cancelled) this.spawnNext()
   }
 
   /**
@@ -178,22 +201,35 @@ export class ChallengeConcurrencyPool {
       spawned.push(handle)
 
       if (this.executor) {
-        const signal = this.abortController.signal
+        const poolSignal = this.abortController.signal
+        const timeoutMs = challenge.timeoutMs ?? this.defaultTimeoutMs
+        const signal = timeoutMs
+          ? AbortSignal.any([poolSignal, AbortSignal.timeout(timeoutMs)])
+          : poolSignal
+
         const task: Promise<void> = this.executor(challenge, handle, signal)
           .then((result) => {
-            // §Round-8 — Pool auto-marks completion based on the
-            // executor's return value. Callers no longer need to
-            // remember to call `pool.markCompleted` themselves.
-            this.applyExecutorResult(challenge.id, result)
+            // §Round-2 — detect timeout by checking the signal
+            const reason = signal.reason as unknown
+            if (
+              signal.aborted &&
+              reason instanceof DOMException &&
+              reason.name === 'TimeoutError'
+            ) {
+              this.applyExecutorResult(challenge.id, { status: 'timeout' })
+            } else {
+              this.applyExecutorResult(challenge.id, result)
+            }
           })
           .catch((err: unknown) => {
-            handle.status = 'failed'
+            const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
+            handle.status = isTimeout ? 'timeout' : 'failed'
             handle.endedAt = Date.now()
             this.completedHandles.set(handle.challenge.id, handle)
             this.activeHandles.delete(handle.challenge.id)
             // eslint-disable-next-line no-console
             console.error(
-              `[concurrency-pool] executor for ${challenge.id} failed:`,
+              `[concurrency-pool] executor for ${challenge.id} ${isTimeout ? 'timed out' : 'failed'}:`,
               (err as Error)?.message ?? String(err),
             )
           })
@@ -234,7 +270,11 @@ export class ChallengeConcurrencyPool {
    *
    * @internal The auto-fill trigger fires here too.
    */
-  public markCompleted(challengeId: string, status: 'solved' | 'failed', foundFlag?: string): void {
+  public markCompleted(
+    challengeId: string,
+    status: 'solved' | 'failed' | 'timeout',
+    foundFlag?: string,
+  ): void {
     const handle = this.activeHandles.get(challengeId)
     if (!handle) return
     this.applyExecutorResult(challengeId, { status, flag: foundFlag })

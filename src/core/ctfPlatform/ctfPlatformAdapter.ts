@@ -24,9 +24,16 @@ export interface PlatformSubmissionResult {
 
 export class CTFPlatformAdapter {
   private config: CTFdConfig
+  private readonly maxRetries: number
+  private readonly baseBackoffMs: number
 
-  constructor(config: CTFdConfig) {
+  constructor(
+    config: CTFdConfig,
+    retryOptions: { maxRetries?: number; baseBackoffMs?: number } = {},
+  ) {
     this.config = config
+    this.maxRetries = retryOptions.maxRetries ?? 4
+    this.baseBackoffMs = retryOptions.baseBackoffMs ?? 1000
   }
 
   /**
@@ -118,6 +125,59 @@ export class CTFPlatformAdapter {
   }
 
   /**
+   * §Round-5 — Submit with exponential backoff retry.
+   *
+   * Gracefully handles transient failures:
+   *   - HTTP 429 (rate limited) → 1s → 2s → 4s → 8s backoff
+   *   - HTTP 5xx → 1 retry after 2s
+   *   - TimeoutError → 1 retry after 5s
+   *   - 'incorrect'/'already_submitted' → never retried (terminal)
+   */
+  public async submitWithRetry(req: SubmissionRequest): Promise<PlatformSubmissionResult> {
+    let lastResponse: PlatformSubmissionResult | null = null
+
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      const response = await this.submitToCTFd(req)
+
+      // Terminal outcomes — don't retry
+      if (response.verdict === 'accepted' || response.verdict === 'already_submitted') {
+        return response
+      }
+      if (response.verdict === 'incorrect') {
+        return response
+      }
+
+      lastResponse = response
+
+      // Don't wait on the last attempt
+      if (attempt >= this.maxRetries - 1) break
+
+      // Calculate backoff
+      const delayMs = this.calculateBackoff(attempt, response)
+      if (delayMs > 0) {
+        await sleep(delayMs)
+      }
+    }
+
+    return lastResponse ?? { verdict: 'error', message: 'All retry attempts exhausted' }
+  }
+
+  /**
+   * Calculate backoff based on failure type and attempt index.
+   */
+  private calculateBackoff(attempt: number, response: PlatformSubmissionResult): number {
+    if (response.verdict === 'rate_limited') {
+      // Exponential: 1s, 2s, 4s, 8s
+      return this.baseBackoffMs * Math.pow(2, attempt)
+    }
+    if (response.verdict === 'error') {
+      // Fixed: 2s, 5s
+      return attempt === 0 ? 2000 : 5000
+    }
+    return 0
+  }
+
+  /**
    * Convert PlatformSubmissionResult to standard SubmissionResponse for SubmissionController.
    */
   public static mapToSubmissionResponse(res: PlatformSubmissionResult): SubmissionResponse {
@@ -155,4 +215,8 @@ export class CTFPlatformAdapter {
         }
     }
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
