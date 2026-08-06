@@ -202,11 +202,25 @@ export async function runSolveCommand(
       // reconstruct the wrapper.
       const cleanDesc = manifest.description.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
       const hintBlock = dispatch.categoryHint ? `\n\n${dispatch.categoryHint}` : ''
+      const filesBlock =
+        manifest.attachmentPaths && manifest.attachmentPaths.length > 0
+          ? '\n\nAvailable challenge files in working directory:\n' +
+            manifest.attachmentPaths
+              .map((f) => {
+                const fullPath = resolve(challengeDir, f)
+                const size = existsSync(fullPath)
+                  ? ` (${readFileSync(fullPath).length} bytes)`
+                  : ' (missing)'
+                return `  ${f}${size}`
+              })
+              .join('\n')
+          : ''
       const taskPrompt =
         `${cleanDesc}\n\n` +
         `Solve the challenge. When you find the flag, write it in the ` +
         `standard wrapper (picoCTF{...} or flag{...}) and emit it as a ` +
-        `finding.${hintBlock}`
+        `finding.\nHint: the working directory contains these challenge ` +
+        `files. Use absolute paths when calling tools.${filesBlock}${hintBlock}`
       const cliArgs = [
         'npx',
         'tsx',
