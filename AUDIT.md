@@ -963,3 +963,74 @@ agent_bench.py 接到 CI 自动跑。
 ### 结论
 
 v0.1.0 审计的 50+ 条 finding 中，除 3 条低优先级外**全部已修复**。Competition 模块专项审计发现 11 条问题，**10/11 已修复**。代码库当前处于高质量状态：0 TypeScript errors、0 ESLint errors、764/765 tests passing、95% SolveBench Agent 主路径解题率。
+
+---
+
+## §20 · 第三次全面审计 — 2026-08-06 (v0.3.0)
+
+### 审计范围
+
+第三次全量审计聚焦核心 Runtime 路径的健壮性：Provider/Model 注册、
+推理事件语义、网络目标检测、以及竞争求解重试循环的资源管理。
+
+### v0.3.0 新增 Finding 解决表
+
+| #   | 级别   | 文件                    | 行号    | 描述                                                                                         | 状态      |
+| --- | ------ | ----------------------- | ------- | -------------------------------------------------------------------------------------------- | --------- |
+| B1  | HIGH   | createCTFTaskRuntime.ts | 258-259 | `input.client \|\| input.modelConfig` 条件进入但 `input.client!` 在 client 为 falsy 时 crash | ✅ 已修复 |
+| B2  | HIGH   | taskOrchestrator.ts     | 613     | Fire-and-forget 推理使用 REASONING_FAILED 设置 degraded 标志                                 | ✅ 已修复 |
+| B3  | HIGH   | createCTFTaskRuntime.ts | 640     | createCTFTaskRuntime 在 try 外部，创建失败导致整个重试策略终止                               | ✅ 已修复 |
+| B4  | HIGH   | dispatcher.ts           | 675-688 | 网络目标检测正则被 hex/decimal-encoded IP + localhost 绕过                                   | ✅ 已修复 |
+| B5  | MEDIUM | reasoningCoordinator.ts | 222-227 | LMSummarizer 误用 REASONING_FAILED 事件                                                      | ✅ 已修复 |
+| B6  | MEDIUM | reasoningCoordinator.ts | 250-254 | AutoPrompter 误用 REASONING_FAILED 事件                                                      | ✅ 已修复 |
+
+### B1 详情 — Provider 注册竞态条件
+
+`createCTFTaskRuntime.ts:258` 的条件 `input.client || input.modelConfig` 使用 `||` 或运算：
+仅 `input.modelConfig` 为 truthy 时也会进入分支，但 `input.client!` 的 non-null assertion
+在 `input.client` 为 `undefined` 时传入 `new OpenAICompatibleProvider(undefined)`，构造函数内会崩溃。
+
+**修复**: 条件改为 `input.client`，仅在 client 确实存在时才注册 ad-hoc provider。
+
+### B2 详情 — Fire-and-forget 推理事件语义
+
+`taskOrchestrator.ts:613` 在 workflow 完成后 fire-and-forget 调用 `processReasoningInput()`，
+catch 处理中发送 `REASONING_FAILED` 事件。该事件类型会设置 task 级 `degraded: true` 标志，
+但 workflow 后续推理重新调度失败并非子系统故障，不应导致 task 降级。
+
+**修复**: 改为 `DIAGNOSTIC_ADDED` 事件，kind=`workflow_projection_dropped`，不再设置 degraded 标志。
+
+### B3 详情 — 重试循环中 Runtime 构造异常处理
+
+`createCTFTaskRuntime.ts:640` 在 retry loop 的 `try` 块外部调用 `createCTFTaskRuntime()`。
+若 Runtime 构造本身失败（如 profile 缺失），异常会直接传播到外层，终止整个重试策略，
+而非尝试下一个 profile。
+
+**修复**: 将 `createCTFTaskRuntime()` 移入 `try` 块，`finally` 中使用 nullable guard
+(`if (taskRuntime)`) 确保仅在构造成功时 dispose。
+
+### B4 详情 — 网络目标检测正则绕过
+
+`dispatcher.ts:675-688` 的 `looksLikeNetworkTarget()` 方法未覆盖以下形式：
+
+- Hex-encoded IPv4: `0x7f000001` → 127.0.0.1
+- Decimal-encoded IPv4: `2130706433` → 127.0.0.1
+- `localhost` 单标签主机名
+
+SSH/网络上下文中的 OneShot 工具可能将这些形式作为连接目标传递，绕过 ScopeGate 检查。
+
+**修复**: 新增 hex-encoded (`0x` 前缀 8 位 hex)、decimal-encoded (8-12 位数字 ≤ 0xffffffff)、
+和 `localhost` 的检测。同时将 IPv4 octet 匹配从 `\d{1,3}` 放宽到 `\d{1,4}` 以捕获八进制形式。
+
+### B5/B6 详情 — LMSummarizer / AutoPrompter 事件滥用
+
+详见 §19 及 commit `cae8df3`。两者均为信息性输出，不应触发 `degraded: true`。
+新增 `DIAGNOSTIC_ADDED` 事件类型及 `lm_summary` / `auto_prompt` 诊断种类解决。
+
+### 当前质量门禁 (v0.3.0)
+
+| 检查项             | 结果                                            |
+| ------------------ | ----------------------------------------------- |
+| `npx tsc --noEmit` | ✅ 0 errors                                     |
+| `npx vitest run`   | ✅ 92/94 pass, 764/765 tests (2 BOM 预存在失败) |
+| Competition tests  | ✅ 39/39 pass                                   |
