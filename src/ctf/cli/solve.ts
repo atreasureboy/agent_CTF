@@ -9,6 +9,18 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 /**
+ * Resolve the ovogogogo-ctf CLI entry-point path. Uses an env override when
+ * set (useful for CI / containerised runners), otherwise falls back to the
+ * canonical location relative to this source file. The previous hard-coded
+ * `resolve(__dirname, '../../../bin/ovogogogo-ctf.ts')` was fragile against
+ * source-tree reorganisation (AUDIT H11).
+ */
+function resolveCliPath(): string {
+  if (process.env.OVOGO_CTF_CLI) return process.env.OVOGO_CTF_CLI
+  return fileURLToPath(import.meta.resolve('../../../bin/ovogogogo-ctf.ts'))
+}
+
+/**
  * Minimal typed shape of a SolveBench challenge.json file. The schema mirrors
  * `ChallengeManifestSchema` in `src/core/challengeManifest.ts` but is kept
  * inline because the SolveBench CLI doesn't import the CTF runtime types
@@ -157,7 +169,7 @@ export async function runSolveCommand(
     // §13 R4 — dispatch on category. Most CTF categories map directly to
     // a workflow-only run that calls the right tool. Chat-mode is the
     // fallback for categories without a dedicated workflow.
-    const cliPath = resolve(__dirname, '../../../bin/ovogogogo-ctf.ts')
+    const cliPath = resolveCliPath()
     const dispatch = planSolveDispatch(manifest, challengeDir)
     stdout.write(`Dispatch: ${dispatch.mode} ${dispatch.reason}\n`)
     let result: { stdout: string; stderr: string }
