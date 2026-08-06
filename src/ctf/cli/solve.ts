@@ -465,6 +465,58 @@ function detectDescriptionHint(desc: string): string | null {
     )
   if (/\bnumbers?\b.*\bdecipher|decipher.*\bnumbers/.test(d) && hints.length === 0)
     hints.push('Try simple A1Z26 substitution (1=A, ..., 26=Z) or ROT13.')
+  // §Round-6 new hints from competition failure analysis
+  if (/what\s*do\s*the\s*flags?\s*mean|flag\.(png|jpg)|image.*flag/i.test(d))
+    hints.push(
+      'This is an image-flag challenge. Each flag image likely encodes ' +
+        'a letter/number via a standard flag semaphore / maritime signal ' +
+        'flag chart. Download the flag chart from the picoCTF primer, ' +
+        'identify each flag image, and concatenate the letters.',
+    )
+  if (/block\s*of\s*3.*scrambled|every\s*block.*scrambled|scrambled.*block/i.test(d))
+    hints.push(
+      'This is a block transposition cipher. Split the ciphertext into ' +
+        'blocks of 3 characters, then try all 6 permutations (3! = 6) for ' +
+        'each block. Use a known plaintext crib (e.g. "The" for the first ' +
+        'word) to lock in which permutation is correct.',
+    )
+  if (/eax\s*register|asm1\(|what\s*integer\s*does\s*this\s*program\s*print|disassembler/i.test(d))
+    hints.push(
+      'This is an assembly/ASM reading challenge. You must actually ' +
+        'assemble and run the code, OR trace it line-by-line. ' +
+        'For eax/return-value questions: the answer is an integer/hex. ' +
+        'Wrap as picoCTF{VALUE} using the exact hex format shown ' +
+        '(e.g. 0xNNN, just the decimal number, or hex lowercase). ' +
+        'FLAG FORMAT IS CRITICAL — some use hex, some use decimal, ' +
+        'check the description carefully.',
+    )
+  if (/one[- ]time\s*pad|otp|know\s*the\s*key|given\s*you\s*the\s*encrypted\s*flag.*key/i.test(d))
+    hints.push(
+      'This is a one-time-pad challenge where the key is reused or ' +
+        'known. XOR the ciphertext with the key to recover plaintext. ' +
+        "Use `python3 -c \"import sys; c=open(sys.argv[1],'rb').read(); " +
+        'k=sys.argv[2].encode(); print(bytes(c[i]^k[i%len(k)] for i ' +
+        'in range(len(c))).decode())"` or equivalent.',
+    )
+  if (/vigenere|vigenère|vignere|new_vignere|new_caesar/i.test(d))
+    hints.push(
+      'This is a Vigenère cipher variant. Either (a) use a standard ' +
+        'Vigenère decoder with the given key, or (b) for custom variants ' +
+        '("new_caesar", "new_vignere"), study the provided Python source ' +
+        'file: it likely defines a custom alphabet mapping or shifting ' +
+        'scheme. Copy the encode/decode function and invert it.',
+    )
+  if (/unpackme|obfuscat|bloat\.flag|obfuscated.*python|obfuscated.*script/i.test(d))
+    hints.push(
+      'This is an obfuscated Python script. DO NOT just run it — ' +
+        'the flag is encoded in the source and the script reads from ' +
+        'an encrypted file. Key approach: (1) deobfuscate the Python ' +
+        'source by renaming obfuscated variables, (2) trace the logic ' +
+        'to find how it checks the password and how it XORs the flag ' +
+        'file, (3) reverse the operations to recover the plaintext flag. ' +
+        "Use `python3 -c \"exec(open(sys.argv[1]).read().replace('arg','v'))\"` " +
+        'tricks to inspect internals if needed.',
+    )
   return hints.length === 0 ? null : 'Domain-specific hints:\n- ' + hints.join('\n- ')
 }
 
