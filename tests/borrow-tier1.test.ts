@@ -35,7 +35,12 @@ describe('SubmissionCooldown (A1)', () => {
   it('throttles until the cooldown window passes', () => {
     const now = 1_000_000
     const attempts = [
-      newSubmissionAttempt({ attemptId: 'a1', value: 'flag{wrong}', outcome: 'wrong', at: now - 1000 }),
+      newSubmissionAttempt({
+        attemptId: 'a1',
+        value: 'flag{wrong}',
+        outcome: 'wrong',
+        at: now - 1000,
+      }),
     ]
     // 30 s window — 1 s after a wrong submit: throttle.
     expect(shouldThrottle(attempts, now - 1000, 30)).toBe(false) // same instant
@@ -52,7 +57,12 @@ describe('SubmissionCooldown (A1)', () => {
   })
 
   it('produces a unique attempt id with hash, no raw value', () => {
-    const a = newSubmissionAttempt({ attemptId: 'a1', value: 'flag{secret123}', outcome: 'wrong', at: 1 })
+    const a = newSubmissionAttempt({
+      attemptId: 'a1',
+      value: 'flag{secret123}',
+      outcome: 'wrong',
+      at: 1,
+    })
     expect(a.id).toMatch(/^sub_[a-f0-9]{12}$/)
     // valueHash is computed from the value but raw value is not stored
     expect((a as unknown as { value?: string }).value).toBeUndefined()

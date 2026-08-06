@@ -126,7 +126,13 @@ export interface CTFAttempt {
 }
 
 export type HandoffRecordStatus =
-  'requested' | 'approved' | 'rejected' | 'running' | 'completed' | 'failed' | 'cancelled'
+  | 'requested'
+  | 'approved'
+  | 'rejected'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 export interface HandoffRecord {
   id: string

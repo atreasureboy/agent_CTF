@@ -56,6 +56,7 @@ import type { OpenAIMessage, TurnResult } from './types.js'
 import { WorkflowRegistry } from './workflowRegistry.js'
 import { WorkflowEngine } from './workflowEngine.js'
 import { ensureWorkflowsRegistered } from '../workflows/index.js'
+import { sanitizeInput } from './ctfReasoning/guardrails/inputSanitizer.js'
 import {
   ensureProfilesRegistered,
   PROFILES,
@@ -213,9 +214,7 @@ function loadKnowledgeContext(cwd: string, profileId: string): string {
     const dir = resolve(cwd, 'src', KNOWLEDGE_DIR_NAME)
     if (!existsSync(dir)) return ''
     const wanted =
-      PROFILE_KNOWLEDGE_FILES[profileId] ??
-      PROFILE_KNOWLEDGE_FILES['orchestrator'] ??
-      []
+      PROFILE_KNOWLEDGE_FILES[profileId] ?? PROFILE_KNOWLEDGE_FILES['orchestrator'] ?? []
     const files = wanted.slice(0, KNOWLEDGE_MAX_FILES)
     const sections: string[] = []
     for (const file of files) {
@@ -317,7 +316,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
           modelProfileId: 'default',
           providerId: 'openai-compatible',
           capabilityProfileId: profile.id,
-          isOrchestrator: profile.id === 'orchestrator' || profile.id === 'competition_coordinator',
+          isOrchestrator: profile.id === 'orchestrator',
         },
       })
       if (r.result.isError)
@@ -351,7 +350,7 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
           modelProfileId: 'default',
           providerId: 'openai-compatible',
           capabilityProfileId: profile.id,
-          isOrchestrator: profile.id === 'orchestrator' || profile.id === 'competition_coordinator',
+          isOrchestrator: profile.id === 'orchestrator',
         },
       })
       if (r.result.isError)
@@ -593,12 +592,13 @@ export function createHarness(input: CreateHarnessInput): HarnessBundle {
         modelProfileId: input.modelConfig?.model ?? 'gpt-4o',
         providerId: 'openai-compatible',
         capabilityProfileId: currentProfile.id,
-        isOrchestrator:
-          currentProfile.id === 'orchestrator' || currentProfile.id === 'competition_coordinator',
+        isOrchestrator: currentProfile.id === 'orchestrator',
       },
     }
     const engine = new ExecutionEngine(engineConfig, renderer)
-    return engine.runTurn(userMessage, history)
+    // §Round-4 — sanitize user message to prevent prompt injection
+    const sanitizedMessage = sanitizeInput(userMessage).sanitized
+    return engine.runTurn(sanitizedMessage, history)
   }
 
   return {

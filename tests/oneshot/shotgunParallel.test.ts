@@ -62,7 +62,7 @@ describe('ShotgunCoordinator — Round-8 rigorous concurrency', () => {
     taskContext: TaskExecutionContext,
     manifests: OneShotManifest[],
     budget?: { perTaskHeavyRuns?: number; heavyConcurrency?: number; fastConcurrency?: number },
-): ShotgunCoordinator {
+  ): ShotgunCoordinator {
     const catalog = new OneShotCatalog()
     const registry = new OneShotRegistry(catalog)
     for (const m of manifests) registry.register(m)
@@ -82,7 +82,9 @@ describe('ShotgunCoordinator — Round-8 rigorous concurrency', () => {
     if (budget) {
       dispatcherOpts['budget'] = new BudgetManager(budget)
     }
-    const dispatcher = new Dispatcher(dispatcherOpts as unknown as ConstructorParameters<typeof Dispatcher>[0])
+    const dispatcher = new Dispatcher(
+      dispatcherOpts as unknown as ConstructorParameters<typeof Dispatcher>[0],
+    )
     return new ShotgunCoordinator(registry, dispatcher, taskContext)
   }
 

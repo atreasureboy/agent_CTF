@@ -35,6 +35,12 @@ describe('CategoryToolset (A2)', () => {
   })
 
   it('BUILTIN_TOOLSETS has all five categories', () => {
-    expect(Object.keys(BUILTIN_TOOLSETS).sort()).toEqual(['crypto', 'misc', 'pwn', 'reverse', 'web'])
+    expect(Object.keys(BUILTIN_TOOLSETS).sort()).toEqual([
+      'crypto',
+      'misc',
+      'pwn',
+      'reverse',
+      'web',
+    ])
   })
 })

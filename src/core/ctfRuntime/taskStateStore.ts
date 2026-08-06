@@ -918,7 +918,10 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
         // plus common typos ('queued' / 'queue') that would otherwise let a
         // terminal → non-terminal transition slip through.
         const patchStatus = event.patch.status as
-          CTFAttempt['status'] | 'queued' | 'queue' | undefined
+          | CTFAttempt['status']
+          | 'queued'
+          | 'queue'
+          | undefined
         if (
           ATTEMPT_TERMINAL.has(a.status) &&
           patchStatus &&

@@ -95,22 +95,25 @@ describe('Phase 2.0 — OneShot runtime smoke test', () => {
         taskContext: runtime.mainHarness.context,
         orchestrator: runtime.orchestrator,
       })
-      // eslint-disable-next-line @typescript-eslint/require-await
-      setRunnerOverride('smoke-fake', fakeRunner(async () => ({
-        runId: 'osp_smoke',
-        manifestId: 'smoke-fake',
-        taskId: 'pending',
-        status: 'completed',
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        findings: [{ category: 'demo', title: 'ok', summary: 'ok', confidence: 'high' }],
-        artifacts: [],
-        candidates: [],
-        diagnostics: { truncated: false, parserWarnings: [] },
-        confidence: 0.9,
-        falsePositiveRisk: 'low',
-        summary: 'smoke-ok',
-      })))
+      setRunnerOverride(
+        'smoke-fake',
+        // eslint-disable-next-line @typescript-eslint/require-await
+        fakeRunner(async () => ({
+          runId: 'osp_smoke',
+          manifestId: 'smoke-fake',
+          taskId: 'pending',
+          status: 'completed',
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          findings: [{ category: 'demo', title: 'ok', summary: 'ok', confidence: 'high' }],
+          artifacts: [],
+          candidates: [],
+          diagnostics: { truncated: false, parserWarnings: [] },
+          confidence: 0.9,
+          falsePositiveRisk: 'low',
+          summary: 'smoke-ok',
+        })),
+      )
 
       const out = await dispatcher.runOne('smoke-fake', {
         argv: [],

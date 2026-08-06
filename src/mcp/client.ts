@@ -93,9 +93,21 @@ export class McpClient {
     const { command, args = [], env, cwd } = this.launch
     this.logger.info(`connecting MCP server "${this.serverName}": ${command} ${args.join(' ')}`)
     try {
+      // §Round-4 — only forward a minimal safe subset of process.env.
+      // The previous `{ ...process.env }` leaked API keys, tokens, and
+      // credentials to every MCP server. The host can pass additional
+      // env vars explicitly via `launch.env`.
+      const safeEnv: Record<string, string> = {
+        PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+        HOME: process.env.HOME ?? '/root',
+        LANG: process.env.LANG ?? 'en_US.UTF-8',
+        TMPDIR: process.env.TMPDIR ?? '/tmp',
+      }
+      if (process.env.LC_ALL) safeEnv.LC_ALL = process.env.LC_ALL
+      if (process.env.USER) safeEnv.USER = process.env.USER
       this.proc = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, ...(env ?? {}) },
+        env: { ...safeEnv, ...(env ?? {}) },
         cwd: cwd ?? process.cwd(),
       })
     } catch (err) {

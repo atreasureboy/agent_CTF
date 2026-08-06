@@ -51,7 +51,8 @@ function makeEngine(opts: {
     },
   }
 
-  const prof = (opts.broker as any).opts?.profileStore?.getCurrent() || (opts.broker as any).opts?.profile
+  const prof =
+    (opts.broker as any).opts?.profileStore?.getCurrent() || (opts.broker as any).opts?.profile
   const config: EngineConfig = {
     client: opts.client,
     cwd: opts.cwd,
@@ -84,7 +85,10 @@ function readEvents(filePath: string): Array<Record<string, unknown>> {
   try {
     const txt = readFileSync(filePath, 'utf8').trim()
     if (!txt) return []
-    return txt.split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>)
+    return txt
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
   } catch {
     return []
   }
@@ -165,8 +169,10 @@ describe('e2e Engine.runTurn — image-stego agent with scripted LLM', () => {
 
   it('blocks Bash commands that bypass profile via the broker', async () => {
     const h = createHarness({
-      cwd: root, profile: 'image-stego',
-      inlineMaxBytes: 1024, jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
+      cwd: root,
+      profile: 'image-stego',
+      inlineMaxBytes: 1024,
+      jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
     })
     const client = new ScriptedClient()
     client.script = [
@@ -180,7 +186,10 @@ describe('e2e Engine.runTurn — image-stego agent with scripted LLM', () => {
       },
     ]
     client.defaultTurn = {
-      actions: [{ type: 'text', content: 'done' }, { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } }],
+      actions: [
+        { type: 'text', content: 'done' },
+        { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } },
+      ],
     }
     const engine = makeEngine({
       client: client as unknown as OpenAI,
@@ -189,14 +198,18 @@ describe('e2e Engine.runTurn — image-stego agent with scripted LLM', () => {
       cwd: root,
     })
     const { newHistory } = await engine.runTurn('enumerate', [])
-    const toolMsg = newHistory.find((m) => m.role === 'tool' && m.content?.toString().includes('nmap'))
+    const toolMsg = newHistory.find(
+      (m) => m.role === 'tool' && m.content?.toString().includes('nmap'),
+    )
     expect(toolMsg).toBeTruthy()
   })
 
   it('orchestrator profile refuses Bash (deniedTools + allowShell=false)', async () => {
     const h = createHarness({
-      cwd: root, profile: 'orchestrator',
-      inlineMaxBytes: 1024, jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
+      cwd: root,
+      profile: 'orchestrator',
+      inlineMaxBytes: 1024,
+      jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
     })
     const client = new ScriptedClient()
     client.script = [
@@ -210,7 +223,10 @@ describe('e2e Engine.runTurn — image-stego agent with scripted LLM', () => {
       },
     ]
     client.defaultTurn = {
-      actions: [{ type: 'text', content: 'done' }, { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } }],
+      actions: [
+        { type: 'text', content: 'done' },
+        { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } },
+      ],
     }
     const engine = makeEngine({
       client: client as unknown as OpenAI,
@@ -219,7 +235,9 @@ describe('e2e Engine.runTurn — image-stego agent with scripted LLM', () => {
       cwd: root,
     })
     const { newHistory } = await engine.runTurn('list', [])
-    const toolMsg = newHistory.find((m) => m.role === 'tool' && m.content?.toString().toLowerCase().includes('denied'))
+    const toolMsg = newHistory.find(
+      (m) => m.role === 'tool' && m.content?.toString().toLowerCase().includes('denied'),
+    )
     expect(toolMsg).toBeTruthy()
   })
 })
@@ -227,21 +245,30 @@ describe('e2e Engine.runTurn — image-stego agent with scripted LLM', () => {
 describe('e2e Engine.runTurn — ToolFirstPolicy audit through the engine', () => {
   it('records a policy_advisory event when a Bash command triggers image-stego rule', async () => {
     const h = createHarness({
-      cwd: root, profile: 'image-stego',
-      inlineMaxBytes: 1024, jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
+      cwd: root,
+      profile: 'image-stego',
+      inlineMaxBytes: 1024,
+      jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
     })
     const client = new ScriptedClient()
     client.script = [
       {
         callIndex: 0,
         actions: [
-          { type: 'tool_call', toolName: 'Bash', args: { command: 'python3 extract_lsb.py logo.png' } },
+          {
+            type: 'tool_call',
+            toolName: 'Bash',
+            args: { command: 'python3 extract_lsb.py logo.png' },
+          },
           { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } },
         ],
       },
     ]
     client.defaultTurn = {
-      actions: [{ type: 'text', content: 'done' }, { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } }],
+      actions: [
+        { type: 'text', content: 'done' },
+        { type: 'finish', reason: 'stop', usage: { prompt: 10, completion: 2 } },
+      ],
     }
     const engine = makeEngine({
       client: client as unknown as OpenAI,

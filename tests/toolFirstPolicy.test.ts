@@ -38,11 +38,7 @@ describe('ToolFirstPolicy', () => {
     )
     expect(vOther.rule).toBe('__none__')
 
-    const vCrypto = policy.advise(
-      'Bash',
-      { command: 'rsa n=12345 e=65537' },
-      PROFILES['crypto'],
-    )
+    const vCrypto = policy.advise('Bash', { command: 'rsa n=12345 e=65537' }, PROFILES['crypto'])
     expect(vCrypto.rule).toBe('rsa-common-attacks')
     expect(vCrypto.advice).toMatch(/rsa_common_attacks/)
   })
@@ -57,11 +53,7 @@ describe('ToolFirstPolicy', () => {
   })
 
   it('returns no advice for benign calls', () => {
-    const v = policy.advise(
-      'Read',
-      { file_path: '/project/README.md' },
-      PROFILES['triage'],
-    )
+    const v = policy.advise('Read', { file_path: '/project/README.md' }, PROFILES['triage'])
     expect(v.rule).toBe('__none__')
     expect(v.advice).toBe('')
   })

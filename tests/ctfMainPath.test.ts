@@ -214,9 +214,15 @@ describe('§八 — Handoff unique execution path', () => {
   it('dispatchNext without orchestrator throws — legacy fallback is gone', async () => {
     const { createHarness } = await import('../src/core/harness.js')
     const h = createHarness({ cwd: root, profile: 'triage' })
-    await h.broker.execute('request_handoff', {
-      suggestedAgent: 'triage', reason: 'r', objective: 'o',
-    }, { cwd: root, taskId: h.context.taskId, agentId: 'triage' })
+    await h.broker.execute(
+      'request_handoff',
+      {
+        suggestedAgent: 'triage',
+        reason: 'r',
+        objective: 'o',
+      },
+      { cwd: root, taskId: h.context.taskId, agentId: 'triage' },
+    )
     await expect(dispatchNext(h, { decision: 'approve' })).rejects.toThrow(
       /dispatchNext requires an attached CTFTaskOrchestrator/,
     )
@@ -232,10 +238,7 @@ describe('§八 — Handoff unique execution path', () => {
         objective: 'test',
       })
       // Fire two approves in parallel.
-      const [a, b] = await Promise.all([
-        orch.approveHandoff(h.id),
-        orch.approveHandoff(h.id),
-      ])
+      const [a, b] = await Promise.all([orch.approveHandoff(h.id), orch.approveHandoff(h.id)])
       // Both calls resolved to the same in-flight run — neither spawned a
       // duplicate specialist.
       expect(orch.getState().agentRuns.filter((r) => r.handoffId === h.id).length).toBe(1)
@@ -304,16 +307,16 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
         hypothesis: {
           id: 'h1',
           taskId: 't1',
-        statement: 'y',
-        category: 'crypto',
-        status: 'proposed',
-        supportingEvidenceIds: [],
-        contradictingEvidenceIds: [],
-        proposedBy: { type: 'manual', id: 'main' },
-        priority: 0,
-        confidence: 0.5,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+          statement: 'y',
+          category: 'crypto',
+          status: 'proposed',
+          supportingEvidenceIds: [],
+          contradictingEvidenceIds: [],
+          proposedBy: { type: 'manual', id: 'main' },
+          priority: 0,
+          confidence: 0.5,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         },
       }),
     ).toThrow(DuplicateHypothesisError)
@@ -321,8 +324,9 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
 
   it('HYPOTHESIS_UPDATED throws on missing id', () => {
     const store = new CTFTaskStateStore(freshState())
-    expect(() => store.apply({ type: 'HYPOTHESIS_UPDATED', hypothesisId: 'nope', patch: {} }))
-      .toThrow(UnknownHypothesisError)
+    expect(() =>
+      store.apply({ type: 'HYPOTHESIS_UPDATED', hypothesisId: 'nope', patch: {} }),
+    ).toThrow(UnknownHypothesisError)
   })
 
   it('ATTEMPT_RECORDED appends; duplicates rejected', () => {
@@ -341,7 +345,7 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
         evidenceIds: [],
         artifactIds: [],
         flagCandidateIds: [],
-                status: 'pending',
+        status: 'pending',
         createdAt: Date.now(),
       },
     })
@@ -352,16 +356,16 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
         attempt: {
           id: 'a1',
           kind: 'tool',
-        targetId: 't1',
-        input: {},
-        taskId: 't1',
-        fingerprint: 'fp_tool_t1',
-        hypothesisIds: [],
-        observationIds: [],
-        evidenceIds: [],
-        artifactIds: [],
-        flagCandidateIds: [],
-                  status: 'pending',
+          targetId: 't1',
+          input: {},
+          taskId: 't1',
+          fingerprint: 'fp_tool_t1',
+          hypothesisIds: [],
+          observationIds: [],
+          evidenceIds: [],
+          artifactIds: [],
+          flagCandidateIds: [],
+          status: 'pending',
           createdAt: Date.now(),
         },
       }),
@@ -384,7 +388,7 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
         evidenceIds: [],
         artifactIds: [],
         flagCandidateIds: [],
-                status: 'running',
+        status: 'running',
         createdAt: Date.now(),
       },
     })
@@ -404,8 +408,9 @@ describe('§九 — TaskEvent reducer applies state changes', () => {
 
   it('ATTEMPT_UPDATED throws on missing id', () => {
     const store = new CTFTaskStateStore(freshState())
-    expect(() => store.apply({ type: 'ATTEMPT_UPDATED', attemptId: 'nope', patch: {} }))
-      .toThrow(UnknownAttemptError)
+    expect(() => store.apply({ type: 'ATTEMPT_UPDATED', attemptId: 'nope', patch: {} })).toThrow(
+      UnknownAttemptError,
+    )
   })
 
   it('JOB_RECORDED + JOB_UPDATED maintain jobs[] and activeJobIds[]', () => {
@@ -600,7 +605,8 @@ describe('§十四 — Terminal-phase guard', () => {
           taskId: 't',
           producerAgentId: 'main',
           category: 'triage',
-          title: 'late', summary: 'triage summary',
+          title: 'late',
+          summary: 'triage summary',
           confidence: 'low',
           evidence: [],
           artifactIds: [],
@@ -609,9 +615,9 @@ describe('§十四 — Terminal-phase guard', () => {
       }),
     ).not.toThrow()
     // Phase change rejected.
-    expect(() =>
-      store.apply({ type: 'PHASE_CHANGED', from: 'solved', to: 'exploration' }),
-    ).toThrow(TaskAlreadyCompletedError)
+    expect(() => store.apply({ type: 'PHASE_CHANGED', from: 'solved', to: 'exploration' })).toThrow(
+      TaskAlreadyCompletedError,
+    )
   })
 })
 

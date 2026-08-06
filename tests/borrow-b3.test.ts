@@ -16,9 +16,24 @@ describe('LongTrajectoryCompactor (B3)', () => {
     try {
       const state = createTestTaskState({ taskId: 'lt-1' })
       const observations = [
-        createObservation('lt-1', { kind: 'generic', source: { type: 'manual' }, summary: 'obs 1', confidence: 0.5 }),
-        createObservation('lt-1', { kind: 'generic', source: { type: 'manual' }, summary: 'obs 2', confidence: 0.5 }),
-        createObservation('lt-1', { kind: 'generic', source: { type: 'manual' }, summary: 'obs 3', confidence: 0.5 }),
+        createObservation('lt-1', {
+          kind: 'generic',
+          source: { type: 'manual' },
+          summary: 'obs 1',
+          confidence: 0.5,
+        }),
+        createObservation('lt-1', {
+          kind: 'generic',
+          source: { type: 'manual' },
+          summary: 'obs 2',
+          confidence: 0.5,
+        }),
+        createObservation('lt-1', {
+          kind: 'generic',
+          source: { type: 'manual' },
+          summary: 'obs 3',
+          confidence: 0.5,
+        }),
       ]
       const r = await compactToFile(state, observations, { workspaceDir: dir, at: 1234567890 })
       expect(r.archiveCount).toBe(3)

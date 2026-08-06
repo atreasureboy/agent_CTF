@@ -13,7 +13,10 @@ import { parseCriticOutput, formatMessagesForCritic } from '../src/prompts/criti
 function makeParsedToolCall(
   name: string,
   args: Record<string, unknown> = {},
-): { tc: { index: number; id: string; name: string; arguments: string }; input: Record<string, unknown> } {
+): {
+  tc: { index: number; id: string; name: string; arguments: string }
+  input: Record<string, unknown>
+} {
   return {
     tc: { index: 0, id: `tc_${name}`, name, arguments: JSON.stringify(args) },
     input: args,
@@ -117,9 +120,7 @@ describe('estimateTokens', () => {
   })
 
   it('estimates tokens for simple text messages', () => {
-    const messages = [
-      { role: 'user' as const, content: 'Hello world' },
-    ]
+    const messages = [{ role: 'user' as const, content: 'Hello world' }]
     // "Hello world" = 11 chars + 20 envelope = 31 chars / 3.5 ≈ 9 tokens
     const tokens = estimateTokens(messages)
     expect(tokens).toBeGreaterThan(0)
@@ -258,9 +259,7 @@ describe('formatMessagesForCritic', () => {
 
   it('formats tool results with truncation', () => {
     const longResult = 'A'.repeat(1000)
-    const messages = [
-      { role: 'tool' as const, content: longResult, name: 'Bash' },
-    ]
+    const messages = [{ role: 'tool' as const, content: longResult, name: 'Bash' }]
     const formatted = formatMessagesForCritic(messages)
     expect(formatted).toContain('[TOOL_RESULT:Bash]')
     expect(formatted.length).toBeLessThan(longResult.length)

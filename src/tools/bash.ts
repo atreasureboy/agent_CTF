@@ -83,8 +83,8 @@ export class BashTool implements Tool {
   }
 
   async execute(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    let { command, timeout, run_in_background, follow_mode, description } =
-      input as unknown as BashInput
+    const { command, timeout, follow_mode, description } = input as unknown as BashInput
+    let { run_in_background } = input as unknown as BashInput
 
     // §Round-4 — heuristic auto-foreground for obviously short commands.
     // The model frequently passes run_in_background=true for trivial
@@ -97,7 +97,11 @@ export class BashTool implements Tool {
     // Robust against truthy values: `true`, `1`, `"true"`, `"1"` all mean
     // "background requested". Anything else (undefined / false / 0) keeps
     // the original behaviour.
-    const bgRequested = run_in_background === true || (run_in_background as unknown) === 'true' || (run_in_background as unknown) === 1 || (run_in_background as unknown) === '1'
+    const bgRequested =
+      run_in_background === true ||
+      (run_in_background as unknown) === 'true' ||
+      (run_in_background as unknown) === 1 ||
+      (run_in_background as unknown) === '1'
     if (bgRequested) {
       const c = command.trim().toLowerCase()
       const isLongRunning =
@@ -385,7 +389,15 @@ export class BashTool implements Tool {
           cwd: context.cwd,
           timeout: timeoutMs,
           maxBuffer: 50 * 1024 * 1024,
-          env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG, TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP, TERM: 'dumb' },
+          env: {
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            LANG: process.env.LANG,
+            TMPDIR: process.env.TMPDIR,
+            TEMP: process.env.TEMP,
+            TMP: process.env.TMP,
+            TERM: 'dumb',
+          },
           shell: SHELL,
         },
         (err, stdout, stderr) => {

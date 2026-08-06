@@ -3,9 +3,12 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import {createApproachContestExecutor} from '../src/core/ctfReasoning/approachContest.js'
+import { createApproachContestExecutor } from '../src/core/ctfReasoning/approachContest.js'
 import type { ActionExecutionResult } from '../src/core/ctfReasoning/actionExecutionResult.js'
-import type { StrategyActionExecutor, StrategyActionExecutorContext } from '../src/core/ctfReasoning/strategyActionExecutor.js'
+import type {
+  StrategyActionExecutor,
+  StrategyActionExecutorContext,
+} from '../src/core/ctfReasoning/strategyActionExecutor.js'
 import type { SuggestedAction } from '../src/core/ctfReasoning/suggestedAction.js'
 
 const flagAction: SuggestedAction = {
@@ -16,7 +19,12 @@ const flagAction: SuggestedAction = {
   costTier: 'cheap',
 }
 
-function makeFramer(id: string, prompt: string, delayMs: number, flag?: string): {
+function makeFramer(
+  id: string,
+  prompt: string,
+  delayMs: number,
+  flag?: string,
+): {
   id: string
   prompt: string
   executor: StrategyActionExecutor
@@ -34,16 +42,18 @@ function makeFramer(id: string, prompt: string, delayMs: number, flag?: string):
             evidence: [],
             suggestedActions: [],
             flagCandidateDrafts: flag
-              ? [{
-                  value: flag,
-                  normalizedValue: flag.toLowerCase().trim(),
-                  sourceObservationIds: [],
-                  sourceEvidenceIds: [],
-                  sourceArtifactIds: [],
-                  sourceRunIds: [],
-                  confidence: 0.99,
-                  producer: { type: 'parser', id },
-                }]
+              ? [
+                  {
+                    value: flag,
+                    normalizedValue: flag.toLowerCase().trim(),
+                    sourceObservationIds: [],
+                    sourceEvidenceIds: [],
+                    sourceArtifactIds: [],
+                    sourceRunIds: [],
+                    confidence: 0.99,
+                    producer: { type: 'parser', id },
+                  },
+                ]
               : [],
             warnings: [],
             rawArtifactIds: [],
@@ -78,18 +88,19 @@ describe('ApproachContest (B2)', () => {
     const r = await contest.execute(makeCtx())
     expect(r.status).toBe('executed')
     if (r.status === 'executed') {
-      expect(r.materializedResult.flagCandidateDrafts.some((c) => c.value === 'flag{aggressive}')).toBe(true)
-      expect(r.materializedResult.warnings.some((w) => w.startsWith('approach-contest: winner='))).toBe(true)
+      expect(
+        r.materializedResult.flagCandidateDrafts.some((c) => c.value === 'flag{aggressive}'),
+      ).toBe(true)
+      expect(
+        r.materializedResult.warnings.some((w) => w.startsWith('approach-contest: winner=')),
+      ).toBe(true)
     }
   })
 
   it('falls through to first-completed when no framing emits a flag', async () => {
     const contest = createApproachContestExecutor({
       executor: makeFramer('a', 'p', 5).executor,
-      framings: [
-        makeFramer('a', 'p', 5),
-        makeFramer('b', 'p', 20),
-      ],
+      framings: [makeFramer('a', 'p', 5), makeFramer('b', 'p', 20)],
       flagOnly: false,
       winnerTimeoutMs: 1000,
     })

@@ -12,7 +12,11 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 
 import { WorkflowEngine, type RunContext, type WorkflowRunner } from '../src/core/workflowEngine.js'
-import { workflowDefinitionSchema, type WorkflowDefinition, type WorkflowStep } from '../src/core/workflowDefinition.js'
+import {
+  workflowDefinitionSchema,
+  type WorkflowDefinition,
+  type WorkflowStep,
+} from '../src/core/workflowDefinition.js'
 
 function makeRunner(delays: Record<string, number>): {
   runner: WorkflowRunner

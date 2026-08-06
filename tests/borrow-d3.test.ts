@@ -53,7 +53,17 @@ describe('LLM tool-use protocol (D3)', () => {
 
   it('MockLlmProvider can swap responses between calls', async () => {
     const provider = new MockLlmProvider('mock-4')
-    provider.setNext({ id: 'a', raw: { type: 'call_tool', toolId: 'f', input: {}, reason: 'r', priority: 1, costTier: 'cheap' } })
+    provider.setNext({
+      id: 'a',
+      raw: {
+        type: 'call_tool',
+        toolId: 'f',
+        input: {},
+        reason: 'r',
+        priority: 1,
+        costTier: 'cheap',
+      },
+    })
     const r1 = await askLlmForAction(provider, 'p', [])
     expect(r1.kind).toBe('ok')
     provider.setNext(null)

@@ -42,9 +42,7 @@ describe('ToolRegistry', () => {
     const r = buildRegistry()
     const image = PROFILES['image-stego']
     const visible = r.resolveFor(image)
-    expect(visible.map((t) => t.name)).toEqual(
-      expect.arrayContaining(['Bash', 'Read']),
-    )
+    expect(visible.map((t) => t.name)).toEqual(expect.arrayContaining(['Bash', 'Read']))
     // Image profile includes Bash but not everything; visible length should be smaller than total.
     expect(visible.length).toBeLessThan(r.list().length)
   })

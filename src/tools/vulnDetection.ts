@@ -3,7 +3,16 @@ import { TOOL_METADATA } from '../core/toolMetadata.js'
 import type { CTFToolMetadata } from '../core/toolDefinition.js'
 
 type VulnType =
-  'SQLI' | 'XSS' | 'IDOR' | 'LFI' | 'CMD' | 'UPLOAD' | 'SSTI' | 'SSRF' | 'XXE' | 'OTHER'
+  | 'SQLI'
+  | 'XSS'
+  | 'IDOR'
+  | 'LFI'
+  | 'CMD'
+  | 'UPLOAD'
+  | 'SSTI'
+  | 'SSRF'
+  | 'XXE'
+  | 'OTHER'
 
 function makeVulnTool(
   name: string,

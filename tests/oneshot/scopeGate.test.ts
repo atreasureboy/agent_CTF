@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  ScopeGate,
-  parseTarget,
-  ScopeDeniedError,
-} from '../../src/ctf/oneshot/index.js'
+import { ScopeGate, parseTarget, ScopeDeniedError } from '../../src/ctf/oneshot/index.js'
 
 describe('ScopeGate', () => {
   it('parseTarget extracts host + port', () => {
@@ -18,14 +14,20 @@ describe('ScopeGate', () => {
   })
 
   it('denies private IPs even if allow-list is empty', () => {
-    const gate = new ScopeGate({ hosts: [], domains: [], ports: [], cidrs: [] }, { denyByDefault: false })
+    const gate = new ScopeGate(
+      { hosts: [], domains: [], ports: [], cidrs: [] },
+      { denyByDefault: false },
+    )
     expect(() => gate.assert('127.0.0.1')).toThrow(ScopeDeniedError)
     expect(() => gate.assert('10.0.0.1')).toThrow(ScopeDeniedError)
     expect(() => gate.assert('169.254.169.254')).toThrow(ScopeDeniedError)
   })
 
   it('denies private hostnames', () => {
-    const gate = new ScopeGate({ hosts: [], domains: [], ports: [], cidrs: [] }, { denyByDefault: false })
+    const gate = new ScopeGate(
+      { hosts: [], domains: [], ports: [], cidrs: [] },
+      { denyByDefault: false },
+    )
     expect(() => gate.assert('localhost')).toThrow(ScopeDeniedError)
   })
 
@@ -38,7 +40,10 @@ describe('ScopeGate', () => {
   })
 
   it('denies non-matching hosts when denyByDefault=true', () => {
-    const gate = new ScopeGate({ hosts: ['ctf.example.com'], domains: [], ports: [], cidrs: [] }, { denyByDefault: true })
+    const gate = new ScopeGate(
+      { hosts: ['ctf.example.com'], domains: [], ports: [], cidrs: [] },
+      { denyByDefault: true },
+    )
     expect(() => gate.assert('evil.com')).toThrow(/not in allow-list/)
   })
 
@@ -77,7 +82,10 @@ describe('ScopeGate', () => {
   })
 
   it('check returns allowed=false on denial', () => {
-    const gate = new ScopeGate({ hosts: [], domains: [], ports: [], cidrs: [] }, { denyByDefault: false })
+    const gate = new ScopeGate(
+      { hosts: [], domains: [], ports: [], cidrs: [] },
+      { denyByDefault: false },
+    )
     expect(gate.check('10.0.0.1')).toEqual({ allowed: false, reason: 'private' })
   })
 })

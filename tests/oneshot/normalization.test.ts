@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { normalizeResult, runParser, parseManifest, type OneShotManifest } from '../../src/ctf/oneshot/index.js'
+import {
+  normalizeResult,
+  runParser,
+  parseManifest,
+  type OneShotManifest,
+} from '../../src/ctf/oneshot/index.js'
 
 function passthroughManifest(): OneShotManifest {
   return parseManifest({
@@ -64,21 +69,25 @@ describe('normalizer', () => {
         scheduling: { costTier: 'fast', falsePositiveRisk: 'low' },
       })
       writeFileSync(stdout, 'flag{first} flag{first} flag{second}\n')
-      const normalized = normalizeResult({
-        runId: 'osp_x',
-        manifestId: m.id,
-        taskId: 't',
-        status: 'completed',
-        startedAt: '',
-        finishedAt: '',
-        findings: [],
-        artifacts: [],
-        candidates: [],
-        diagnostics: { truncated: false, parserWarnings: [], stdoutPath: stdout },
-        confidence: 0.5,
-        falsePositiveRisk: 'medium',
-        summary: '',
-      }, undefined, m)
+      const normalized = normalizeResult(
+        {
+          runId: 'osp_x',
+          manifestId: m.id,
+          taskId: 't',
+          status: 'completed',
+          startedAt: '',
+          finishedAt: '',
+          findings: [],
+          artifacts: [],
+          candidates: [],
+          diagnostics: { truncated: false, parserWarnings: [], stdoutPath: stdout },
+          confidence: 0.5,
+          falsePositiveRisk: 'medium',
+          summary: '',
+        },
+        undefined,
+        m,
+      )
       // Two unique flag candidates.
       const values = normalized.candidates.map((c) => c.value).sort()
       expect(values).toEqual(['flag{first}', 'flag{second}'])
@@ -112,21 +121,25 @@ describe('normalizer', () => {
       const lines: string[] = []
       for (let i = 0; i < 100; i++) lines.push(`flag{n${i}}`)
       writeFileSync(stdout, lines.join('\n') + '\n')
-      const normalized = normalizeResult({
-        runId: 'osp_x',
-        manifestId: m.id,
-        taskId: 't',
-        status: 'completed',
-        startedAt: '',
-        finishedAt: '',
-        findings: [],
-        artifacts: [],
-        candidates: [],
-        diagnostics: { truncated: false, parserWarnings: [], stdoutPath: stdout },
-        confidence: 0.5,
-        falsePositiveRisk: 'medium',
-        summary: '',
-      }, { maxFindings: 5, maxCandidates: 3 }, m)
+      const normalized = normalizeResult(
+        {
+          runId: 'osp_x',
+          manifestId: m.id,
+          taskId: 't',
+          status: 'completed',
+          startedAt: '',
+          finishedAt: '',
+          findings: [],
+          artifacts: [],
+          candidates: [],
+          diagnostics: { truncated: false, parserWarnings: [], stdoutPath: stdout },
+          confidence: 0.5,
+          falsePositiveRisk: 'medium',
+          summary: '',
+        },
+        { maxFindings: 5, maxCandidates: 3 },
+        m,
+      )
       expect(normalized.findings.length).toBeLessThanOrEqual(5)
       expect(normalized.candidates.length).toBeLessThanOrEqual(3)
     } finally {

@@ -25,8 +25,16 @@ export function createTestTaskState(overrides: Partial<CTFTaskState> = {}): CTFT
       inputDir: '/tmp/test/i',
       eventsFile: '/tmp/test/e.ndjson',
       profileId: 'triage',
-      contestScope: { allowedFilesRoot: '/tmp/test', allowPublicNetwork: false, allowHeavyOneShots: false },
-      contestConfig: { allowedFilesRoot: '/tmp/test', allowPublicNetwork: false, allowHeavyOneShots: false },
+      contestScope: {
+        allowedFilesRoot: '/tmp/test',
+        allowPublicNetwork: false,
+        allowHeavyOneShots: false,
+      },
+      contestConfig: {
+        allowedFilesRoot: '/tmp/test',
+        allowPublicNetwork: false,
+        allowHeavyOneShots: false,
+      },
       environment: {},
       abortSignal: new AbortController().signal,
       metadata: {},

@@ -74,7 +74,7 @@ def parse_png(filename):
         # 验证 PNG 签名
         signature = f.read(8)
         assert signature == b'\x89PNG\r\n\x1a\n'
-        
+
         chunks = []
         while True:
             length_bytes = f.read(4)
@@ -84,14 +84,14 @@ def parse_png(filename):
             chunk_type = f.read(4)
             chunk_data = f.read(length)
             crc = f.read(4)
-            
+
             chunks.append({
                 'type': chunk_type.decode('ascii'),
                 'length': length,
                 'data': chunk_data,
                 'crc': crc
             })
-            
+
             if chunk_type == b'IEND':
                 break
     return chunks
@@ -203,12 +203,12 @@ def extract_audio_lsb(wav_file, bit=0):
     wav = wave.open(wav_file, 'rb')
     frames = wav.readframes(wav.getnframes())
     wav.close()
-    
+
     bits = ''
     for i in range(0, len(frames), 2):  # 16-bit samples
         sample = int.from_bytes(frames[i:i+2], 'little', signed=True)
         bits += str((sample >> bit) & 1)
-    
+
     data = bytes(int(bits[i:i+8], 2) for i in range(0, len(bits) - 7, 8))
     return data
 ```

@@ -14,9 +14,7 @@ import {
   ModelCircuitBreaker,
   ModelCapabilityRegistry,
 } from '../src/core/modelReliability/index.js'
-import type {
-  ModelCapabilityProfile,
-} from '../src/core/modelReliability/index.js'
+import type { ModelCapabilityProfile } from '../src/core/modelReliability/index.js'
 import type {
   ModelProvider,
   ProviderAgentTurnInput,
@@ -31,10 +29,7 @@ import {
   CrossSolverEvidenceBus,
   StagnationDetector,
 } from '../src/core/solverPortfolio/index.js'
-import {
-  TrajectoryRecorder,
-  TrajectoryReplay,
-} from '../src/core/trajectory/index.js'
+import { TrajectoryRecorder, TrajectoryReplay } from '../src/core/trajectory/index.js'
 import { ProgressCompiler } from '../src/core/contextCompiler/index.js'
 import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
 import type OpenAI from 'openai'
@@ -44,7 +39,10 @@ import * as os from 'node:os'
 
 // ─── Helpers ────────────────────────────────────────────────
 
-function profile(id: string, overrides: Partial<ModelCapabilityProfile> = {}): ModelCapabilityProfile {
+function profile(
+  id: string,
+  overrides: Partial<ModelCapabilityProfile> = {},
+): ModelCapabilityProfile {
   return {
     id,
     providerId: 'mock-provider',
@@ -54,11 +52,28 @@ function profile(id: string, overrides: Partial<ModelCapabilityProfile> = {}): M
     trustLevel: 'auxiliary',
     reliabilityClass: 'standard',
     contextWindow: 32000,
-    capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: false, codeExecutionPlanning: false },
-    reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+    capabilities: {
+      toolCalling: true,
+      structuredOutput: true,
+      vision: false,
+      longContext: false,
+      codeExecutionPlanning: false,
+    },
+    reliability: {
+      structuredOutput: 0.9,
+      toolArguments: 0.9,
+      longHorizonPlanning: 0.8,
+      summarization: 0.9,
+      instructionFollowing: 0.9,
+    },
     economics: {},
     allowedRoles: ['deep_solver'],
-    limits: { maxVisibleTools: 10, maxIterations: 10, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+    limits: {
+      maxVisibleTools: 10,
+      maxIterations: 10,
+      maxRepairAttempts: 1,
+      maxConsecutiveFailures: 2,
+    },
     fallbackModelIds: [],
     ...overrides,
   }
@@ -84,39 +99,45 @@ class _StreamingProvider implements ModelProvider {
     const toolName = this.toolName
     const toolArgs = this.toolArguments
     // eslint-disable-next-line @typescript-eslint/require-await
-    return (async function* () {
+    return async function* () {
       yield {
         id: `chatcmpl-${id}-1`,
         object: 'chat.completion.chunk' as const,
         created: Date.now(),
         model: model.id,
-        choices: [{
-          index: 0,
-          delta: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{
-              index: 0,
-              id: `call-${id}-1`,
-              type: 'function' as const,
-              function: { name: toolName, arguments: toolArgs },
-            }],
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: 'assistant' as const,
+              content: null,
+              tool_calls: [
+                {
+                  index: 0,
+                  id: `call-${id}-1`,
+                  type: 'function' as const,
+                  function: { name: toolName, arguments: toolArgs },
+                },
+              ],
+            },
+            finish_reason: null,
           },
-          finish_reason: null,
-        }],
+        ],
       } as unknown as OpenAI.Chat.ChatCompletionChunk
       yield {
         id: `chatcmpl-${id}-2`,
         object: 'chat.completion.chunk' as const,
         created: Date.now(),
         model: model.id,
-        choices: [{
-          index: 0,
-          delta: { content: 'done', role: 'assistant' },
-          finish_reason: 'stop',
-        }],
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'done', role: 'assistant' },
+            finish_reason: 'stop',
+          },
+        ],
       } as unknown as OpenAI.Chat.ChatCompletionChunk
-    }).bind(this)()
+    }.bind(this)()
   }
   // eslint-disable-next-line @typescript-eslint/require-await
   public async executeStructured(): Promise<ProviderStructuredResult> {
@@ -129,10 +150,12 @@ class _StreamingProvider implements ModelProvider {
 describe('Smoke 1 (ele-goal §四十二): M3 reliability full path', () => {
   it('provider routing + fallback wiring is intact', () => {
     const registry = new ModelCapabilityRegistry()
-    registry.registerProfile(profile('m3-scout', {
-      fallbackModelIds: ['gpt-4o'],
-      allowedRoles: ['solver_scout'],
-    }))
+    registry.registerProfile(
+      profile('m3-scout', {
+        fallbackModelIds: ['gpt-4o'],
+        allowedRoles: ['solver_scout'],
+      }),
+    )
     registry.registerProfile(profile('gpt-4o', { allowedRoles: ['deep_solver'] }))
     const health = new ModelHealthStore()
     const breaker = new ModelCircuitBreaker(health)
@@ -178,10 +201,12 @@ describe('Smoke 2 (ele-goal §四十二): M3 Scout limited tool set', () => {
     // as the resolution returns an array.
     expect(Array.isArray(exposed)).toBe(true)
 
-    expect(() => resolver.assertExecutable({
-      identity: m3Identity,
-      tool: { name: 'gdb' },
-    })).toThrow()
+    expect(() =>
+      resolver.assertExecutable({
+        identity: m3Identity,
+        tool: { name: 'gdb' },
+      }),
+    ).toThrow()
   })
 })
 
@@ -197,13 +222,25 @@ describe('Smoke 3 (ele-goal §四十二): ContextCompiler end-to-end', () => {
         objective: 'find the flag',
         scopeSummary: 'web-stego',
         evidences: [
-          { id: 'ev1', title: 'ev1-title', factSummary: 'PNG image', confidence: 0.95, confirmed: true },
+          {
+            id: 'ev1',
+            title: 'ev1-title',
+            factSummary: 'PNG image',
+            confidence: 0.95,
+            confirmed: true,
+          },
         ],
         hypotheses: [
           { id: 'h1', title: 'image is PNG', status: 'proposed', reasoning: 'matches header' },
         ],
         attempts: [
-          { id: 'att1', actionSummary: 'binwalk /tmp/x', fingerprint: 'binwalk:/tmp/x', outcome: 'failed', reason: 'no embedded archive' },
+          {
+            id: 'att1',
+            actionSummary: 'binwalk /tmp/x',
+            fingerprint: 'binwalk:/tmp/x',
+            outcome: 'failed',
+            reason: 'no embedded archive',
+          },
         ],
         artifacts: [],
         currentBlocker: 'PNG header found',
@@ -261,48 +298,91 @@ describe('Smoke 5 (ele-goal §四十二): CrossSolverEvidenceBus', () => {
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cseb-'))
     try {
       const storeA = new CTFTaskStateStore({
-        taskId: 'smoke_5', phase: 'triage',
+        taskId: 'smoke_5',
+        phase: 'triage',
         context: {
-          taskId: 'smoke_5', workspaceDir: tmpDir, sessionDir: tmpDir,
-          artifactDir: tmpDir, inputDir: tmpDir, eventsFile: tmpDir + '/e.ndjson',
+          taskId: 'smoke_5',
+          workspaceDir: tmpDir,
+          sessionDir: tmpDir,
+          artifactDir: tmpDir,
+          inputDir: tmpDir,
+          eventsFile: tmpDir + '/e.ndjson',
           profileId: 'triage',
-          contestScope: { allowedFilesRoot: tmpDir, allowPublicNetwork: false, allowHeavyOneShots: false },
-          contestConfig: { allowedFilesRoot: tmpDir, allowPublicNetwork: false, allowHeavyOneShots: false },
+          contestScope: {
+            allowedFilesRoot: tmpDir,
+            allowPublicNetwork: false,
+            allowHeavyOneShots: false,
+          },
+          contestConfig: {
+            allowedFilesRoot: tmpDir,
+            allowPublicNetwork: false,
+            allowHeavyOneShots: false,
+          },
           environment: {},
           abortSignal: new AbortController().signal,
           metadata: {},
         },
         challenge: { inputArtifactIds: [] },
         activeProfileId: 'triage',
-        findings: [], artifactIds: [], hypotheses: [], attempts: [],
-        handoffs: [], agentRuns: [], workflowRuns: [], jobs: [], oneShotRuns: [],
-        activeAgentRunIds: [], activeWorkflowRunIds: [], activeJobIds: [],
-        observations: [], evidence: [], strategyDecisions: [], pendingActions: [],
+        findings: [],
+        artifactIds: [],
+        hypotheses: [],
+        attempts: [],
+        handoffs: [],
+        agentRuns: [],
+        workflowRuns: [],
+        jobs: [],
+        oneShotRuns: [],
+        activeAgentRunIds: [],
+        activeWorkflowRunIds: [],
+        activeJobIds: [],
+        observations: [],
+        evidence: [],
+        strategyDecisions: [],
+        pendingActions: [],
         reasoningBudget: {
-          strategyCyclesUsed: 0, actionsExecuted: 0,
-          cheapActionsUsed: 0, normalActionsUsed: 0, expensiveActionsUsed: 0,
-          workflowRunsUsed: 0, oneShotRunsUsed: 0, handoffsUsed: 0,
+          strategyCyclesUsed: 0,
+          actionsExecuted: 0,
+          cheapActionsUsed: 0,
+          normalActionsUsed: 0,
+          expensiveActionsUsed: 0,
+          workflowRunsUsed: 0,
+          oneShotRunsUsed: 0,
+          handoffsUsed: 0,
           estimatedCostUnitsUsed: 0,
         },
         reasoningBudgetLimits: {
-          maxStrategyCycles: 8, maxActions: 32, maxCheapActions: 24, maxNormalActions: 12, maxExpensiveActions: 4,
-          maxWorkflowRuns: 8, maxOneShotRuns: 8, maxHandoffs: 4, maxEstimatedCostUnits: 64,
+          maxStrategyCycles: 8,
+          maxActions: 32,
+          maxCheapActions: 24,
+          maxNormalActions: 12,
+          maxExpensiveActions: 4,
+          maxWorkflowRuns: 8,
+          maxOneShotRuns: 8,
+          maxHandoffs: 4,
+          maxEstimatedCostUnits: 64,
         },
-        flagCandidates: [], diagnostics: [], degraded: false,
-        createdAt: 0, updatedAt: 0,
+        flagCandidates: [],
+        diagnostics: [],
+        degraded: false,
+        createdAt: 0,
+        updatedAt: 0,
       } as never)
       // Pre-seed the bus with a real observation so the publish gate
       // accepts the message.
-      storeA.apply({ type: 'OBSERVATION_ADDED', observation: {
-        id: 'o1',
-        taskId: 'smoke_5',
-        kind: 'generic' as const,
-        source: { type: 'manual' as const },
-        summary: 'pre-seeded',
-        attributes: {},
-        confidence: 0.5,
-        createdAt: 1,
-      } })
+      storeA.apply({
+        type: 'OBSERVATION_ADDED',
+        observation: {
+          id: 'o1',
+          taskId: 'smoke_5',
+          kind: 'generic' as const,
+          source: { type: 'manual' as const },
+          summary: 'pre-seeded',
+          attributes: {},
+          confidence: 0.5,
+          createdAt: 1,
+        },
+      })
       const bus = new CrossSolverEvidenceBus(storeA)
       const result = bus.publish({
         id: 'msg1',
@@ -362,19 +442,34 @@ describe('Smoke 7 (ele-goal §四十二): Trajectory round-trip', () => {
   it('records 3 events and replays them all', async () => {
     const tmpFile = path.join(os.tmpdir(), `traj_e2e_${Date.now()}.jsonl`)
     const recorder = new TrajectoryRecorder(tmpFile)
-    recorder.record('smoke_7', 'tool_call', {
-      toolId: 'file',
-      attemptFingerprint: 'fp1',
-      sourceIds: ['obs-1', 'att-1'],
-    } as never, 1)
-    recorder.record('smoke_7', 'suggested_action', {
-      actionName: 'run_workflow',
-      sourceIds: ['obs-2'],
-    } as never, 2)
-    recorder.record('smoke_7', 'attempt', {
-      actionName: 'file_call',
-      sourceIds: ['obs-1', 'art-1'],
-    } as never, 3)
+    recorder.record(
+      'smoke_7',
+      'tool_call',
+      {
+        toolId: 'file',
+        attemptFingerprint: 'fp1',
+        sourceIds: ['obs-1', 'att-1'],
+      } as never,
+      1,
+    )
+    recorder.record(
+      'smoke_7',
+      'suggested_action',
+      {
+        actionName: 'run_workflow',
+        sourceIds: ['obs-2'],
+      } as never,
+      2,
+    )
+    recorder.record(
+      'smoke_7',
+      'attempt',
+      {
+        actionName: 'file_call',
+        sourceIds: ['obs-1', 'art-1'],
+      } as never,
+      3,
+    )
     await recorder.flush()
 
     const replay = new TrajectoryReplay()

@@ -16,7 +16,9 @@ async function materializePng(toolId: string) {
     {
       taskId: 'main-path',
       source: { type: 'tool', toolId },
-      content: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]).toString('binary'),
+      content: Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0,
+      ]).toString('binary'),
       artifactIds: [],
       isError: false,
     },
@@ -36,27 +38,50 @@ describe('Phase 2.3 §二十三 — real-action main path', () => {
         }
         return {
           status: 'executed',
-          materializedResult: { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: [], rawArtifactIds: [] },
+          materializedResult: {
+            observations: [],
+            evidence: [],
+            suggestedActions: [],
+            flagCandidateDrafts: [],
+            warnings: [],
+            rawArtifactIds: [],
+          },
           executionRefs: {},
         }
       },
     }
 
-    const triage = await processNewReasoningInputs({
-      taskId: 'main-path',
-      state,
-      store,
-      executor,
-      budgetLimits: { fastConcurrency: 4, mediumConcurrency: 2, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 4 },
-      heavyApproved: true,
-    }, {
-      source: 'main-agent',
-      newObservationIds: [],
-      newEvidenceIds: [],
-      suggestedActions: [
-        { type: 'call_tool', toolId: 'file', input: { path: 'unknown.bin' }, reason: 'identify', priority: 5, costTier: 'cheap' },
-      ],
-    })
+    const triage = await processNewReasoningInputs(
+      {
+        taskId: 'main-path',
+        state,
+        store,
+        executor,
+        budgetLimits: {
+          fastConcurrency: 4,
+          mediumConcurrency: 2,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 100,
+          perTaskHeavyRuns: 4,
+        },
+        heavyApproved: true,
+      },
+      {
+        source: 'main-agent',
+        newObservationIds: [],
+        newEvidenceIds: [],
+        suggestedActions: [
+          {
+            type: 'call_tool',
+            toolId: 'file',
+            input: { path: 'unknown.bin' },
+            reason: 'identify',
+            priority: 5,
+            costTier: 'cheap',
+          },
+        ],
+      },
+    )
 
     expect(triage.cycles).toBeGreaterThan(0)
     expect(store.getState().observations.length).toBeGreaterThan(0)

@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  OneShotCatalog,
-  OneShotRegistry,
-  selectManifests,
-} from '../../src/ctf/oneshot/index.js'
+import { OneShotCatalog, OneShotRegistry, selectManifests } from '../../src/ctf/oneshot/index.js'
 
 function raw(over: Record<string, unknown>): unknown {
   return {
@@ -68,7 +64,9 @@ describe('selector', () => {
 
   it('ignores disabled-by-default manifests unless includeExperimental', () => {
     registry.registerSafe(raw({ enabledByDefault: false }))
-    expect(selectManifests({ taskId: 't', profileId: 'triage', taskText: '' }, catalog)).toHaveLength(0)
+    expect(
+      selectManifests({ taskId: 't', profileId: 'triage', taskText: '' }, catalog),
+    ).toHaveLength(0)
     expect(
       selectManifests(
         { taskId: 't', profileId: 'triage', taskText: '', includeExperimental: true },

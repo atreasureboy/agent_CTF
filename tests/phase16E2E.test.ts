@@ -91,9 +91,7 @@ describe('§13 — Specialist → Parent end-to-end lineage', () => {
       // ── Finding flowed end-to-end.
       const state = orch.getState()
       expect(state.findings.length).toBeGreaterThan(0)
-      const emittedFinding = state.findings.find(
-        (f) => f.title === 'specialist detected artifact',
-      )
+      const emittedFinding = state.findings.find((f) => f.title === 'specialist detected artifact')
       expect(emittedFinding).toBeDefined()
       expect(emittedFinding!.producerAgentId).toBe('triage')
 
@@ -184,9 +182,15 @@ describe('§13 — Specialist → Parent end-to-end lineage', () => {
     const { createHarness } = await import('../src/core/harness.js')
     const h = createHarness({ cwd: parentTaskRoot, profile: 'triage' })
     const { dispatchNext } = await import('../src/core/orchestratorDispatch.js')
-    await h.broker.execute('request_handoff', {
-      suggestedAgent: 'triage', reason: 'r', objective: 'o',
-    }, { cwd: parentTaskRoot, taskId: h.context.taskId, agentId: 'triage' })
+    await h.broker.execute(
+      'request_handoff',
+      {
+        suggestedAgent: 'triage',
+        reason: 'r',
+        objective: 'o',
+      },
+      { cwd: parentTaskRoot, taskId: h.context.taskId, agentId: 'triage' },
+    )
     await expect(dispatchNext(h, { decision: 'approve' })).rejects.toThrow(
       /dispatchNext requires an attached CTFTaskOrchestrator/,
     )
@@ -292,10 +296,13 @@ function makeStreamingScriptedClient(
 function makeFakeRenderer(): Renderer {
   // Proxy that swallows every method call as a noop. The engine calls
   // many renderer methods; a Proxy covers them all without enumeration.
-  return new Proxy({}, {
-    get: () => () => undefined,
-    has: () => true,
-  }) as unknown as Renderer
+  return new Proxy(
+    {},
+    {
+      get: () => () => undefined,
+      has: () => true,
+    },
+  ) as unknown as Renderer
 }
 
 function makeCollector(buffer: string[]): NodeJS.WritableStream {

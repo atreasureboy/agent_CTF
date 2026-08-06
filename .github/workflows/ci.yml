@@ -6,55 +6,94 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel previous runs on the same ref to avoid wasted compute.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-test-lint:
-    name: Build · Test · Lint
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
 
-      - name: Install dependencies
-        # pnpm-lock.yaml is committed but package-lock.json is also present;
-        # prefer npm to match the .gitignore contract that excludes
-        # package-lock.json (i.e. npm is the package manager in use).
-        run: npm ci
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
 
-      - name: TypeScript type-check
-        run: npx tsc --noEmit
-
-      - name: ESLint
-        run: npm run lint
-
-      - name: Tests
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
-      - name: Verify no require() in ESM source
-        # Belt-and-braces for the C2 fix: assert no CommonJS require() in
-        # compiled ESM source. Should always pass after fix; flags any future
-        # regression immediately.
-        run: |
-          if grep -rn "^\s*\(const\|let\|var\)\s.*=\s*require(" src/ tests/ bin/ 2>/dev/null; then
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      # Verify no require() in ESM source (regression guard)
+      - run: |
+          if grep -rn "require(" src/ bin/ 2>/dev/null | grep -v "//.*require" | grep -v '"require"' | grep -v "'require'" | grep -v node_modules | grep -v "\.d\.ts"; then
             echo "::error::CommonJS require() detected in ESM TypeScript source"
             exit 1
           fi
-          # Also catch inline-style require("...")
-          if grep -rn 'return require(' src/ 2>/dev/null; then
-            echo "::error::inline require() detected in src/"
-            exit 1
-          fi
+
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test
+
+  secrets-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false

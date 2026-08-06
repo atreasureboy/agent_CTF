@@ -8,15 +8,16 @@ import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-import {CTFTaskStateStore, IllegalPhaseTransitionError} from '../src/core/ctfRuntime/taskStateStore.js'
+import {
+  CTFTaskStateStore,
+  IllegalPhaseTransitionError,
+} from '../src/core/ctfRuntime/taskStateStore.js'
 import {
   ALLOWED_PHASE_TRANSITIONS,
   isTerminalPhase,
   type CTFTaskState,
 } from '../src/core/ctfRuntime/taskState.js'
-import {
-  createDefaultContestConfig,
-} from '../src/core/contestConfig.js'
+import { createDefaultContestConfig } from '../src/core/contestConfig.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import { parseContestScope } from '../src/core/contestScope.js'
 import {
@@ -82,11 +83,14 @@ describe('WorkflowRunner uses TaskExecutionContext', () => {
     const { createHarness } = await import('../src/core/harness.js')
     const { WorkflowBrokerRunner } = await import('../src/core/workflowRunner.js')
     const h = createHarness({ cwd: root, profile: 'orchestrator' })
-    expect(() => new WorkflowBrokerRunner(h.broker, {
-      taskId: 't',
-      defaultAgentId: 'orchestrator',
-      context: undefined as unknown as never,
-    })).toThrow(/TaskExecutionContext/)
+    expect(
+      () =>
+        new WorkflowBrokerRunner(h.broker, {
+          taskId: 't',
+          defaultAgentId: 'orchestrator',
+          context: undefined as unknown as never,
+        }),
+    ).toThrow(/TaskExecutionContext/)
   })
 })
 
@@ -104,37 +108,55 @@ describe('Scope narrowing', () => {
   })
 
   it('accepts a strict subset', () => {
-    const child = narrowContestScope(parent, parseContestScope({
-      allowedFilesRoot: '/srv/ctf/sub',
-      allowedHosts: ['10.0.0.1'],
-      allowedCidrs: ['10.0.0.0/24'],
-      allowedDomains: ['example.com'],
-      allowedPorts: [443],
-      allowPublicNetwork: false,
-    }))
+    const child = narrowContestScope(
+      parent,
+      parseContestScope({
+        allowedFilesRoot: '/srv/ctf/sub',
+        allowedHosts: ['10.0.0.1'],
+        allowedCidrs: ['10.0.0.0/24'],
+        allowedDomains: ['example.com'],
+        allowedPorts: [443],
+        allowPublicNetwork: false,
+      }),
+    )
     expect(child.allowedHosts).toEqual(['10.0.0.1'])
   })
 
   it('refuses a host outside the parent allow-list', () => {
-    expect(() => narrowContestScope(parent, parseContestScope({
-      allowedFilesRoot: '/srv/ctf',
-      allowedHosts: ['8.8.8.8'],
-      allowPublicNetwork: false,
-    }))).toThrow(ScopeNarrowingError)
+    expect(() =>
+      narrowContestScope(
+        parent,
+        parseContestScope({
+          allowedFilesRoot: '/srv/ctf',
+          allowedHosts: ['8.8.8.8'],
+          allowPublicNetwork: false,
+        }),
+      ),
+    ).toThrow(ScopeNarrowingError)
   })
 
   it('refuses allowPublicNetwork=true when parent=false', () => {
-    expect(() => narrowContestScope(parent, parseContestScope({
-      allowedFilesRoot: '/srv/ctf',
-      allowPublicNetwork: true,
-    }))).toThrow(ScopeNarrowingError)
+    expect(() =>
+      narrowContestScope(
+        parent,
+        parseContestScope({
+          allowedFilesRoot: '/srv/ctf',
+          allowPublicNetwork: true,
+        }),
+      ),
+    ).toThrow(ScopeNarrowingError)
   })
 
   it('refuses filesRoot outside the parent root', () => {
-    expect(() => narrowContestScope(parent, parseContestScope({
-      allowedFilesRoot: '/srv/other',
-      allowPublicNetwork: false,
-    }))).toThrow(ScopeNarrowingError)
+    expect(() =>
+      narrowContestScope(
+        parent,
+        parseContestScope({
+          allowedFilesRoot: '/srv/other',
+          allowPublicNetwork: false,
+        }),
+      ),
+    ).toThrow(ScopeNarrowingError)
   })
 
   it('deriveSubtaskContext applies narrowing when contestScope is supplied', () => {
@@ -181,9 +203,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
     store.apply({
       type: 'HANDOFF_REQUESTED',
       handoff: {
-        id: 'h1', taskId: 't1', fromAgentRunId: 'run1',
-        requestedCapability: 'crypto', reason: 'x', objective: 'y',
-        artifactIds: [], findingIds: [], status: 'requested', createdAt: Date.now(),
+        id: 'h1',
+        taskId: 't1',
+        fromAgentRunId: 'run1',
+        requestedCapability: 'crypto',
+        reason: 'x',
+        objective: 'y',
+        artifactIds: [],
+        findingIds: [],
+        status: 'requested',
+        createdAt: Date.now(),
       },
     })
     store.apply({ type: 'HANDOFF_APPROVED', handoffId: 'h1', selectedAgentId: 'crypto' })
@@ -191,13 +220,24 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       type: 'SPECIALIST_STARTED',
       handoffId: 'h1',
       agentRun: {
-        id: 'run2', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
-        status: 'running', startedAt: Date.now(),
-        inheritedArtifactIds: [], inheritedFindingIds: [],
-        producedFindingIds: [], producedArtifactIds: [],
+        id: 'run2',
+        taskId: 't1',
+        profileId: 'crypto',
+        contextTaskId: 't1',
+        status: 'running',
+        startedAt: Date.now(),
+        inheritedArtifactIds: [],
+        inheritedFindingIds: [],
+        producedFindingIds: [],
+        producedArtifactIds: [],
       },
     })
-    store.apply({ type: 'SPECIALIST_COMPLETED', handoffId: 'h1', agentRunId: 'run2', summary: 'ok' })
+    store.apply({
+      type: 'SPECIALIST_COMPLETED',
+      handoffId: 'h1',
+      agentRunId: 'run2',
+      summary: 'ok',
+    })
     const h = store.getState().handoffs[0]
     expect(h.status).toBe('completed')
   })
@@ -207,9 +247,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
     store.apply({
       type: 'HANDOFF_REQUESTED',
       handoff: {
-        id: 'h1', taskId: 't1', fromAgentRunId: 'run1',
-        requestedCapability: 'crypto', reason: 'x', objective: 'y',
-        artifactIds: [], findingIds: [], status: 'requested', createdAt: Date.now(),
+        id: 'h1',
+        taskId: 't1',
+        fromAgentRunId: 'run1',
+        requestedCapability: 'crypto',
+        reason: 'x',
+        objective: 'y',
+        artifactIds: [],
+        findingIds: [],
+        status: 'requested',
+        createdAt: Date.now(),
       },
     })
     store.apply({ type: 'HANDOFF_APPROVED', handoffId: 'h1', selectedAgentId: 'crypto' })
@@ -223,9 +270,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
     store.apply({
       type: 'HANDOFF_REQUESTED',
       handoff: {
-        id: 'h1', taskId: 't1', fromAgentRunId: 'run1',
-        requestedCapability: 'crypto', reason: 'x', objective: 'y',
-        artifactIds: [], findingIds: [], status: 'requested', createdAt: Date.now(),
+        id: 'h1',
+        taskId: 't1',
+        fromAgentRunId: 'run1',
+        requestedCapability: 'crypto',
+        reason: 'x',
+        objective: 'y',
+        artifactIds: [],
+        findingIds: [],
+        status: 'requested',
+        createdAt: Date.now(),
       },
     })
     store.apply({ type: 'HANDOFF_REJECTED', handoffId: 'h1', reason: 'nope' })
@@ -234,10 +288,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
         type: 'SPECIALIST_STARTED',
         handoffId: 'h1',
         agentRun: {
-          id: 'r', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
-          status: 'running', startedAt: Date.now(),
-          inheritedArtifactIds: [], inheritedFindingIds: [],
-          producedFindingIds: [], producedArtifactIds: [],
+          id: 'r',
+          taskId: 't1',
+          profileId: 'crypto',
+          contextTaskId: 't1',
+          status: 'running',
+          startedAt: Date.now(),
+          inheritedArtifactIds: [],
+          inheritedFindingIds: [],
+          producedFindingIds: [],
+          producedArtifactIds: [],
         },
       }),
     ).toThrow()
@@ -248,9 +308,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
     store.apply({
       type: 'HANDOFF_REQUESTED',
       handoff: {
-        id: 'h1', taskId: 't1', fromAgentRunId: 'run1',
-        requestedCapability: 'crypto', reason: 'x', objective: 'y',
-        artifactIds: [], findingIds: [], status: 'requested', createdAt: Date.now(),
+        id: 'h1',
+        taskId: 't1',
+        fromAgentRunId: 'run1',
+        requestedCapability: 'crypto',
+        reason: 'x',
+        objective: 'y',
+        artifactIds: [],
+        findingIds: [],
+        status: 'requested',
+        createdAt: Date.now(),
       },
     })
     store.apply({ type: 'HANDOFF_APPROVED', handoffId: 'h1', selectedAgentId: 'crypto' })
@@ -258,10 +325,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       type: 'SPECIALIST_STARTED',
       handoffId: 'h1',
       agentRun: {
-        id: 'r1', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
-        status: 'running', startedAt: Date.now(),
-        inheritedArtifactIds: [], inheritedFindingIds: [],
-        producedFindingIds: [], producedArtifactIds: [],
+        id: 'r1',
+        taskId: 't1',
+        profileId: 'crypto',
+        contextTaskId: 't1',
+        status: 'running',
+        startedAt: Date.now(),
+        inheritedArtifactIds: [],
+        inheritedFindingIds: [],
+        producedFindingIds: [],
+        producedArtifactIds: [],
       },
     })
     store.apply({ type: 'SPECIALIST_FAILED', handoffId: 'h1', agentRunId: 'r1', error: 'boom' })
@@ -283,9 +356,15 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       store.apply({
         type: 'FINDING_ADDED',
         finding: {
-          id: 'post', taskId: 't1', producerAgentId: 'audit',
-          category: 'verifier', title: 'audit', summary: 's',
-          confidence: 'low', evidence: [], artifactIds: [],
+          id: 'post',
+          taskId: 't1',
+          producerAgentId: 'audit',
+          category: 'verifier',
+          title: 'audit',
+          summary: 's',
+          confidence: 'low',
+          evidence: [],
+          artifactIds: [],
           createdAt: new Date().toISOString(),
         },
       }),
@@ -299,8 +378,12 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
       store.apply({
         type: 'WORKFLOW_STARTED',
         workflowRun: {
-          id: 'w1', taskId: 't1', workflowId: 'image_quick_scan',
-          status: 'running', startedAt: Date.now(), stepOutcomeIds: [],
+          id: 'w1',
+          taskId: 't1',
+          workflowId: 'image_quick_scan',
+          status: 'running',
+          startedAt: Date.now(),
+          stepOutcomeIds: [],
         },
       }),
     ).toThrow(/already solved/)
@@ -309,9 +392,9 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
   it('refuses illegal phase transitions', () => {
     const store = new CTFTaskStateStore(freshState())
     // 'created' can go to 'intake' but not 'solved'.
-    expect(() =>
-      store.apply({ type: 'PHASE_CHANGED', from: 'created', to: 'solved' }),
-    ).toThrow(IllegalPhaseTransitionError)
+    expect(() => store.apply({ type: 'PHASE_CHANGED', from: 'created', to: 'solved' })).toThrow(
+      IllegalPhaseTransitionError,
+    )
   })
 
   it('accepts allowed transitions and refreshes updatedAt', () => {
@@ -331,9 +414,16 @@ describe('CTFTaskStateStore — Handoff lifecycle', () => {
     store.apply({
       type: 'HANDOFF_REQUESTED',
       handoff: {
-        id: 'h1', taskId: 't1', fromAgentRunId: 'r1',
-        requestedCapability: 'crypto', reason: 'x', objective: 'y',
-        artifactIds: [], findingIds: [], status: 'requested', createdAt: Date.now(),
+        id: 'h1',
+        taskId: 't1',
+        fromAgentRunId: 'r1',
+        requestedCapability: 'crypto',
+        reason: 'x',
+        objective: 'y',
+        artifactIds: [],
+        findingIds: [],
+        status: 'requested',
+        createdAt: Date.now(),
       },
     })
     unsub()
@@ -357,9 +447,16 @@ describe('TaskState — finding/artifact merge', () => {
     store.apply({
       type: 'FINDING_ADDED',
       finding: {
-        id: 'f1', taskId: 't1', producerAgentId: 'crypto',
-        category: 'crypto', title: 'weak RSA', summary: 'e=3',
-        confidence: 'high', evidence: [], artifactIds: [], createdAt: new Date().toISOString(),
+        id: 'f1',
+        taskId: 't1',
+        producerAgentId: 'crypto',
+        category: 'crypto',
+        title: 'weak RSA',
+        summary: 'e=3',
+        confidence: 'high',
+        evidence: [],
+        artifactIds: [],
+        createdAt: new Date().toISOString(),
       },
     })
     store.apply({ type: 'ARTIFACT_ADDED', artifactId: 'a1' })
@@ -448,7 +545,8 @@ describe('CTFTaskOrchestrator — wiring', () => {
       const h = orch.requestHandoff({
         fromAgentRunId: 'run_main',
         targetCapability: 'crypto',
-        reason: 'rsa', objective: 'crack',
+        reason: 'rsa',
+        objective: 'crack',
       })
       expect(orch.getState().handoffs[0].status).toBe('requested')
       orch.rejectHandoff(h.id, 'not needed')
@@ -471,8 +569,9 @@ describe('CTFTaskOrchestrator — wiring', () => {
         taskId: orch.getState().taskId,
         producerAgentId: 'orchestrator',
         category: 'workflow',
-        title: 'seed', summary: 'triage summary',
-          confidence: 'low',
+        title: 'seed',
+        summary: 'triage summary',
+        confidence: 'low',
         evidence: [],
         artifactIds: [],
       })
@@ -481,7 +580,8 @@ describe('CTFTaskOrchestrator — wiring', () => {
       const h = orch.requestHandoff({
         fromAgentRunId: 'run_main',
         targetCapability: 'triage',
-        reason: 'rsa', objective: 'crack',
+        reason: 'rsa',
+        objective: 'crack',
         findingIds: [orch.mainHarness.findingStore.list()[0].id],
       })
       // Without a renderer, the child runTurn will throw (it requires one),
@@ -539,15 +639,26 @@ describe('Existing stores still work as before', () => {
   it('FindingStore / HandoffStore basic write/read', () => {
     const fs = new FindingStore(root)
     fs.append({
-      taskId: 't1', producerAgentId: 'a', category: 'image',
-      title: 'x', summary: 'y', confidence: 'high', evidence: [], artifactIds: [],
+      taskId: 't1',
+      producerAgentId: 'a',
+      category: 'image',
+      title: 'x',
+      summary: 'y',
+      confidence: 'high',
+      evidence: [],
+      artifactIds: [],
     })
     expect(fs.list()).toHaveLength(1)
 
     const hs = new HandoffStore(root)
     hs.submit({
-      taskId: 't1', fromAgent: 'a', suggestedAgent: 'b',
-      reason: 'r', objective: 'o', artifactIds: [], findingIds: [],
+      taskId: 't1',
+      fromAgent: 'a',
+      suggestedAgent: 'b',
+      reason: 'r',
+      objective: 'o',
+      artifactIds: [],
+      findingIds: [],
     })
     expect(hs.pending()).toHaveLength(1)
   })
@@ -576,7 +687,8 @@ describe('§八 — Capability matching', () => {
       const h = orch.requestHandoff({
         fromAgentRunId: 'run_main',
         targetCapability: 'triage',
-        reason: 'rsa', objective: 'crack',
+        reason: 'rsa',
+        objective: 'crack',
       })
       const result = await orch.approveHandoff(h.id).catch((e) => ({ error: (e as Error).message }))
       const record = orch.getState().handoffs.find((x) => x.id === h.id)!
@@ -593,7 +705,8 @@ describe('§八 — Capability matching', () => {
       const h = orch.requestHandoff({
         fromAgentRunId: 'run_main',
         targetCapability: 'no-such-agent-anywhere',
-        reason: 'r', objective: 'o',
+        reason: 'r',
+        objective: 'o',
       })
       const result = await orch.approveHandoff(h.id)
       const record = orch.getState().handoffs.find((x) => x.id === h.id)!
@@ -612,7 +725,8 @@ describe('§八 — Capability matching', () => {
         fromAgentRunId: 'run_main',
         targetCapability: 'misc',
         targetAgentId: 'triage', // explicit override — no required binaries
-        reason: 'r', objective: 'o',
+        reason: 'r',
+        objective: 'o',
       })
       await orch.approveHandoff(h.id).catch(() => {})
       const record = orch.getState().handoffs.find((x) => x.id === h.id)!
@@ -631,7 +745,8 @@ describe('§八 — Capability matching', () => {
       const h = orch.requestHandoff({
         fromAgentRunId: 'run_main',
         targetCapability: 'crypto',
-        reason: 'rsa', objective: 'crack',
+        reason: 'rsa',
+        objective: 'crack',
       })
       const result = await orch.approveHandoff(h.id)
       const record = orch.getState().handoffs.find((x) => x.id === h.id)!
@@ -656,7 +771,8 @@ describe('§八 — Capability matching', () => {
         fromAgentRunId: 'run_main',
         targetCapability: 'misc',
         targetAgentId: 'ghost-agent',
-        reason: 'r', objective: 'o',
+        reason: 'r',
+        objective: 'o',
       })
       await orch.approveHandoff(h.id).catch(() => {})
       const record = orch.getState().handoffs.find((x) => x.id === h.id)!
@@ -859,8 +975,12 @@ describe('§六 — StateStore guards', () => {
       store.apply({
         type: 'WORKFLOW_STARTED',
         workflowRun: {
-          id: 'w1', taskId: 't1', workflowId: 'image_quick_scan',
-          status: 'running', startedAt: Date.now(), stepOutcomeIds: [],
+          id: 'w1',
+          taskId: 't1',
+          workflowId: 'image_quick_scan',
+          status: 'running',
+          startedAt: Date.now(),
+          stepOutcomeIds: [],
         },
       }),
     ).toThrow(/cancelled/)
@@ -873,10 +993,16 @@ describe('§六 — StateStore guards', () => {
         type: 'SPECIALIST_STARTED',
         handoffId: 'missing',
         agentRun: {
-          id: 'r', taskId: 't1', profileId: 'crypto', contextTaskId: 't1',
-          status: 'running', startedAt: Date.now(),
-          inheritedArtifactIds: [], inheritedFindingIds: [],
-          producedFindingIds: [], producedArtifactIds: [],
+          id: 'r',
+          taskId: 't1',
+          profileId: 'crypto',
+          contextTaskId: 't1',
+          status: 'running',
+          startedAt: Date.now(),
+          inheritedArtifactIds: [],
+          inheritedFindingIds: [],
+          producedFindingIds: [],
+          producedArtifactIds: [],
         },
       }),
     ).toThrow(/not found/)
@@ -921,9 +1047,15 @@ describe('§十六 — Backwards compatibility', () => {
     try {
       // Pre-create a pending handoff through the legacy HandoffStore path
       // (so dispatchNext has something to dispatch).
-      await h.broker.execute('request_handoff', {
-        suggestedAgent: 'crypto', reason: 'rsa', objective: 'crack',
-      }, { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' })
+      await h.broker.execute(
+        'request_handoff',
+        {
+          suggestedAgent: 'crypto',
+          reason: 'rsa',
+          objective: 'crack',
+        },
+        { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' },
+      )
       const r = await dispatchNext(h, { decision: 'approve', orchestrator: orch })
       expect(r?.status).toBe('approved')
       // The orchestrator's state has a new HANDOFF_REQUESTED + an approved
@@ -939,9 +1071,15 @@ describe('§十六 — Backwards compatibility', () => {
     const { createHarness } = await import('../src/core/harness.js')
     const { dispatchNext } = await import('../src/core/orchestratorDispatch.js')
     const h = createHarness({ cwd: root, profile: 'image-stego' })
-    await h.broker.execute('request_handoff', {
-      suggestedAgent: 'crypto', reason: 'rsa', objective: 'crack',
-    }, { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' })
+    await h.broker.execute(
+      'request_handoff',
+      {
+        suggestedAgent: 'crypto',
+        reason: 'rsa',
+        objective: 'crack',
+      },
+      { cwd: root, taskId: h.context.taskId, agentId: 'image-stego' },
+    )
     // §八 — the legacy "create child harness here" fallback was removed;
     // dispatchNext now refuses to act without an attached orchestrator.
     await expect(dispatchNext(h, { decision: 'approve' })).rejects.toThrow(
@@ -1023,7 +1161,8 @@ describe('§十四 — Error cause chain preservation', () => {
       const h = orch.requestHandoff({
         fromAgentRunId: 'run_main',
         targetCapability: 'triage',
-        reason: 'r', objective: 'o',
+        reason: 'r',
+        objective: 'o',
       })
       const result = await orch.approveHandoff(h.id)
       const record = orch.getState().handoffs.find((x) => x.id === h.id)!

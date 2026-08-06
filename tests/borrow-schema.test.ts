@@ -59,7 +59,14 @@ describe('ActionSchema (F)', () => {
   })
 
   it('rejects non-object input', () => {
-    const r = validateAction({ type: 'call_tool', toolId: 'x', input: 'not-an-object', reason: 'r', priority: 1, costTier: 'cheap' })
+    const r = validateAction({
+      type: 'call_tool',
+      toolId: 'x',
+      input: 'not-an-object',
+      reason: 'r',
+      priority: 1,
+      costTier: 'cheap',
+    })
     expect(r.ok).toBe(false)
   })
 

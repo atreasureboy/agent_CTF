@@ -8,38 +8,38 @@
 
 ### 1.1 Magic Bytes 速查表
 
-| 文件类型 | Magic Bytes (Hex) | 扩展名 |
-|----------|-------------------|--------|
-| PNG | `89 50 4E 47 0D 0A 1A 0A` | .png |
-| JPEG | `FF D8 FF E0` / `FF D8 FF E1` | .jpg/.jpeg |
-| GIF | `47 49 46 38 37 61` / `47 49 46 38 39 61` | .gif |
-| BMP | `42 4D` | .bmp |
-| PDF | `25 50 44 46` | .pdf |
-| ZIP | `50 4B 03 04` | .zip |
-| RAR | `52 61 72 21 1A 07 00` / `52 61 72 21 1A 07 01 00` | .rar |
-| 7-Zip | `37 7A BC AF 27 1C` | .7z |
-| GZIP | `1F 8B 08` | .gz |
-| BZ2 | `42 5A 68` | .bz2 |
-| XZ | `FD 37 7A 58 5A 00` | .xz |
-| TAR | `75 73 74 61 72` (offset 257) | .tar |
-| WAV | `52 49 46 46` | .wav |
-| MP3 | `FF FB` / `49 44 33` (ID3) | .mp3 |
-| FLAC | `66 4C 61 43` | .flac |
-| AVI | `52 49 46 46` | .avi |
-| MP4 | `00 00 00 18 66 74 79 70` | .mp4 |
-| ELF | `7F 45 4C 46` | (Linux 可执行) |
-| PE | `4D 5A` | .exe/.dll |
-| Mach-O | `FE ED FA CE` / `FE ED FA CF` / `CE FA ED FE` / `CF FA ED FE` | (macOS) |
-| SQLite | `53 51 4C 69 74 65 20 66 6F 72 6D 61 74 20 33 00` | .db/.sqlite |
-| PCAP | `A1 B2 C3 D4` / `D4 C3 B2 A1` | .pcap |
-| PCAPNG | `0A 0D 0D 0A` | .pcapng |
-| TrueCrypt | `54 52 55 45` | .tc |
-| Veracrypt | `56 45 52 41` | .hc |
-| LUKS | `4C 55 4B 53 BA BE` | (加密卷) |
-| E01 (EWF) | `45 56 46 09 0D 0A FF 00` | .e01 |
-| Windows.evtx | `45 6C 66 46 69 6C 65 00` | .evtx |
-| OLE2 (Office) | `D0 CF 11 E0 A1 B1 1A E1` | .doc/.xls |
-| Office Open XML | `50 4B 03 04` (ZIP-based) | .docx/.xlsx/.pptx |
+| 文件类型        | Magic Bytes (Hex)                                             | 扩展名            |
+| --------------- | ------------------------------------------------------------- | ----------------- |
+| PNG             | `89 50 4E 47 0D 0A 1A 0A`                                     | .png              |
+| JPEG            | `FF D8 FF E0` / `FF D8 FF E1`                                 | .jpg/.jpeg        |
+| GIF             | `47 49 46 38 37 61` / `47 49 46 38 39 61`                     | .gif              |
+| BMP             | `42 4D`                                                       | .bmp              |
+| PDF             | `25 50 44 46`                                                 | .pdf              |
+| ZIP             | `50 4B 03 04`                                                 | .zip              |
+| RAR             | `52 61 72 21 1A 07 00` / `52 61 72 21 1A 07 01 00`            | .rar              |
+| 7-Zip           | `37 7A BC AF 27 1C`                                           | .7z               |
+| GZIP            | `1F 8B 08`                                                    | .gz               |
+| BZ2             | `42 5A 68`                                                    | .bz2              |
+| XZ              | `FD 37 7A 58 5A 00`                                           | .xz               |
+| TAR             | `75 73 74 61 72` (offset 257)                                 | .tar              |
+| WAV             | `52 49 46 46`                                                 | .wav              |
+| MP3             | `FF FB` / `49 44 33` (ID3)                                    | .mp3              |
+| FLAC            | `66 4C 61 43`                                                 | .flac             |
+| AVI             | `52 49 46 46`                                                 | .avi              |
+| MP4             | `00 00 00 18 66 74 79 70`                                     | .mp4              |
+| ELF             | `7F 45 4C 46`                                                 | (Linux 可执行)    |
+| PE              | `4D 5A`                                                       | .exe/.dll         |
+| Mach-O          | `FE ED FA CE` / `FE ED FA CF` / `CE FA ED FE` / `CF FA ED FE` | (macOS)           |
+| SQLite          | `53 51 4C 69 74 65 20 66 6F 72 6D 61 74 20 33 00`             | .db/.sqlite       |
+| PCAP            | `A1 B2 C3 D4` / `D4 C3 B2 A1`                                 | .pcap             |
+| PCAPNG          | `0A 0D 0D 0A`                                                 | .pcapng           |
+| TrueCrypt       | `54 52 55 45`                                                 | .tc               |
+| Veracrypt       | `56 45 52 41`                                                 | .hc               |
+| LUKS            | `4C 55 4B 53 BA BE`                                           | (加密卷)          |
+| E01 (EWF)       | `45 56 46 09 0D 0A FF 00`                                     | .e01              |
+| Windows.evtx    | `45 6C 66 46 69 6C 65 00`                                     | .evtx             |
+| OLE2 (Office)   | `D0 CF 11 E0 A1 B1 1A E1`                                     | .doc/.xls         |
+| Office Open XML | `50 4B 03 04` (ZIP-based)                                     | .docx/.xlsx/.pptx |
 
 ### 1.2 文件类型识别
 
@@ -658,19 +658,19 @@ foremost -i capture.pcap -o output/
 
 ### 4.5 网络取证工具
 
-| 工具 | 用途 |
-|------|------|
-| **Wireshark** | 图形化协议分析 |
-| **tshark** | 命令行协议分析 |
-| **tcpdump** | 数据包捕获 |
-| **tcpflow** | TCP 会话重建 |
-| **NetworkMiner** | 网络取证分析 |
-| **Xplico** | 网络取证工具 |
-| **ngrep** | 网络 grep |
-| **capinfos** | pcap 文件信息 |
-| **editcap** | 编辑 pcap 文件 |
-| **mergecap** | 合并 pcap 文件 |
-| **scapy** | Python 数据包操作库 |
+| 工具             | 用途                |
+| ---------------- | ------------------- |
+| **Wireshark**    | 图形化协议分析      |
+| **tshark**       | 命令行协议分析      |
+| **tcpdump**      | 数据包捕获          |
+| **tcpflow**      | TCP 会话重建        |
+| **NetworkMiner** | 网络取证分析        |
+| **Xplico**       | 网络取证工具        |
+| **ngrep**        | 网络 grep           |
+| **capinfos**     | pcap 文件信息       |
+| **editcap**      | 编辑 pcap 文件      |
+| **mergecap**     | 合并 pcap 文件      |
+| **scapy**        | Python 数据包操作库 |
 
 ---
 
@@ -761,17 +761,17 @@ find /mnt/analysis -printf "%T+ %p\n" > file_timestamps.txt
 
 ### 5.4 日志分析工具
 
-| 工具 | 用途 |
-|------|------|
-| **grep/awk/sed** | 命令行日志分析 |
-| **LogParser** | Windows 日志分析 |
-| **python-evtx** | EVTX 解析 |
-| **Plaso/log2timeline** | 时间线生成 |
-| **Zircolite** | 基于 Sigma 规则的 EVTX 分析 |
-| **Chainsaw** | Windows 事件日志快速搜索 |
-| **Hayabusa** | Windows 事件日志时间线 |
-| **GoAccess** | 实时 Web 日志分析 |
-| **lnav** | 日志文件导航器 |
+| 工具                   | 用途                        |
+| ---------------------- | --------------------------- |
+| **grep/awk/sed**       | 命令行日志分析              |
+| **LogParser**          | Windows 日志分析            |
+| **python-evtx**        | EVTX 解析                   |
+| **Plaso/log2timeline** | 时间线生成                  |
+| **Zircolite**          | 基于 Sigma 规则的 EVTX 分析 |
+| **Chainsaw**           | Windows 事件日志快速搜索    |
+| **Hayabusa**           | Windows 事件日志时间线      |
+| **GoAccess**           | 实时 Web 日志分析           |
+| **lnav**               | 日志文件导航器              |
 
 ---
 

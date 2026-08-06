@@ -44,9 +44,15 @@ describe('ToolBroker', () => {
         artifactStore: new ArtifactStore(sessionDir),
         toolFirstPolicy: new ToolFirstPolicy(),
       })
-      const r = await broker.execute('Bash', { command: 'ls' }, {
-        cwd: root, taskId: 't', agentId: 'a',
-      })
+      const r = await broker.execute(
+        'Bash',
+        { command: 'ls' },
+        {
+          cwd: root,
+          taskId: 't',
+          agentId: 'a',
+        },
+      )
       expect(r.result.isError).toBe(true)
       expect(r.result.content).toMatch(/denied by profile/)
     } finally {
@@ -76,7 +82,7 @@ describe('ToolBroker', () => {
         profile,
         artifactStore,
         eventLog,
-        defaultInlineMaxBytes: 50,        // very low to trigger Artifact conversion
+        defaultInlineMaxBytes: 50, // very low to trigger Artifact conversion
         forceInline: true,
       })
       const r = await broker.execute(
@@ -134,11 +140,15 @@ describe('ToolBroker', () => {
         await new Promise((resolve) => signal.addEventListener('abort', resolve))
         return { error: 'aborted' }
       }
-      const jm = new BackgroundJobManager({ taskWorkspaceDir: sessionDir, maxPerAgent: 1, maxPerTask: 1 }, runner)
+      const jm = new BackgroundJobManager(
+        { taskWorkspaceDir: sessionDir, maxPerAgent: 1, maxPerTask: 1 },
+        runner,
+      )
       await jm.spawn({ taskId: 't', agentId: 'a', toolId: 'Bash', input: {}, timeoutMs: 60_000 })
 
       const broker = new ToolBroker({
-        registry, profile,
+        registry,
+        profile,
         eventLog: new EventLog(sessionDir),
         jobManager: jm,
         jobRunner: runner,
@@ -146,7 +156,11 @@ describe('ToolBroker', () => {
         defaultInlineMaxBytes: 1024 * 1024,
       })
       // Bash wants background but JM is full → broker falls back to inline.
-      const r = await broker.execute('Bash', { command: 'true' }, { cwd: root, taskId: 't', agentId: 'a' })
+      const r = await broker.execute(
+        'Bash',
+        { command: 'true' },
+        { cwd: root, taskId: 't', agentId: 'a' },
+      )
       expect(r.result.isError).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })

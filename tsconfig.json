@@ -15,6 +15,6 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": false
   },
-  "include": ["bin/**/*.ts", "src/**/*.ts", "tests/**/*.ts"],
+  "include": ["bin/**/*.ts", "src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

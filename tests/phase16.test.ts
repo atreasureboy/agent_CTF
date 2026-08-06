@@ -32,16 +32,12 @@ import {
   UnknownHypothesisError,
   UnknownJobError,
 } from '../src/core/ctfRuntime/taskStateStore.js'
-import {
-  CTFTaskStateStore,
-} from '../src/core/ctfRuntime/taskStateStore.js'
+import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
 import type { CTFTaskState } from '../src/core/ctfRuntime/taskState.js'
 import { BackgroundJobManager } from '../src/core/backgroundJobs.js'
 import { TaskStateProjector } from '../src/core/ctfRuntime/taskStateProjector.js'
 import { createLinkedAbortController } from '../src/core/ctfRuntime/linkedAbortController.js'
-import {
-  SpecialistHarnessFactory,
-} from '../src/core/ctfRuntime/specialistHarnessFactory.js'
+import { SpecialistHarnessFactory } from '../src/core/ctfRuntime/specialistHarnessFactory.js'
 import type { AgentRuntimeDependencies } from '../src/core/ctfRuntime/agentRuntimeDependencies.js'
 import type { HarnessBundle } from '../src/core/harness.js'
 import type OpenAI from 'openai'
@@ -115,14 +111,11 @@ describe('§1 — CLI', () => {
 
   it('runCtfCli without --run-workflow and no API key returns error 3', async () => {
     const stderr = makeCollector([])
-    const code = await runCtfCli(
-      ['node', 'ovogogogo-ctf', '--profile', 'triage', 'do something'],
-      {
-        stdout: makeCollector([]),
-        stderr,
-        env: { OPENAI_API_KEY: '' },
-      },
-    )
+    const code = await runCtfCli(['node', 'ovogogogo-ctf', '--profile', 'triage', 'do something'], {
+      stdout: makeCollector([]),
+      stderr,
+      env: { OPENAI_API_KEY: '' },
+    })
     expect(code).toBe(3)
   })
 
@@ -157,7 +150,16 @@ describe('§1 — CLI', () => {
   it('CLI does NOT touch broker.opts or create a Harness directly', () => {
     // Static check — the CLI source must not import createHarness or
     // mutate broker private fields.
-    const cliPath = join(root, '..', '..', 'project', 'agent_CTF', 'ovogogogo_pro', 'bin', 'ovogogogo-ctf.ts')
+    const cliPath = join(
+      root,
+      '..',
+      '..',
+      'project',
+      'agent_CTF',
+      'ovogogogo_pro',
+      'bin',
+      'ovogogogo-ctf.ts',
+    )
     let body: string
     try {
       body = readFileSync(cliPath, 'utf8')
@@ -212,7 +214,17 @@ describe('§1 — CLI', () => {
     // emits one tool_call and then a stop chunk.
     const writes: string[] = []
     const stdout = makeCollector(writes)
-    const script = [{ id: 'emit_finding', args: { category: 'forensics', title: 'chat-mode', summary: 'via runMainAgent', confidence: 'low' } }]
+    const script = [
+      {
+        id: 'emit_finding',
+        args: {
+          category: 'forensics',
+          title: 'chat-mode',
+          summary: 'via runMainAgent',
+          confidence: 'low',
+        },
+      },
+    ]
     const fakeClient = makeStreamingScriptedClient(script)
     const code = await runCtfCli(
       ['node', 'ovogogogo-ctf', '--profile', 'triage', 'solve the challenge'],
@@ -236,12 +248,18 @@ describe('§2 — dispatchNext', () => {
   it('dispatchNext without orchestrator throws', async () => {
     const { createHarness } = await import('../src/core/harness.js')
     const h = createHarness({ cwd: root, profile: 'triage' })
-    await h.broker.execute('request_handoff', {
-      suggestedAgent: 'triage', reason: 'r', objective: 'o',
-    }, { cwd: root, taskId: h.context.taskId, agentId: 'triage' })
-    await expect(
-      dispatchNext(h, { decision: 'approve' }),
-    ).rejects.toThrow(/dispatchNext requires an attached CTFTaskOrchestrator/)
+    await h.broker.execute(
+      'request_handoff',
+      {
+        suggestedAgent: 'triage',
+        reason: 'r',
+        objective: 'o',
+      },
+      { cwd: root, taskId: h.context.taskId, agentId: 'triage' },
+    )
+    await expect(dispatchNext(h, { decision: 'approve' })).rejects.toThrow(
+      /dispatchNext requires an attached CTFTaskOrchestrator/,
+    )
   })
 
   it('dispatchNext does not import createHarness', () => {
@@ -450,8 +468,13 @@ describe('§4 — Abort chain', () => {
     store.apply({
       type: 'WORKFLOW_STARTED',
       workflowRun: {
-        id: wfId, taskId: 'wf-cancel', workflowId: 'w', status: 'running',
-        startedAt: now, stepOutcomeIds: [], profileId: 'triage',
+        id: wfId,
+        taskId: 'wf-cancel',
+        workflowId: 'w',
+        status: 'running',
+        startedAt: now,
+        stepOutcomeIds: [],
+        profileId: 'triage',
       },
     })
     expect(store.getState().activeWorkflowRunIds).toContain(wfId)
@@ -509,7 +532,7 @@ describe('§4 — Abort chain', () => {
     })
     await orch.cancel('first')
     const afterFirst = orch.getState().completion
-    await orch.cancel('second')  // idempotent
+    await orch.cancel('second') // idempotent
     const afterSecond = orch.getState().completion
     expect(afterSecond).toEqual(afterFirst)
     await orch.dispose()
@@ -526,17 +549,21 @@ describe('§4 — Abort chain', () => {
       // Run a workflow that completes naturally; then dispose; in-flight
       // map should be empty afterwards.
       await orch.orchestrator.runWorkflow('unknown_file_triage', {})
-      const inFlight = (orch.orchestrator as unknown as {
-        inFlightWorkflows: Map<string, unknown>
-      }).inFlightWorkflows
+      const inFlight = (
+        orch.orchestrator as unknown as {
+          inFlightWorkflows: Map<string, unknown>
+        }
+      ).inFlightWorkflows
       expect(inFlight.size).toBe(0)
     } finally {
       await orch.dispose()
     }
     // After dispose the map is still empty.
-    const inFlight = (orch.orchestrator as unknown as {
-      inFlightWorkflows: Map<string, unknown>
-    }).inFlightWorkflows
+    const inFlight = (
+      orch.orchestrator as unknown as {
+        inFlightWorkflows: Map<string, unknown>
+      }
+    ).inFlightWorkflows
     expect(inFlight.size).toBe(0)
   })
 
@@ -575,8 +602,13 @@ describe('§4 — Abort chain', () => {
     store.apply({
       type: 'WORKFLOW_STARTED',
       workflowRun: {
-        id: wfId, taskId: 'wf-fail', workflowId: 'w', status: 'running',
-        startedAt: now, stepOutcomeIds: [], profileId: 'triage',
+        id: wfId,
+        taskId: 'wf-fail',
+        workflowId: 'w',
+        status: 'running',
+        startedAt: now,
+        stepOutcomeIds: [],
+        profileId: 'triage',
       },
     })
     store.apply({
@@ -605,9 +637,11 @@ describe('§4 — Abort chain', () => {
       expect(harnessCtx).toBeDefined()
       expect(harnessCtx.abortSignal).toBe(orch.abort.signal)
       // runTurn's runWorkflow path uses the same context.
-      const wfRunnerCtx = (orch.mainHarness.workflowRunner as unknown as {
-        opts: { context: typeof harnessCtx }
-      }).opts.context
+      const wfRunnerCtx = (
+        orch.mainHarness.workflowRunner as unknown as {
+          opts: { context: typeof harnessCtx }
+        }
+      ).opts.context
       expect(wfRunnerCtx).toBe(harnessCtx)
     } finally {
       await orch.dispose()
@@ -616,13 +650,13 @@ describe('§4 — Abort chain', () => {
 
   it('§17.6 — Projector throws ProjectionError on store read failure (no silent swallow)', async () => {
     // §13 — empty catch{} is forbidden; snapshot failure must surface.
-    const { ProjectionError } = await import(
-      '../src/core/ctfRuntime/taskStateProjector.js'
-    )
+    const { ProjectionError } = await import('../src/core/ctfRuntime/taskStateProjector.js')
     // Inject a fake store whose list() throws to deterministically
     // exercise the error path (filesystem races are flaky in CI).
     const brokenFindingStore = {
-      list: () => { throw new Error('simulated finding-store read failure') },
+      list: () => {
+        throw new Error('simulated finding-store read failure')
+      },
     } as unknown as FindingStore
     const okArtifactStore = {
       list: () => [],
@@ -783,9 +817,8 @@ describe('§4 — Abort chain', () => {
   })
 
   it('§11.2 — terminal approve throws HandoffAlreadyTerminalError (no synthetic stub)', async () => {
-    const { HandoffAlreadyTerminalError } = await import(
-      '../src/core/ctfRuntime/handoffCoordinator.js'
-    )
+    const { HandoffAlreadyTerminalError } =
+      await import('../src/core/ctfRuntime/handoffCoordinator.js')
     const orch = await createCTFTaskRuntime({
       cwd: root,
       profileId: 'triage',
@@ -844,13 +877,10 @@ describe('§4 — Abort chain', () => {
 
   it('§14 — parseArgs in try block — missing value returns exit code 1, not unhandled throw', async () => {
     const errWrites: string[] = []
-    const code = await runCtfCli(
-      ['node', 'ovogogogo-ctf', '--profile'],
-      {
-        stdout: makeCollector([]),
-        stderr: makeCollector(errWrites),
-      },
-    )
+    const code = await runCtfCli(['node', 'ovogogogo-ctf', '--profile'], {
+      stdout: makeCollector([]),
+      stderr: makeCollector(errWrites),
+    })
     expect(code).toBe(1)
     expect(errWrites.join('')).toMatch(/requires a value/)
   })
@@ -881,9 +911,9 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
 
   it('JOB_UPDATED on missing id throws UnknownJobError', () => {
     const store = new CTFTaskStateStore(freshState())
-    expect(() =>
-      store.apply({ type: 'JOB_UPDATED', jobId: 'nope', patch: {} }),
-    ).toThrow(UnknownJobError)
+    expect(() => store.apply({ type: 'JOB_UPDATED', jobId: 'nope', patch: {} })).toThrow(
+      UnknownJobError,
+    )
   })
 
   it('terminal Job cannot return to running', () => {
@@ -908,7 +938,9 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       )
       const unsub = jm.subscribe((ev) => seen.push(ev.type))
       const job = await jm.spawn({
-        taskId: 't', agentId: 'a', toolId: 'Bash',
+        taskId: 't',
+        agentId: 'a',
+        toolId: 'Bash',
         input: { command: 'echo hi' },
       })
       await jm.wait(job.id, 5000)
@@ -929,13 +961,19 @@ describe('§5 — BackgroundJobEvent → TaskState', () => {
       )
       const unsub = jm.subscribe((ev) => seen.push(ev.type))
       const j1 = await jm.spawn({
-        taskId: 't', agentId: 'a', toolId: 'Bash', input: { command: 'echo hi' },
+        taskId: 't',
+        agentId: 'a',
+        toolId: 'Bash',
+        input: { command: 'echo hi' },
       })
       await jm.wait(j1.id, 5000)
       unsub()
       const before = seen.length
       const j2 = await jm.spawn({
-        taskId: 't', agentId: 'a', toolId: 'Bash', input: { command: 'echo bye' },
+        taskId: 't',
+        agentId: 'a',
+        toolId: 'Bash',
+        input: { command: 'echo bye' },
       })
       await jm.wait(j2.id, 5000)
       expect(seen.length).toBe(before)
@@ -977,8 +1015,18 @@ describe('§6 — Reducer invariants', () => {
       store.apply({
         type: 'HYPOTHESIS_ADDED',
         hypothesis: {
-          id: 'h1', taskId: 't1', statement: 'y', category: 'crypto', status: 'proposed', supportingEvidenceIds: [], contradictingEvidenceIds: [], proposedBy: { type: 'manual', id: 'main' }, priority: 0, confidence: 0.5,
-          createdAt: Date.now(), updatedAt: Date.now(),
+          id: 'h1',
+          taskId: 't1',
+          statement: 'y',
+          category: 'crypto',
+          status: 'proposed',
+          supportingEvidenceIds: [],
+          contradictingEvidenceIds: [],
+          proposedBy: { type: 'manual', id: 'main' },
+          priority: 0,
+          confidence: 0.5,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         },
       }),
     ).toThrow(DuplicateHypothesisError)
@@ -995,19 +1043,43 @@ describe('§6 — Reducer invariants', () => {
     const store = new CTFTaskStateStore(freshState())
     store.apply({
       type: 'ATTEMPT_RECORDED',
-      attempt: { id: 'a1', taskId: 't1', kind: 'tool', targetId: 't1', input: {},
-        fingerprint: 'fp_tool_t1', hypothesisIds: [], observationIds: [],
-        evidenceIds: [], artifactIds: [], flagCandidateIds: [], error: { message: 'x' },
-        status: 'pending', createdAt: Date.now() },
+      attempt: {
+        id: 'a1',
+        taskId: 't1',
+        kind: 'tool',
+        targetId: 't1',
+        input: {},
+        fingerprint: 'fp_tool_t1',
+        hypothesisIds: [],
+        observationIds: [],
+        evidenceIds: [],
+        artifactIds: [],
+        flagCandidateIds: [],
+        error: { message: 'x' },
+        status: 'pending',
+        createdAt: Date.now(),
+      },
     })
     expect(store.getState().attempts.length).toBe(1)
     expect(() =>
       store.apply({
         type: 'ATTEMPT_RECORDED',
-        attempt: { id: 'a1', taskId: 't1', kind: 'tool', targetId: 't1', input: {},
-        fingerprint: 'fp_tool_t1', hypothesisIds: [], observationIds: [],
-        evidenceIds: [], artifactIds: [], flagCandidateIds: [], error: { message: 'x' },
-        status: 'pending', createdAt: Date.now() },
+        attempt: {
+          id: 'a1',
+          taskId: 't1',
+          kind: 'tool',
+          targetId: 't1',
+          input: {},
+          fingerprint: 'fp_tool_t1',
+          hypothesisIds: [],
+          observationIds: [],
+          evidenceIds: [],
+          artifactIds: [],
+          flagCandidateIds: [],
+          error: { message: 'x' },
+          status: 'pending',
+          createdAt: Date.now(),
+        },
       }),
     ).toThrow(DuplicateAttemptError)
   })
@@ -1016,10 +1088,22 @@ describe('§6 — Reducer invariants', () => {
     const store = new CTFTaskStateStore(freshState())
     store.apply({
       type: 'ATTEMPT_RECORDED',
-      attempt: { id: 'a1', taskId: 't1', kind: 'tool', targetId: 't1', input: {},
-        fingerprint: 'fp_tool_t1', hypothesisIds: [], observationIds: [],
-        evidenceIds: [], artifactIds: [], flagCandidateIds: [], error: { message: 'x' },
-        status: 'running', createdAt: Date.now() },
+      attempt: {
+        id: 'a1',
+        taskId: 't1',
+        kind: 'tool',
+        targetId: 't1',
+        input: {},
+        fingerprint: 'fp_tool_t1',
+        hypothesisIds: [],
+        observationIds: [],
+        evidenceIds: [],
+        artifactIds: [],
+        flagCandidateIds: [],
+        error: { message: 'x' },
+        status: 'running',
+        createdAt: Date.now(),
+      },
     })
     store.apply({ type: 'ATTEMPT_UPDATED', attemptId: 'a1', patch: { status: 'succeeded' } })
     expect(() =>
@@ -1029,9 +1113,9 @@ describe('§6 — Reducer invariants', () => {
 
   it('ATTEMPT_UPDATED throws on missing id', () => {
     const store = new CTFTaskStateStore(freshState())
-    expect(() =>
-      store.apply({ type: 'ATTEMPT_UPDATED', attemptId: 'nope', patch: {} }),
-    ).toThrow(UnknownAttemptError)
+    expect(() => store.apply({ type: 'ATTEMPT_UPDATED', attemptId: 'nope', patch: {} })).toThrow(
+      UnknownAttemptError,
+    )
   })
 
   it('TASK_COMPLETED is immutable', () => {
@@ -1080,8 +1164,9 @@ describe('§7 — TaskStateProjector', () => {
         taskId: 't',
         producerAgentId: 'main',
         category: 'triage',
-        title: 't', summary: 'triage summary',
-          confidence: 'low',
+        title: 't',
+        summary: 'triage summary',
+        confidence: 'low',
         evidence: [],
         artifactIds: [],
       })
@@ -1157,13 +1242,16 @@ describe('§7 — TaskStateProjector', () => {
         taskId: orch.getState().taskId,
         producerAgentId: 'triage',
         category: 'triage',
-        title: 'pre', summary: 'triage summary',
-          confidence: 'low',
+        title: 'pre',
+        summary: 'triage summary',
+        confidence: 'low',
         evidence: [],
         artifactIds: [],
       })
       const before = orch.getState().findings.length
-      const r = await orch.runWorkflow('unknown_file_triage', { FILE_INPUT: join(dir, 'sample.txt') })
+      const r = await orch.runWorkflow('unknown_file_triage', {
+        FILE_INPUT: join(dir, 'sample.txt'),
+      })
       const after = orch.getState().findings.length
       expect(r).toBeDefined()
       // The workflow itself may or may not emit; the test just asserts the
@@ -1194,8 +1282,9 @@ describe('§8 — Integration', () => {
         taskId: orch.getState().taskId,
         producerAgentId: 'triage',
         category: 'forensics',
-        title: 'parent seed', summary: 'triage summary',
-          confidence: 'low',
+        title: 'parent seed',
+        summary: 'triage summary',
+        confidence: 'low',
         evidence: [],
         artifactIds: [],
       })

@@ -73,7 +73,10 @@ export interface ShotgunReport {
  * approval + scope check already gate who runs, the rest just fire
  * together.
  */
-function classifyTier(m: OneShotManifest, contestScope: TaskExecutionContext['contestScope']): 'fast-safe' | 'heavy' | 'network' | 'denied' {
+function classifyTier(
+  m: OneShotManifest,
+  contestScope: TaskExecutionContext['contestScope'],
+): 'fast-safe' | 'heavy' | 'network' | 'denied' {
   if (m.network.mode !== 'none' && contestScope.allowPublicNetwork !== true) return 'denied'
   if (m.scheduling.costTier === 'heavy' && contestScope.allowHeavyOneShots !== true) return 'denied'
   if (m.scheduling.costTier === 'heavy') return 'heavy'
@@ -142,7 +145,10 @@ export class ShotgunCoordinator {
         continue
       }
       if (!m.allowedProfiles.includes(this.taskContext.profileId)) {
-        rejected.push({ manifestId: id, reason: `profile ${this.taskContext.profileId} not allowed` })
+        rejected.push({
+          manifestId: id,
+          reason: `profile ${this.taskContext.profileId} not allowed`,
+        })
         continue
       }
       if (!this.isManifestReady(id)) {
@@ -216,11 +222,10 @@ export class ShotgunCoordinator {
       const promises = settle.map((p) =>
         p.then(
           (v) => ({ status: 'fulfilled' as const, value: v }),
-          (e) => ({ status: 'rejected' as const, reason: e }),
+          (e: unknown) => ({ status: 'rejected' as const, reason: e }),
         ),
       )
       const winnerIdx = await new Promise<number | null>((resolveWinner) => {
-        let i = 0
         promises.forEach((p, idx) => {
           p.then(
             (r) => {
@@ -243,7 +248,7 @@ export class ShotgunCoordinator {
           )
         })
         // If no winner ever appears, resolve with null.
-        Promise.allSettled(promises).then(() => {
+        void Promise.allSettled(promises).then(() => {
           if (!winnerObserved) resolveWinner(null)
         })
       })

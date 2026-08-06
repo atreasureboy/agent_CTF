@@ -48,7 +48,13 @@ describe('BenchRunner (E)', () => {
     const executor = createFixtureExecutor({ expectedFlag: 'flag{test_basic_1}' })
     const r = await runChallenge(fixture[0], {
       executor,
-      budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
+      budgetLimits: {
+        fastConcurrency: 1,
+        mediumConcurrency: 1,
+        heavyConcurrency: 1,
+        perTaskMaxRuns: 4,
+        perTaskHeavyRuns: 1,
+      },
     })
     expect(r.won).toBe(true)
     expect(r.submittedFlag).toBe('flag{test_basic_1}')
@@ -59,7 +65,13 @@ describe('BenchRunner (E)', () => {
     const executor = createFixtureExecutor({ expectedFlag: 'flag{test_basic_1}' })
     const { results, summaryPath } = await runBenchSuite('smoke', [fixture[0], fixture[1]], {
       executor,
-      budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
+      budgetLimits: {
+        fastConcurrency: 1,
+        mediumConcurrency: 1,
+        heavyConcurrency: 1,
+        perTaskMaxRuns: 4,
+        perTaskHeavyRuns: 1,
+      },
       outDir: dir,
     })
     expect(results.length).toBe(2)

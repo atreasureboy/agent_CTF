@@ -4,8 +4,8 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7%20strict-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-89%20passed%20%7C%20759%20specs-brightgreen.svg)](#-quality--testing)
-[![Lint](https://img.shields.io/badge/ESLint-0%20errors-success.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/Tests-92%20files%20passed-brightgreen.svg)](#-quality--testing)
+[![Lint](https://img.shields.io/badge/ESLint-P0%20crash%20bugs%20fixed-success.svg)](#-quality--testing)
 [![Architecture](https://img.shields.io/badge/Architecture-Orchestrator%20%E2%86%92%20Specialists-orange.svg)](#-system-architecture)
 [![Prod Deps](https://img.shields.io/badge/Prod%20deps-3-blueviolet.svg)](#-technology-stack)
 
@@ -160,7 +160,7 @@ Provides two robust submission pre-plans:
 ```bash
 git clone https://github.com/atreasureboy/agent_CTF.git
 cd agent_CTF
-npm install
+pnpm install
 ```
 
 ### 2. Environment Configuration
@@ -182,14 +182,14 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 
 ```bash
 # Type check and build
-npm run build
+pnpm run build
 
 # Run code style & lint checks
-npm run lint
-npm run format:check
+pnpm run lint
+pnpm run format:check
 
 # Run full Vitest test suite
-npx vitest run
+pnpm run test
 ```
 
 ---
@@ -218,12 +218,12 @@ npx tsx bin/ovogogogo-ctf.ts --profile orchestrator "Analyze the provided pcap f
 
 `agent_CTF` maintains rigorous software engineering standards:
 
-- **89 Vitest Test Files / 755 Test Specs**: 100% passing across unit, integration, and E2E scenarios.
-- **0 ESLint Errors**: Strict adherence to TypeScript best practices.
-- **0 Format Errors**: Fully aligned with Prettier styling.
+- **92 Vitest Test Files**: 100% passing across unit, integration, and E2E scenarios.
+- **ESLint Strict**: Adherence to TypeScript best practices.
+- **Prettier Formatted**: Consistent code style enforced via CI.
 
 ```bash
-npm run lint && npm run format:check && npm run build && npx vitest run
+pnpm run ci
 ```
 
 ---

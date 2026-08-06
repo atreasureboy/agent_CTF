@@ -33,7 +33,14 @@ describe('Phase 2.2 §二十七 — cumulative task budget', () => {
 
   it('cumulative cost never refunds', () => {
     let state = createInitialReasoningBudgetState()
-    const cheap: SuggestedAction = { type: 'call_tool', toolId: 't', input: {}, reason: 'r', priority: 1, costTier: 'cheap' }
+    const cheap: SuggestedAction = {
+      type: 'call_tool',
+      toolId: 't',
+      input: {},
+      reason: 'r',
+      priority: 1,
+      costTier: 'cheap',
+    }
     state = applyReasoningBudgetConsumption(state, cheap)
     expect(state.estimatedCostUnitsUsed).toBe(1)
     state = applyReasoningBudgetConsumption(state, cheap)
@@ -48,30 +55,71 @@ describe('Phase 2.2 §二十七 — cumulative task budget', () => {
       async execute(): Promise<ActionExecutionResult> {
         return {
           status: 'executed',
-          materializedResult: { observations: [], evidence: [], suggestedActions: [], flagCandidateDrafts: [], warnings: [], rawArtifactIds: [] },
+          materializedResult: {
+            observations: [],
+            evidence: [],
+            suggestedActions: [],
+            flagCandidateDrafts: [],
+            warnings: [],
+            rawArtifactIds: [],
+          },
           executionRefs: {},
         }
       },
     }
     // Cap maxActions at 2 so the 3rd action triggers denial.
-    const result = await processNewReasoningInputs({
-      taskId: 'bdg',
-      state,
-      store,
-      executor: createNoopStrategyActionExecutor(),
-      budgetLimits: { fastConcurrency: 4, mediumConcurrency: 2, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 4 },
-      heavyApproved: false,
-      reasoningBudgetLimits: { ...DEFAULT_REASONING_BUDGET_LIMITS, maxActions: 2, maxCheapActions: 1 },
-    }, {
-      source: 'main-agent',
-      newObservationIds: [],
-      newEvidenceIds: [],
-      suggestedActions: [
-        { type: 'call_tool', toolId: 't1', input: {}, reason: 'r', priority: 1, costTier: 'cheap' },
-        { type: 'call_tool', toolId: 't2', input: {}, reason: 'r', priority: 1, costTier: 'cheap' },
-        { type: 'call_tool', toolId: 't3', input: {}, reason: 'r', priority: 1, costTier: 'cheap' },
-      ],
-    })
+    const result = await processNewReasoningInputs(
+      {
+        taskId: 'bdg',
+        state,
+        store,
+        executor: createNoopStrategyActionExecutor(),
+        budgetLimits: {
+          fastConcurrency: 4,
+          mediumConcurrency: 2,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 100,
+          perTaskHeavyRuns: 4,
+        },
+        heavyApproved: false,
+        reasoningBudgetLimits: {
+          ...DEFAULT_REASONING_BUDGET_LIMITS,
+          maxActions: 2,
+          maxCheapActions: 1,
+        },
+      },
+      {
+        source: 'main-agent',
+        newObservationIds: [],
+        newEvidenceIds: [],
+        suggestedActions: [
+          {
+            type: 'call_tool',
+            toolId: 't1',
+            input: {},
+            reason: 'r',
+            priority: 1,
+            costTier: 'cheap',
+          },
+          {
+            type: 'call_tool',
+            toolId: 't2',
+            input: {},
+            reason: 'r',
+            priority: 1,
+            costTier: 'cheap',
+          },
+          {
+            type: 'call_tool',
+            toolId: 't3',
+            input: {},
+            reason: 'r',
+            priority: 1,
+            costTier: 'cheap',
+          },
+        ],
+      },
+    )
     expect(result.stopped).toBe(true)
     expect(store.getState().reasoningBudget.estimatedCostUnitsUsed).toBeGreaterThan(0)
   })
@@ -81,9 +129,26 @@ describe('Phase 2.2 §二十七 — cumulative task budget', () => {
     const t2 = createTestTaskState({ taskId: 't2' })
     const s1 = new CTFTaskStateStore(t1)
     const s2 = new CTFTaskStateStore(t2)
-    const action: SuggestedAction = { type: 'call_tool', toolId: 't', input: {}, reason: 'r', priority: 1, costTier: 'cheap' }
-    const result1 = evaluateReasoningBudget(action, s1.getState().reasoningBudget, DEFAULT_REASONING_BUDGET_LIMITS, { heavyApproved: false, taskTerminal: false })
-    const result2 = evaluateReasoningBudget(action, s2.getState().reasoningBudget, DEFAULT_REASONING_BUDGET_LIMITS, { heavyApproved: false, taskTerminal: false })
+    const action: SuggestedAction = {
+      type: 'call_tool',
+      toolId: 't',
+      input: {},
+      reason: 'r',
+      priority: 1,
+      costTier: 'cheap',
+    }
+    const result1 = evaluateReasoningBudget(
+      action,
+      s1.getState().reasoningBudget,
+      DEFAULT_REASONING_BUDGET_LIMITS,
+      { heavyApproved: false, taskTerminal: false },
+    )
+    const result2 = evaluateReasoningBudget(
+      action,
+      s2.getState().reasoningBudget,
+      DEFAULT_REASONING_BUDGET_LIMITS,
+      { heavyApproved: false, taskTerminal: false },
+    )
     expect(result1.allowed).toBe(result2.allowed)
   })
 })

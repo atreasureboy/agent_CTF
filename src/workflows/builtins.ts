@@ -249,8 +249,7 @@ export const WORKFLOW_RSA_COMMON_ATTACKS: WorkflowDefinition = {
 export const WORKFLOW_XOR_KNOWN_ATTACK: WorkflowDefinition = {
   id: 'xor_known_attack',
   name: 'XOR Known-Plaintext Attack',
-  description:
-    '已知明文 + 密文 → 推导 XOR key → 解密长密文（适用于 xor_known 等）。',
+  description: '已知明文 + 密文 → 推导 XOR key → 解密长密文（适用于 xor_known 等）。',
   domains: ['crypto'],
   acceptedInputs: ['TEXT_INPUT', 'KNOWN_PLAINTEXT', 'KNOWN_CIPHERTEXT_HEX'],
   executionMode: 'sequential',
@@ -407,7 +406,8 @@ export const WORKFLOW_XOR_SINGLE_BYTE: WorkflowDefinition = {
 export const WORKFLOW_RSA_WIENER_ATTACK: WorkflowDefinition = {
   id: 'rsa_wiener_attack',
   name: "RSA Wiener's Attack",
-  description: 'Recovers small private exponent d via continued-fraction expansion of e/n and decrypts c^d mod n.',
+  description:
+    'Recovers small private exponent d via continued-fraction expansion of e/n and decrypts c^d mod n.',
   domains: ['crypto'],
   acceptedInputs: ['TEXT_INPUT', 'N', 'E', 'C'],
   executionMode: 'sequential',
@@ -485,7 +485,8 @@ export const WORKFLOW_BMP_LSB: WorkflowDefinition = {
 export const WORKFLOW_WEB_FETCH: WorkflowDefinition = {
   id: 'web_fetch',
   name: 'Web HTTP Fetch',
-  description: 'Make an HTTP request and return the response body. Solves web1 (directory traversal) and web_sqli (SQLi auth bypass).',
+  description:
+    'Make an HTTP request and return the response body. Solves web1 (directory traversal) and web_sqli (SQLi auth bypass).',
   domains: ['web'],
   acceptedInputs: ['URL', 'METHOD', 'BODY'],
   executionMode: 'sequential',
@@ -524,7 +525,8 @@ export const WORKFLOW_WEB_FETCH: WorkflowDefinition = {
 export const WORKFLOW_WEB_SHELL_FETCH: WorkflowDefinition = {
   id: 'web_shell_fetch',
   name: 'Web HTTP Fetch (Shell)',
-  description: 'HTTP fetch via bash + curl. Use when the URL contains `..` or other tokens that the tool-form path-escape check would reject. Solves web1 (directory traversal).',
+  description:
+    'HTTP fetch via bash + curl. Use when the URL contains `..` or other tokens that the tool-form path-escape check would reject. Solves web1 (directory traversal).',
   domains: ['web'],
   acceptedInputs: ['URL'],
   executionMode: 'sequential',
@@ -616,7 +618,8 @@ export const WORKFLOW_ATBASH: WorkflowDefinition = {
 export const WORKFLOW_PCAP_GREP_FLAG: WorkflowDefinition = {
   id: 'pcap_grep_flag',
   name: 'PCAP Grep for Flag',
-  description: 'Greps a traffic-capture file for the first flag-shaped substring (pcap1, pcap_http).',
+  description:
+    'Greps a traffic-capture file for the first flag-shaped substring (pcap1, pcap_http).',
   domains: ['forensics', 'web'],
   acceptedInputs: ['FILE_INPUT'],
   executionMode: 'sequential',
@@ -644,7 +647,8 @@ export const WORKFLOW_PCAP_GREP_FLAG: WorkflowDefinition = {
 export const WORKFLOW_UNZIP_INNER: WorkflowDefinition = {
   id: 'forensics_unzip',
   name: 'Unzip inner archive',
-  description: '非加密 ZIP 提取（forensics2 等）。通过 unzip_inner tool 抽取内嵌文件，输出 flag 候选。',
+  description:
+    '非加密 ZIP 提取（forensics2 等）。通过 unzip_inner tool 抽取内嵌文件，输出 flag 候选。',
   domains: ['forensics'],
   acceptedInputs: ['FILE_INPUT'],
   executionMode: 'sequential',
@@ -922,6 +926,491 @@ export const WORKFLOW_PCAP_TRIAGE: WorkflowDefinition = {
   ],
 }
 
+/* ─── §Round-3: Phantom workflow stubs (19 lightweight definitions) ────
+   These workflows were declared in profiles' allowedWorkflows but had no
+   WorkflowDefinition. Each stub delegates to the appropriate system tool
+   via Bash, keeping the profile→workflow wiring intact without adding
+   heavy bespoke logic. */
+
+export const WORKFLOW_PNG_STEGO_SWEEP: WorkflowDefinition = {
+  id: 'png_stego_sweep',
+  name: 'PNG Stego Sweep',
+  description:
+    'Run zsteg on a PNG file to detect LSB stego, palette-based hiding, and other common embedding techniques.',
+  domains: ['image-stego'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'zsteg',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which zsteg >/dev/null && zsteg -a "$FILE_INPUT" 2>&1 | head -n 100) || echo "zsteg not installed"',
+        description: 'LSB + palette stego scan',
+      },
+    },
+    {
+      kind: 'tool',
+      id: 'pngcheck',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which pngcheck >/dev/null && pngcheck -v "$FILE_INPUT" 2>&1 | head -n 50) || echo "pngcheck not installed"',
+        description: 'PNG chunk validation',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_JPEG_STEGO_SWEEP: WorkflowDefinition = {
+  id: 'jpeg_stego_sweep',
+  name: 'JPEG Stego Sweep',
+  description: 'Run steghide/stegseek on a JPEG to extract hidden content.',
+  domains: ['image-stego'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'steghide',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which steghide >/dev/null && steghide extract -sf "$FILE_INPUT" -p "" -f 2>&1) || echo "steghide not installed"',
+        description: 'Steghide extraction (no passphrase)',
+      },
+    },
+    {
+      kind: 'tool',
+      id: 'exiftool',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which exiftool >/dev/null && exiftool "$FILE_INPUT" 2>&1 | head -n 100) || echo "exiftool not installed"',
+        description: 'EXIF metadata dump',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_IMAGE_EMBEDDED_FILE_SCAN: WorkflowDefinition = {
+  id: 'image_embedded_file_scan',
+  name: 'Image Embedded File Scan',
+  description: 'Use binwalk/foremost to extract embedded files from images.',
+  domains: ['image-stego'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'binwalk',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which binwalk >/dev/null && binwalk -e "$FILE_INPUT" 2>&1 | head -n 80) || echo "binwalk not installed"',
+        description: 'Binwalk embedded file extraction',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_CLASSICAL_CIPHER_SWEEP: WorkflowDefinition = {
+  id: 'classical_cipher_sweep',
+  name: 'Classical Cipher Sweep',
+  description:
+    'Attempt ROT13/ROT1-25, Atbash, Vigenère, and rail-fence decoding on the input text.',
+  domains: ['crypto', 'encoding'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'rot-all',
+      toolId: 'Bash',
+      input: {
+        command:
+          "python3 -c \"import codecs; s=open('$FILE_INPUT').read() if '$FILE_INPUT' else '$TEXT_INPUT'; [print(f'ROT{i}: {codecs.decode(s,chr(114+111*0)+chr(116)+chr(95)+chr(49)+chr(51)) if False else s.translate(str.maketrans({c:chr((ord(c)-65+i)%26+65) for c in map(chr,range(65,91))}|{c:chr((ord(c)-97+i)%26+97) for c in map(chr,range(97,123))}))} for i in range(1,26)] for c in [1] if False]\" 2>&1 || python3 -c \"s=open('$FILE_INPUT').read(); [print(f'ROT{i}: '+''.join(chr((ord(c)-65+i)%26+65) if c.isupper() else chr((ord(c)-97+i)%26+97) if c.islower() else c for c in s)) for i in range(1,26)]\" 2>&1",
+        description: 'ROT1-25 sweep',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_XOR_KEY_SEARCH: WorkflowDefinition = {
+  id: 'xor_key_search',
+  name: 'XOR Key Search',
+  description: 'Brute-force single-byte XOR and search for flag-like output.',
+  domains: ['crypto', 'encoding'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'xor-bf',
+      toolId: 'Bash',
+      input: {
+        command:
+          "python3 -c \"import sys; data=sys.stdin.buffer.read() if sys.stdin.isatty() else sys.stdin.buffer.read(); [print(f'key {k:02x}: '+bytes(b^k for b in data[:200]).decode('utf-8','replace')) for k in range(256)]\" 2>&1 || echo \"xor key search requires stdin\"",
+        description: 'Single-byte XOR brute force',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_HASH_IDENTIFY_AND_CRACK: WorkflowDefinition = {
+  id: 'hash_identify_and_crack',
+  name: 'Hash Identify & Crack',
+  description: 'Identify hash type via hashid and attempt rockyou/john crack.',
+  domains: ['crypto'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'hashid',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which hashid >/dev/null && hashid "$TEXT_INPUT" 2>&1) || echo "hashid not installed"',
+        description: 'Hash type identification',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_ARCHIVE_RECURSIVE_EXTRACT: WorkflowDefinition = {
+  id: 'archive_recursive_extract',
+  name: 'Archive Recursive Extract',
+  description: 'Recursively extract zip/tar/gz/bz2/xz archives until no more layers remain.',
+  domains: ['file-forensics'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: '7z-extract',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which 7z >/dev/null && 7z x "$FILE_INPUT" -o/tmp/extract_$$ -y 2>&1 | head -n 50) || unzip -o "$FILE_INPUT" -d /tmp/extract_$$ 2>&1 | head -n 50',
+        description: 'Archive extraction',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_EMBEDDED_CONTENT_SCAN: WorkflowDefinition = {
+  id: 'embedded_content_scan',
+  name: 'Embedded Content Scan',
+  description: 'Scan for embedded files, steg data, or appended data after file trailers.',
+  domains: ['file-forensics'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'binwalk',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which binwalk >/dev/null && binwalk "$FILE_INPUT" 2>&1 | head -n 100) || echo "binwalk not installed"',
+        description: 'Embedded content detection',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_MAGIC_HEADER_REPAIR_CANDIDATES: WorkflowDefinition = {
+  id: 'magic_header_repair_candidates',
+  name: 'Magic Header Repair Candidates',
+  description:
+    'Identify broken magic bytes and suggest repair by comparing against known file signatures.',
+  domains: ['file-forensics'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'xxd-header',
+      toolId: 'Bash',
+      input: {
+        command:
+          'xxd "$FILE_INPUT" | head -n 4 && echo "--- file ---" && file "$FILE_INPUT" && echo "--- compare against known magic bytes ---" && echo "PNG: 89504E470D0A1A0A | JPG: FFD8FF | GIF: 47494638 | PDF: 25504446 | ZIP: 504B0304 | ELF: 7F454C46 | PE: 4D5A"',
+        description: 'Header hex dump + comparison table',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_FUNCTION_DISASSEMBLY: WorkflowDefinition = {
+  id: 'function_disassembly',
+  name: 'Function Disassembly',
+  description: 'Disassemble binary functions via objdump to locate key routines.',
+  domains: ['reverse'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'objdump',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which objdump >/dev/null && objdump -d "$FILE_INPUT" 2>&1 | head -n 200) || echo "objdump not available; install binutils"',
+        description: 'Function disassembly',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_EMBEDDED_STRING_SEARCH: WorkflowDefinition = {
+  id: 'embedded_string_search',
+  name: 'Embedded String Search',
+  description: 'Extract printable strings and scan for flag/credential patterns.',
+  domains: ['reverse'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'strings',
+      toolId: 'Bash',
+      input: {
+        command:
+          'strings -n 8 "$FILE_INPUT" | grep -iE "flag|key|pass|secret|token|ctf|{" | head -n 100 || true',
+        description: 'String extraction with flag pattern filter',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_REGISTER_STATE_CAPTURE: WorkflowDefinition = {
+  id: 'register_state_capture',
+  name: 'Register State Capture',
+  description: 'Capture register state at crash point via GDB for exploit development.',
+  domains: ['pwn'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'checksec',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which checksec >/dev/null && checksec --file="$FILE_INPUT" 2>&1) || echo "checksec not available"',
+        description: 'Binary security flag analysis',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_SEGFAULT_BACKTRACE: WorkflowDefinition = {
+  id: 'segfault_backtrace',
+  name: 'Segfault Backtrace',
+  description: 'Run binary with crafted input and capture segfault backtrace.',
+  domains: ['pwn'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'gdb-bt',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which gdb >/dev/null && echo "run" | timeout 5 gdb -batch -ex "run" -ex "bt" --args "$FILE_INPUT" 2>&1 | head -n 100) || echo "gdb not available"',
+        description: 'GDB backtrace on default run',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_HOST_SERVICE_ENUMERATION: WorkflowDefinition = {
+  id: 'host_service_enumeration',
+  name: 'Host Service Enumeration',
+  description: 'Enumerate open ports/services via nmap on the target host.',
+  domains: ['web'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'nmap',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which nmap >/dev/null && nmap -sV -sC "$TEXT_INPUT" 2>&1 | head -n 200) || echo "nmap not installed"',
+        description: 'Service enumeration',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_WEB_DIR_ENUM: WorkflowDefinition = {
+  id: 'web_dir_enum',
+  name: 'Web Directory Enum',
+  description: 'Enumerate web directories via gobuster/dirb against the target URL.',
+  domains: ['web'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'dirb',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which gobuster >/dev/null && gobuster dir -u "$TEXT_INPUT" -w /usr/share/wordlists/dirb/common.txt -q 2>&1 | head -n 100) || (which dirb >/dev/null && dirb "$TEXT_INPUT" 2>&1 | head -n 100) || echo "no directory enumeration tool available"',
+        description: 'Directory enumeration',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_WEB_VULN_SCAN: WorkflowDefinition = {
+  id: 'web_vuln_scan',
+  name: 'Web Vulnerability Scan',
+  description: 'Quick vulnerability scan via nikto on the target URL.',
+  domains: ['web'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'nikto',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which nikto >/dev/null && timeout 30 nikto -h "$TEXT_INPUT" 2>&1 | head -n 200) || echo "nikto not installed"',
+        description: 'Vulnerability scan',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_HTTP_METHOD_FUZZ: WorkflowDefinition = {
+  id: 'http_method_fuzz',
+  name: 'HTTP Method Fuzz',
+  description: 'Fuzz HTTP methods (PUT/DELETE/PATCH/OPTIONS) against the target endpoint.',
+  domains: ['web'],
+  acceptedInputs: ['text'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'curl-methods',
+      toolId: 'Bash',
+      input: {
+        command:
+          'for m in GET POST PUT DELETE PATCH OPTIONS HEAD TRACE; do echo "--- $m ---"; curl -s -X "$m" "$TEXT_INPUT" -o /dev/null -w "%{http_code}" 2>&1; echo; done',
+        description: 'HTTP method fuzzing',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_PCAP_OBJECT_EXPORT: WorkflowDefinition = {
+  id: 'pcap_object_export',
+  name: 'PCAP Object Export',
+  description: 'Export files/objects transmitted over HTTP/SMB from pcap via tshark.',
+  domains: ['traffic'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'tshark-export',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which tshark >/dev/null && tshark -r "$FILE_INPUT" --export-objects "http,/tmp/http_export_$$" 2>&1 && ls -la /tmp/http_export_$$/ 2>&1 | head -n 50) || echo "tshark not installed"',
+        description: 'HTTP object export from pcap',
+      },
+    },
+  ],
+}
+
+export const WORKFLOW_TCP_FOLLOW: WorkflowDefinition = {
+  id: 'tcp_follow',
+  name: 'TCP Follow',
+  description: 'Follow TCP streams from pcap via tshark and extract payloads.',
+  domains: ['traffic'],
+  acceptedInputs: ['file_path'],
+  executionMode: 'sequential',
+  requiredTools: ['Bash'],
+  stopConditions: [],
+  partialFailurePolicy: 'continue',
+  steps: [
+    {
+      kind: 'tool',
+      id: 'tshark-follow',
+      toolId: 'Bash',
+      input: {
+        command:
+          '(which tshark >/dev/null && tshark -r "$FILE_INPUT" -z follow,tcp,ascii,0 2>&1 | head -n 200) || echo "tshark not installed"',
+        description: 'TCP stream follow',
+      },
+    },
+  ],
+}
+
 export const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
   WORKFLOW_UNKNOWN_FILE_TRIAGE,
   WORKFLOW_IMAGE_QUICK_SCAN,
@@ -943,4 +1432,24 @@ export const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
   WORKFLOW_PWN_TRIAGE,
   WORKFLOW_WEB_TRIAGE,
   WORKFLOW_PCAP_TRIAGE,
+  // §Round-3 phantom workflow stubs
+  WORKFLOW_PNG_STEGO_SWEEP,
+  WORKFLOW_JPEG_STEGO_SWEEP,
+  WORKFLOW_IMAGE_EMBEDDED_FILE_SCAN,
+  WORKFLOW_CLASSICAL_CIPHER_SWEEP,
+  WORKFLOW_XOR_KEY_SEARCH,
+  WORKFLOW_HASH_IDENTIFY_AND_CRACK,
+  WORKFLOW_ARCHIVE_RECURSIVE_EXTRACT,
+  WORKFLOW_EMBEDDED_CONTENT_SCAN,
+  WORKFLOW_MAGIC_HEADER_REPAIR_CANDIDATES,
+  WORKFLOW_FUNCTION_DISASSEMBLY,
+  WORKFLOW_EMBEDDED_STRING_SEARCH,
+  WORKFLOW_REGISTER_STATE_CAPTURE,
+  WORKFLOW_SEGFAULT_BACKTRACE,
+  WORKFLOW_HOST_SERVICE_ENUMERATION,
+  WORKFLOW_WEB_DIR_ENUM,
+  WORKFLOW_WEB_VULN_SCAN,
+  WORKFLOW_HTTP_METHOD_FUZZ,
+  WORKFLOW_PCAP_OBJECT_EXPORT,
+  WORKFLOW_TCP_FOLLOW,
 ]

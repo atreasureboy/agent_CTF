@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { decideCompaction, applyCompaction, DEFAULT_COMPACTION_POLICY } from '../src/core/ctfReasoning/contextCompactor.js'
+import {
+  decideCompaction,
+  applyCompaction,
+  DEFAULT_COMPACTION_POLICY,
+} from '../src/core/ctfReasoning/contextCompactor.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import { createObservation } from '../src/core/ctfReasoning/observation.js'
 
@@ -12,7 +16,10 @@ function makeStateWithObs(n: number, kind: string = 'generic') {
   let cur = state
   for (let i = 0; i < n; i++) {
     const obs = createObservation('c1', {
-      kind: kind as 'generic', source: { type: 'manual' }, summary: `obs ${i}`, confidence: 0.5,
+      kind: kind as 'generic',
+      source: { type: 'manual' },
+      summary: `obs ${i}`,
+      confidence: 0.5,
     })
     cur = { ...cur, observations: [...cur.observations, obs] }
   }

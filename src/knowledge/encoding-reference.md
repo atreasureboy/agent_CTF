@@ -8,19 +8,19 @@
 
 ### 1.1 各 Base 编码特征总览
 
-| 编码 | 字符集 | 特征 | 示例 |
-|------|--------|------|------|
-| **Base16** (Hex) | `0-9 A-F` | 大写/小写，长度为偶数 | `48656C6C6F` |
-| **Base32** | `A-Z 2-7` | 大写，`=` padding | `JBSWY3DP` |
-| **Base36** | `0-9 A-Z` | 数字+大写字母，无 padding | `3LWUHP` |
-| **Base45** | `0-9 A-Z $%*+-./:` | 特殊字符 | `QED8WEX0` |
-| **Base58** | 无 `0OIl` | 比特币地址风格 | `2gPihUTjt3` |
-| **Base62** | `0-9 a-z A-Z` | 无特殊字符，无 padding | `1Z8gHQ` |
-| **Base64** | `A-Z a-z 0-9 +/` | `=` padding，常见 | `SGVsbG8=` |
-| **Base64 URL** | `A-Z a-z 0-9 -_` | 无 `+/`，用 `-_` 替代 | `SGVsbG8` |
-| **Base85** | ASCII 33-117 | 无引号，`~>` 结尾 | `BOu!rD]j7BEbo7` |
-| **Base91** | ASCII 33-126 | 高效，无 padding | `>OwJh>}` |
-| **Base92** | 不含 `\` `'` | 比 Base91 多一个字符 | `F#_8H` |
+| 编码             | 字符集             | 特征                      | 示例             |
+| ---------------- | ------------------ | ------------------------- | ---------------- |
+| **Base16** (Hex) | `0-9 A-F`          | 大写/小写，长度为偶数     | `48656C6C6F`     |
+| **Base32**       | `A-Z 2-7`          | 大写，`=` padding         | `JBSWY3DP`       |
+| **Base36**       | `0-9 A-Z`          | 数字+大写字母，无 padding | `3LWUHP`         |
+| **Base45**       | `0-9 A-Z $%*+-./:` | 特殊字符                  | `QED8WEX0`       |
+| **Base58**       | 无 `0OIl`          | 比特币地址风格            | `2gPihUTjt3`     |
+| **Base62**       | `0-9 a-z A-Z`      | 无特殊字符，无 padding    | `1Z8gHQ`         |
+| **Base64**       | `A-Z a-z 0-9 +/`   | `=` padding，常见         | `SGVsbG8=`       |
+| **Base64 URL**   | `A-Z a-z 0-9 -_`   | 无 `+/`，用 `-_` 替代     | `SGVsbG8`        |
+| **Base85**       | ASCII 33-117       | 无引号，`~>` 结尾         | `BOu!rD]j7BEbo7` |
+| **Base91**       | ASCII 33-126       | 高效，无 padding          | `>OwJh>}`        |
+| **Base92**       | 不含 `\` `'`       | 比 Base91 多一个字符      | `F#_8H`          |
 
 ### 1.2 Base64
 
@@ -52,6 +52,7 @@ echo -n "Hello" | base64
 ```
 
 **Base64 识别技巧**：
+
 - 长度通常是 4 的倍数
 - 末尾有 `=` 或 `==` padding
 - 字符集：`A-Za-z0-9+/=`
@@ -71,6 +72,7 @@ base64.b32decode(b'JBSWY3DP')        # b'Hello'
 ```
 
 **Base32 识别**：
+
 - 只包含 `A-Z` 和 `2-7`
 - 长度通常是 8 的倍数
 - 可能有 `=` padding (最多 6 个 `=`)
@@ -112,7 +114,7 @@ base64.b85decode(b'BOu!rD]j7BEbo7')
 # Base91: 使用 ASCII 33-126，高密度编码
 # pip install base91
 import base91
-base91.encode(b"Hello")              # b'>OwJh>['  
+base91.encode(b"Hello")              # b'>OwJh>['
 base91.decode(b'>OwJh>[')
 
 # Base92: 比 Base91 多一个字符，不使用 \ 和 '
@@ -224,12 +226,12 @@ printf "Hello" | od -A n -t x1        # 48 65 6c 6c 6f
 
 ### 2.5 进制识别技巧
 
-| 进制 | 特征 | 示例 |
-|------|------|------|
-| 二进制 | 只有 0/1 | `01001000` |
-| 八进制 | 0-7，常以 0 开头 | `0110 0145` |
-| 十进制 | 0-9 | `72 101 108` |
-| 十六进制 | 0-9 A-F，常成对出现 | `48 65 6C` |
+| 进制     | 特征                | 示例         |
+| -------- | ------------------- | ------------ |
+| 二进制   | 只有 0/1            | `01001000`   |
+| 八进制   | 0-7，常以 0 开头    | `0110 0145`  |
+| 十进制   | 0-9                 | `72 101 108` |
+| 十六进制 | 0-9 A-F，常成对出现 | `48 65 6C`   |
 
 ### 2.6 大整数转换
 
@@ -284,6 +286,7 @@ html.unescape("&lt;script&gt;")        # '<script>'
 ```
 
 **特征**：
+
 - 命名实体：`&name;`
 - 十进制实体：`&#65;` → `A`
 - 十六进制实体：`&#x41;` → `A`
@@ -382,14 +385,14 @@ def recursive_decode(data):
 
 ### 4.1 字符串长度特征
 
-| 编码 | 原始 N 字节 | 编码后长度 | 膨胀率 |
-|------|------------|------------|--------|
-| Hex | N | 2N | 200% |
-| Base64 | N | ~4N/3 | 133% |
-| Base32 | N | ~8N/5 | 160% |
-| Base85 | N | ~5N/4 | 125% |
-| Base91 | N | ~N | ~100% |
-| Binary | N | 8N | 800% |
+| 编码   | 原始 N 字节 | 编码后长度 | 膨胀率 |
+| ------ | ----------- | ---------- | ------ |
+| Hex    | N           | 2N         | 200%   |
+| Base64 | N           | ~4N/3      | 133%   |
+| Base32 | N           | ~8N/5      | 160%   |
+| Base85 | N           | ~5N/4      | 125%   |
+| Base91 | N           | ~N         | ~100%  |
+| Binary | N           | 8N         | 800%   |
 
 ### 4.2 字符集快速识别
 
@@ -425,15 +428,15 @@ def identify_encoding(data_str):
 
 ### 4.3 Padding 特征
 
-| 编码 | Padding 字符 | Padding 模式 |
-|------|-------------|-------------|
-| Base64 | `=` | 1 或 2 个 `=` |
-| Base32 | `=` | 1-6 个 `=` |
-| Base16 | 无 | 无 |
-| Base58 | 无 | 无 |
-| Base85 | `~>` | 以 `~>` 结尾 |
-| Base91 | 无 | 无 |
-| Base45 | 无 | 无 |
+| 编码   | Padding 字符 | Padding 模式  |
+| ------ | ------------ | ------------- |
+| Base64 | `=`          | 1 或 2 个 `=` |
+| Base32 | `=`          | 1-6 个 `=`    |
+| Base16 | 无           | 无            |
+| Base58 | 无           | 无            |
+| Base85 | `~>`         | 以 `~>` 结尾  |
+| Base91 | 无           | 无            |
+| Base45 | 无           | 无            |
 
 ### 4.4 使用 CyberChef "Magic"
 
@@ -449,18 +452,18 @@ def identify_encoding(data_str):
 
 ### 5.1 CyberChef 常用配方
 
-| 配方 | 用途 |
-|------|------|
-| Magic | 自动检测 |
-| From Base64 | Base64 解码 |
-| From Base32 | Base32 解码 |
-| From Hex | Hex 解码 |
-| From Binary | 二进制解码 |
-| From Morse Code | 摩斯电码解码 |
-| URL Decode | URL 解码 |
-| HTML Entity | HTML 实体解码 |
-| XOR Brute Force | XOR 爆破 |
-| Text Encoding Brute Force | 综合编码爆破 |
+| 配方                      | 用途          |
+| ------------------------- | ------------- |
+| Magic                     | 自动检测      |
+| From Base64               | Base64 解码   |
+| From Base32               | Base32 解码   |
+| From Hex                  | Hex 解码      |
+| From Binary               | 二进制解码    |
+| From Morse Code           | 摩斯电码解码  |
+| URL Decode                | URL 解码      |
+| HTML Entity               | HTML 实体解码 |
+| XOR Brute Force           | XOR 爆破      |
+| Text Encoding Brute Force | 综合编码爆破  |
 
 ### 5.2 命令行工具
 
@@ -488,14 +491,14 @@ python -c "import base64; print(base64.b64decode('SGVsbG8='))"
 
 ### 5.3 在线工具
 
-| 工具 | URL | 用途 |
-|------|-----|------|
-| CyberChef | gchq.github.io/CyberChef | 万能编解码 |
-| dCode | dcode.fr | 密码/编码识别 |
-| DenCode | dencode.com | 编码检测 |
-| Boxentriq | boxentriq.com | 密码分析 |
-| Base64 Guru | base64.guru | Base64 工具 |
-| RapidTables | rapidtables.com | 进制转换 |
+| 工具        | URL                      | 用途          |
+| ----------- | ------------------------ | ------------- |
+| CyberChef   | gchq.github.io/CyberChef | 万能编解码    |
+| dCode       | dcode.fr                 | 密码/编码识别 |
+| DenCode     | dencode.com              | 编码检测      |
+| Boxentriq   | boxentriq.com            | 密码分析      |
+| Base64 Guru | base64.guru              | Base64 工具   |
+| RapidTables | rapidtables.com          | 进制转换      |
 
 ---
 

@@ -20,10 +20,7 @@ const TOOL_CTX = {
 
 describe('decode_tree (audit §13 R1)', () => {
   it('decodes 3× base64 → flag{...} for encoding1 challenge', async () => {
-    const encoded = readFileSync(
-      'bench/solvebench/challenges/encoding1/encoded.txt',
-      'utf-8',
-    )
+    const encoded = readFileSync('bench/solvebench/challenges/encoding1/encoded.txt', 'utf-8')
     const tool = createCTFUtilTools().find((t) => t.name === 'decode_tree')
     expect(tool, 'decode_tree tool must be registered in createCTFUtilTools()').toBeDefined()
     const result = await tool!.execute(
@@ -45,7 +42,11 @@ describe('decode_tree (audit §13 R1)', () => {
   it('returns no flag when input is not multi-layer encoded', async () => {
     const tool = createCTFUtilTools().find((t) => t.name === 'decode_tree')
     const result = await tool!.execute(
-      { text: 'plain ascii text without any encoding chain', flagPattern: 'flag\\{[^}]+\\}', maxDepth: 2 },
+      {
+        text: 'plain ascii text without any encoding chain',
+        flagPattern: 'flag\\{[^}]+\\}',
+        maxDepth: 2,
+      },
       TOOL_CTX,
     )
     expect(result.isError).toBe(false)

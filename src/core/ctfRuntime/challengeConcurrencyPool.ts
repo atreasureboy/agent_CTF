@@ -240,10 +240,7 @@ export class ChallengeConcurrencyPool {
     this.applyExecutorResult(challengeId, { status, flag: foundFlag })
   }
 
-  private applyExecutorResult(
-    challengeId: string,
-    result: TaskExecutorResult,
-  ): void {
+  private applyExecutorResult(challengeId: string, result: TaskExecutorResult): void {
     const handle = this.activeHandles.get(challengeId)
     if (!handle) return
     handle.status = result.status

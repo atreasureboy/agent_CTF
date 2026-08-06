@@ -21,8 +21,11 @@ describe('BackgroundJobManager', () => {
       const runner: JobRunner = async () => ({ summary: 'done', artifactId: 'art_x' })
       const m = new BackgroundJobManager({ taskWorkspaceDir: root }, runner)
       const job = await m.spawn({
-        taskId: 't1', agentId: 'web', toolId: 'nmap',
-        input: { target: 'example.com' }, timeoutMs: 1000,
+        taskId: 't1',
+        agentId: 'web',
+        toolId: 'nmap',
+        input: { target: 'example.com' },
+        timeoutMs: 1000,
       })
       const final = await m.wait(job.id, 5000)
       expect(final.status).toBe('success')
@@ -38,9 +41,17 @@ describe('BackgroundJobManager', () => {
     const root = tmpRoot()
     try {
       // eslint-disable-next-line @typescript-eslint/require-await
-      const runner: JobRunner = async () => { throw new Error('boom') }
+      const runner: JobRunner = async () => {
+        throw new Error('boom')
+      }
       const m = new BackgroundJobManager({ taskWorkspaceDir: root }, runner)
-      const job = await m.spawn({ taskId: 't1', agentId: 'web', toolId: 'nmap', input: {}, timeoutMs: 1000 })
+      const job = await m.spawn({
+        taskId: 't1',
+        agentId: 'web',
+        toolId: 'nmap',
+        input: {},
+        timeoutMs: 1000,
+      })
       const final = await m.wait(job.id, 5000)
       expect(final.status).toBe('failed')
       expect(final.error).toBe('boom')
@@ -60,11 +71,20 @@ describe('BackgroundJobManager', () => {
             const reason = signal.reason
             resolve({ error: `cancelled:${reason ?? 'unknown'}` })
           })
-          setTimeout(() => reject(new Error('timeout in test runner (signal was not honoured)')), 1500)
+          setTimeout(
+            () => reject(new Error('timeout in test runner (signal was not honoured)')),
+            1500,
+          )
         })
       }
       const m = new BackgroundJobManager({ taskWorkspaceDir: root }, runner)
-      const job = await m.spawn({ taskId: 't1', agentId: 'web', toolId: 'nmap', input: {}, timeoutMs: 10_000 })
+      const job = await m.spawn({
+        taskId: 't1',
+        agentId: 'web',
+        toolId: 'nmap',
+        input: {},
+        timeoutMs: 10_000,
+      })
       // Give the job a moment to start executing.
       await new Promise((r) => setTimeout(r, 30))
       const ok = m.cancel(job.id, 'orchestrator_says_stop')

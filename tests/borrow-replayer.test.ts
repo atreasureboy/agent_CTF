@@ -8,17 +8,53 @@ describe('Replayer (D)', () => {
     const initial = createTestTaskState({ taskId: 'rp-1' })
     const events: CTFTaskEvent[] = [
       { type: 'TASK_CREATED', taskId: 'rp-1', initial },
-      { type: 'STRATEGY_DECISION_RECORDED', decision: {
-        id: 'sd1', taskId: 'rp-1', selectedAction: { type: 'call_tool', toolId: 'file', input: {}, reason: 'r', priority: 1, costTier: 'cheap' } as never,
-        rejectedActions: [], reason: 'first', basedOnObservationIds: [], basedOnEvidenceIds: [], basedOnHypothesisIds: [], createdAt: 100,
-      } },
-      { type: 'ATTEMPT_STARTED', attempt: {
-        id: 'att1', taskId: 'rp-1', kind: 'tool', targetId: 'file', input: {}, fingerprint: 'fp1',
-        hypothesisIds: [], status: 'running',
-        observationIds: [], evidenceIds: [], artifactIds: [], flagCandidateIds: [], createdAt: 100,
-      } },
-      { type: 'ATTEMPT_COMPLETED', attemptId: 'att1', status: 'succeeded',
-        observationIds: ['o1'], evidenceIds: ['e1'], artifactIds: [], flagCandidateIds: [],
+      {
+        type: 'STRATEGY_DECISION_RECORDED',
+        decision: {
+          id: 'sd1',
+          taskId: 'rp-1',
+          selectedAction: {
+            type: 'call_tool',
+            toolId: 'file',
+            input: {},
+            reason: 'r',
+            priority: 1,
+            costTier: 'cheap',
+          } as never,
+          rejectedActions: [],
+          reason: 'first',
+          basedOnObservationIds: [],
+          basedOnEvidenceIds: [],
+          basedOnHypothesisIds: [],
+          createdAt: 100,
+        },
+      },
+      {
+        type: 'ATTEMPT_STARTED',
+        attempt: {
+          id: 'att1',
+          taskId: 'rp-1',
+          kind: 'tool',
+          targetId: 'file',
+          input: {},
+          fingerprint: 'fp1',
+          hypothesisIds: [],
+          status: 'running',
+          observationIds: [],
+          evidenceIds: [],
+          artifactIds: [],
+          flagCandidateIds: [],
+          createdAt: 100,
+        },
+      },
+      {
+        type: 'ATTEMPT_COMPLETED',
+        attemptId: 'att1',
+        status: 'succeeded',
+        observationIds: ['o1'],
+        evidenceIds: ['e1'],
+        artifactIds: [],
+        flagCandidateIds: [],
         completedAt: 200,
       },
       { type: 'TASK_COMPLETED', status: 'solved', reason: 'done' },
@@ -33,9 +69,7 @@ describe('Replayer (D)', () => {
 
   it('parses a JSONL string', () => {
     const initial = createTestTaskState({ taskId: 'rp-2' })
-    const events: CTFTaskEvent[] = [
-      { type: 'TASK_CREATED', taskId: 'rp-2', initial },
-    ]
+    const events: CTFTaskEvent[] = [{ type: 'TASK_CREATED', taskId: 'rp-2', initial }]
     const jsonl = events.map((e) => JSON.stringify(e)).join('\n')
     const out = replayFromJsonl(jsonl)
     expect(out.taskId).toBe('rp-2')

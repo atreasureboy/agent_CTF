@@ -15,7 +15,7 @@ import { CrossSolverEvidenceBus } from '../src/core/solverPortfolio/crossSolverE
 import { SubmissionController } from '../src/core/solverPortfolio/submissionController.js'
 import { TrajectoryRecorder } from '../src/core/trajectory/trajectoryRecorder.js'
 import type { ModelProvider } from '../src/core/modelReliability/providers/modelProvider.js'
-import {NoEligibleModelError} from '../src/core/modelReliability/errors.js'
+import { NoEligibleModelError } from '../src/core/modelReliability/errors.js'
 import { ArtifactStore } from '../src/core/artifacts.js'
 import { FindingStore } from '../src/core/findings.js'
 import { ToolRegistry } from '../src/core/toolRegistry.js'
@@ -72,11 +72,38 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
         trustLevel: 'privileged',
         reliabilityClass: 'privileged',
         contextWindow: 128000,
-        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
-        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        capabilities: {
+          toolCalling: true,
+          structuredOutput: true,
+          vision: true,
+          longContext: true,
+          codeExecutionPlanning: true,
+        },
+        reliability: {
+          structuredOutput: 0.98,
+          toolArguments: 0.95,
+          longHorizonPlanning: 0.92,
+          summarization: 0.95,
+          instructionFollowing: 0.96,
+        },
         economics: {},
-        allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
-        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        allowedRoles: [
+          'competition_coordinator',
+          'task_planner',
+          'solver_scout',
+          'deep_solver',
+          'context_compiler',
+          'progress_summarizer',
+          'specialist',
+          'flag_discriminator',
+          'reporter',
+        ],
+        limits: {
+          maxVisibleTools: 50,
+          maxIterations: 30,
+          maxRepairAttempts: 2,
+          maxConsecutiveFailures: 3,
+        },
         fallbackModelIds: [],
       },
     ])
@@ -95,7 +122,9 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
             object: 'chat.completion.chunk',
             created: Date.now(),
             model: 'gpt-4o',
-            choices: [{ index: 0, delta: { content: 'Test stream response' }, finish_reason: 'stop' }],
+            choices: [
+              { index: 0, delta: { content: 'Test stream response' }, finish_reason: 'stop' },
+            ],
           }
         })()
       },
@@ -142,11 +171,28 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
         trustLevel: 'privileged',
         reliabilityClass: 'privileged',
         contextWindow: 128000,
-        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
-        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        capabilities: {
+          toolCalling: true,
+          structuredOutput: true,
+          vision: true,
+          longContext: true,
+          codeExecutionPlanning: true,
+        },
+        reliability: {
+          structuredOutput: 0.98,
+          toolArguments: 0.95,
+          longHorizonPlanning: 0.92,
+          summarization: 0.95,
+          instructionFollowing: 0.96,
+        },
         economics: {},
         allowedRoles: ['task_planner'],
-        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        limits: {
+          maxVisibleTools: 50,
+          maxIterations: 30,
+          maxRepairAttempts: 2,
+          maxConsecutiveFailures: 3,
+        },
         fallbackModelIds: [],
       },
     ])
@@ -197,10 +243,7 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
     expect(orchVisible.map((t) => t.name)).toEqual(['inspect_task_state'])
 
     const emptyOrchVisible = policy.resolveVisibleTools({
-      tools: [
-        { name: 'Bash' },
-        { name: 'Read' },
-      ],
+      tools: [{ name: 'Bash' }, { name: 'Read' }],
       identity: {
         taskId: 'task_3',
         modelRole: 'competition_coordinator',
@@ -239,7 +282,10 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
     const toolRegistry = new ToolRegistry()
     const toolExposureResolver = new DefaultToolExposureResolver()
 
-    const artMeta = artifactStore.writeSync({ taskId: 'task_4', producerAgentId: 'scout', type: 'text' }, 'test content')
+    const artMeta = artifactStore.writeSync(
+      { taskId: 'task_4', producerAgentId: 'scout', type: 'text' },
+      'test content',
+    )
 
     const mockState: any = {
       taskId: 'task_4',
@@ -248,9 +294,46 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       stateRevision: 1,
       challenge: { description: 'Find flag' },
       context: { contestScope: { scopeType: 'workspace' } },
-      evidence: [{ id: 'ev_1', claim: 'Port 80 open', claimFamily: 'generic', confidence: 0.9, polarity: 'supports', sources: [{ producer: { type: 'workflow', id: 's1' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: 100 }], createdAt: 100 }],
-      hypotheses: [{ id: 'hyp_1', statement: 'Web exploit', status: 'testing', priority: 1, confidence: 0.7, updatedAt: 100 }],
-      attempts: [{ id: 'att_1', kind: 'tool', targetId: 'Bash', fingerprint: 'fp1', status: 'failed', createdAt: 100 }],
+      evidence: [
+        {
+          id: 'ev_1',
+          claim: 'Port 80 open',
+          claimFamily: 'generic',
+          confidence: 0.9,
+          polarity: 'supports',
+          sources: [
+            {
+              producer: { type: 'workflow', id: 's1' },
+              observationIds: [],
+              artifactIds: [],
+              attemptIds: [],
+              confidence: 0.9,
+              createdAt: 100,
+            },
+          ],
+          createdAt: 100,
+        },
+      ],
+      hypotheses: [
+        {
+          id: 'hyp_1',
+          statement: 'Web exploit',
+          status: 'testing',
+          priority: 1,
+          confidence: 0.7,
+          updatedAt: 100,
+        },
+      ],
+      attempts: [
+        {
+          id: 'att_1',
+          kind: 'tool',
+          targetId: 'Bash',
+          fingerprint: 'fp1',
+          status: 'failed',
+          createdAt: 100,
+        },
+      ],
       artifactIds: [artMeta.id],
       pendingActions: [],
       solverRuns: [],
@@ -319,7 +402,10 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
   it('6. GenericProcessSolverAdapter executes process and normalizes result', async () => {
     const adapter = new GenericProcessSolverAdapter('proc-test', {
       executablePath: 'node',
-      args: ['-e', 'console.log(JSON.stringify({ type: "observation", summary: "proc obs", confidence: 0.8 }))'],
+      args: [
+        '-e',
+        'console.log(JSON.stringify({ type: "observation", summary: "proc obs", confidence: 0.8 }))',
+      ],
     })
     const probe = await adapter.probe()
     expect(probe.status).toBe('ready')
@@ -366,7 +452,9 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       },
       async cancel() {},
       // eslint-disable-next-line @typescript-eslint/require-await
-      async inspect() { return {} as any },
+      async inspect() {
+        return {} as any
+      },
     })
 
     const s2Start = vi.fn().mockResolvedValue({
@@ -386,13 +474,23 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
       },
       async cancel() {},
       // eslint-disable-next-line @typescript-eslint/require-await
-      async inspect() { return {} as any },
+      async inspect() {
+        return {} as any
+      },
     })
 
-    // eslint-disable-next-line @typescript-eslint/require-await
-    swarm.registerAdapter({ id: 's1', probe: async () => ({ status: 'ready', capabilities: [] }), start: s1Start })
-    // eslint-disable-next-line @typescript-eslint/require-await
-    swarm.registerAdapter({ id: 's2', probe: async () => ({ status: 'ready', capabilities: [] }), start: s2Start })
+    swarm.registerAdapter({
+      id: 's1',
+      // eslint-disable-next-line @typescript-eslint/require-await
+      probe: async () => ({ status: 'ready', capabilities: [] }),
+      start: s1Start,
+    })
+    swarm.registerAdapter({
+      id: 's2',
+      // eslint-disable-next-line @typescript-eslint/require-await
+      probe: async () => ({ status: 'ready', capabilities: [] }),
+      start: s2Start,
+    })
 
     const outcome = await swarm.runSwarm({
       taskId: 'task_7',
@@ -425,7 +523,16 @@ describe('Phase 3.1 Production Wiring & De-mocking Integration Tests', () => {
         confidence: 0.9,
         polarity: 'supports',
         fingerprint: 'ev_A',
-        sources: [{ producer: { type: 'workflow', id: 's1' }, observationIds: [], artifactIds: [], attemptIds: [], confidence: 0.9, createdAt: Date.now() }],
+        sources: [
+          {
+            producer: { type: 'workflow', id: 's1' },
+            observationIds: [],
+            artifactIds: [],
+            attemptIds: [],
+            confidence: 0.9,
+            createdAt: Date.now(),
+          },
+        ],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       },

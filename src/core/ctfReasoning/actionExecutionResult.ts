@@ -28,7 +28,13 @@ export interface ExecutionRefs {
 }
 
 export type SkipReason =
-  'duplicate' | 'scope' | 'profile' | 'budget' | 'unavailable' | 'approval' | 'policy'
+  | 'duplicate'
+  | 'scope'
+  | 'profile'
+  | 'budget'
+  | 'unavailable'
+  | 'approval'
+  | 'policy'
 
 export type ActionExecutionResult =
   | {

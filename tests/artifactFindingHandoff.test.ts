@@ -100,13 +100,22 @@ describe('FindingStore', () => {
     try {
       const s = new FindingStore(root)
       s.append({
-        taskId: 't1', producerAgentId: 'triage',
-        category: 'triage', title: 'PNG detected', summary: 'magic=89504e47', confidence: 'high',
+        taskId: 't1',
+        producerAgentId: 'triage',
+        category: 'triage',
+        title: 'PNG detected',
+        summary: 'magic=89504e47',
+        confidence: 'high',
       })
       s.append({
-        taskId: 't1', producerAgentId: 'image-stego',
-        category: 'image', title: 'extracted ZIP', summary: 'art_xx1', confidence: 'medium',
-        artifactIds: ['art_xx1'], suggestedAgent: 'file-forensics',
+        taskId: 't1',
+        producerAgentId: 'image-stego',
+        category: 'image',
+        title: 'extracted ZIP',
+        summary: 'art_xx1',
+        confidence: 'medium',
+        artifactIds: ['art_xx1'],
+        suggestedAgent: 'file-forensics',
       })
       expect(s.list().length).toBe(2)
       const filtered = s.list((f) => f.category === 'image')
@@ -123,10 +132,13 @@ describe('HandoffStore', () => {
     try {
       const s = new HandoffStore(root)
       const r = s.submit({
-        taskId: 't1', fromAgent: 'image-stego',
+        taskId: 't1',
+        fromAgent: 'image-stego',
         suggestedAgent: 'file-forensics',
-        reason: 'Extracted nested ZIP', objective: 'Extract and triage contents',
-        artifactIds: ['art_xx'], findingIds: ['find_yy'],
+        reason: 'Extracted nested ZIP',
+        objective: 'Extract and triage contents',
+        artifactIds: ['art_xx'],
+        findingIds: ['find_yy'],
       })
       expect(r.id).toMatch(/^hof_/)
       expect(s.pending().length).toBe(1)

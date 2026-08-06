@@ -15,7 +15,9 @@ import type { OneShotRunner, RunnerInputs } from '../../src/ctf/oneshot/index.js
 import type { OneShotManifest, OneShotResult } from '../../src/ctf/oneshot/index.js'
 import type { TaskExecutionContext } from '../../src/core/ctfRuntime/taskExecutionContext.js'
 
-function fakeRunner(behavior: (m: OneShotManifest, argv: string[]) => Promise<OneShotResult>): OneShotRunner {
+function fakeRunner(
+  behavior: (m: OneShotManifest, argv: string[]) => Promise<OneShotResult>,
+): OneShotRunner {
   return {
     async run(_m: OneShotManifest, inputs: RunnerInputs): Promise<OneShotResult> {
       return behavior(_m, inputs.argv)
@@ -53,7 +55,11 @@ function makeTaskContext(workRoot: string): TaskExecutionContext {
       allowPublicNetwork: false,
       allowHeavyOneShots: false,
     },
-    contestConfig: { allowedFilesRoot: workRoot, allowPublicNetwork: false, allowHeavyOneShots: false },
+    contestConfig: {
+      allowedFilesRoot: workRoot,
+      allowPublicNetwork: false,
+      allowHeavyOneShots: false,
+    },
     environment: {},
     abortSignal: new AbortController().signal,
     metadata: {},
@@ -100,22 +106,33 @@ describe('Dispatcher', () => {
 
   it('runs a single manifest and applies overrides', async () => {
     registry.register(baseManifest)
-    // eslint-disable-next-line @typescript-eslint/require-await
-    setRunnerOverride('demo', fakeRunner(async () => ({
-      runId: 'osp_over',
-      manifestId: 'demo',
-      taskId: 'task_test123',
-      status: 'completed',
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      findings: [],
-      artifacts: [],
-      candidates: [{ value: 'flag{ok}', sourceRuns: [], sourceArtifacts: [], confidence: 0.8, needsVerification: true }],
-      diagnostics: { truncated: false, parserWarnings: [] },
-      confidence: 0.8,
-      falsePositiveRisk: 'low',
-      summary: 'ok',
-    })))
+    setRunnerOverride(
+      'demo',
+      // eslint-disable-next-line @typescript-eslint/require-await
+      fakeRunner(async () => ({
+        runId: 'osp_over',
+        manifestId: 'demo',
+        taskId: 'task_test123',
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        findings: [],
+        artifacts: [],
+        candidates: [
+          {
+            value: 'flag{ok}',
+            sourceRuns: [],
+            sourceArtifacts: [],
+            confidence: 0.8,
+            needsVerification: true,
+          },
+        ],
+        diagnostics: { truncated: false, parserWarnings: [] },
+        confidence: 0.8,
+        falsePositiveRisk: 'low',
+        summary: 'ok',
+      })),
+    )
     const out = await dispatcher.runOne('demo', {
       argv: [],
       evidenceRoot: workRoot,
@@ -129,22 +146,25 @@ describe('Dispatcher', () => {
     registry.register(baseManifest)
     const seen: string[] = []
     dispatcher.addProjectionListener((e) => seen.push(e.type))
-    // eslint-disable-next-line @typescript-eslint/require-await
-    setRunnerOverride('demo', fakeRunner(async () => ({
-      runId: 'osp_e',
-      manifestId: 'demo',
-      taskId: 'task_test123',
-      status: 'completed',
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      findings: [{ category: 'c', title: 't', summary: 's', confidence: 'low' }],
-      artifacts: [],
-      candidates: [],
-      diagnostics: { truncated: false, parserWarnings: [] },
-      confidence: 0.5,
-      falsePositiveRisk: 'low',
-      summary: 'ok',
-    })))
+    setRunnerOverride(
+      'demo',
+      // eslint-disable-next-line @typescript-eslint/require-await
+      fakeRunner(async () => ({
+        runId: 'osp_e',
+        manifestId: 'demo',
+        taskId: 'task_test123',
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        findings: [{ category: 'c', title: 't', summary: 's', confidence: 'low' }],
+        artifacts: [],
+        candidates: [],
+        diagnostics: { truncated: false, parserWarnings: [] },
+        confidence: 0.5,
+        falsePositiveRisk: 'low',
+        summary: 'ok',
+      })),
+    )
     await dispatcher.runOne('demo', {
       argv: [],
       evidenceRoot: workRoot,

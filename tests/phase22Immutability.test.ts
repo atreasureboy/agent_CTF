@@ -90,7 +90,8 @@ describe('Phase 2.2 §十八 — TaskState immutability', () => {
       confidence: 0.5,
     })
     store.apply({ type: 'OBSERVATION_ADDED', observation: obs })
-    expect(() => store.apply({ type: 'OBSERVATION_ADDED', observation: obs }))
-      .toThrow(TaskStateStoreError)
+    expect(() => store.apply({ type: 'OBSERVATION_ADDED', observation: obs })).toThrow(
+      TaskStateStoreError,
+    )
   })
 })

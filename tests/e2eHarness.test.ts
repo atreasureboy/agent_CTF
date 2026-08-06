@@ -9,13 +9,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {mkdtempSync, rmSync, writeFileSync} from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { createHarness } from '../src/core/harness.js'
-import {inspectNextHandoff} from '../src/core/orchestratorDispatch.js'
-import {__resetWorkflowRegistrationForTests} from '../src/workflows/index.js'
+import { inspectNextHandoff } from '../src/core/orchestratorDispatch.js'
+import { __resetWorkflowRegistrationForTests } from '../src/workflows/index.js'
 import { CTFTaskOrchestrator } from '../src/core/ctfRuntime/taskOrchestrator.js'
 import type { ContestScope } from '../src/core/contestScope.js'
 
@@ -24,9 +24,15 @@ let root: string
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'harness-e2e-'))
   // Drop a fake PNG file so file(1) does not crash. Only first 8 bytes matter.
-  writeFileSync(join(root, 'ctf-sample.png'), Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a, ...Array(100).fill(0xab)]))
+  writeFileSync(
+    join(root, 'ctf-sample.png'),
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Array(100).fill(0xab)]),
+  )
   // A second file with ZIP magic so the unknown_file_triage "if" branch fires.
-  writeFileSync(join(root, 'archive.zip'), Buffer.from([0x50,0x4b,0x03,0x04, ...Array(50).fill(0x00)]))
+  writeFileSync(
+    join(root, 'archive.zip'),
+    Buffer.from([0x50, 0x4b, 0x03, 0x04, ...Array(50).fill(0x00)]),
+  )
 })
 
 afterEach(() => {
@@ -55,21 +61,41 @@ describe('createHarness — basic mechanics', () => {
 
 describe('ToolBroker with real bash — Profile denies tools not on allowlist', () => {
   it('image-stego can use Bash (it is in allowedTools)', async () => {
-    const h = createHarness({ cwd: root, profile: 'image-stego', jobLimits: { maxPerAgent: 0, maxPerTask: 0 } })
+    const h = createHarness({
+      cwd: root,
+      profile: 'image-stego',
+      jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
+    })
     // With maxPerAgent = 0 the broker cannot spawn background jobs → falls
     // through to inline execution. Easiest way to force inline in this test.
-    const r = await h.broker.execute('Bash', { command: 'echo profile-e2e-hello' }, {
-      cwd: root, taskId: 't1', agentId: 'image-stego',
-    })
+    const r = await h.broker.execute(
+      'Bash',
+      { command: 'echo profile-e2e-hello' },
+      {
+        cwd: root,
+        taskId: 't1',
+        agentId: 'image-stego',
+      },
+    )
     expect(r.result.isError).toBe(false)
     expect(r.result.content).toMatch(/profile-e2e-hello/)
   })
 
   it('orchestrator profile refuses all Bash commands because allowShell=false + deniedTools', async () => {
-    const h = createHarness({ cwd: root, profile: 'orchestrator', jobLimits: { maxPerAgent: 0, maxPerTask: 0 } })
-    const r = await h.broker.execute('Bash', { command: 'ls' }, {
-      cwd: root, taskId: 't1', agentId: 'orchestrator',
+    const h = createHarness({
+      cwd: root,
+      profile: 'orchestrator',
+      jobLimits: { maxPerAgent: 0, maxPerTask: 0 },
     })
+    const r = await h.broker.execute(
+      'Bash',
+      { command: 'ls' },
+      {
+        cwd: root,
+        taskId: 't1',
+        agentId: 'orchestrator',
+      },
+    )
     expect(r.result.isError).toBe(true)
     // The Broker denies Bash at the profile-tools layer (deniedTools). The
     // model sees a structured refusal that hints at HandoffRequest.
@@ -82,9 +108,15 @@ describe('ToolBroker with real bash — Profile denies tools not on allowlist', 
       deniedCommands: ['sqlmap'],
     }
     const h = createHarness({ cwd: root, profile, jobLimits: { maxPerAgent: 0, maxPerTask: 0 } })
-    const r = await h.broker.execute('Bash', { command: 'sqlmap -u http://target/ --batch' }, {
-      cwd: root, taskId: 't1', agentId: 'image-stego',
-    })
+    const r = await h.broker.execute(
+      'Bash',
+      { command: 'sqlmap -u http://target/ --batch' },
+      {
+        cwd: root,
+        taskId: 't1',
+        agentId: 'image-stego',
+      },
+    )
     expect(r.result.isError).toBe(true)
     expect(r.result.content).toMatch(/deniedCommands/)
   })
@@ -103,52 +135,59 @@ describe('Meta tools — emit_finding / request_handoff round-trip', () => {
     const h = createHarness({ cwd: root, profile: 'image-stego' })
     const orch = await CTFTaskOrchestrator.create({ cwd: root, profileId: 'image-stego' })
     try {
+      const emitted = await h.broker.execute(
+        'emit_finding',
+        {
+          category: 'image',
+          title: 'PNG magic detected',
+          summary: '89 50 4e 47 (PNG) magic found in ctf-sample.png',
+          confidence: 'high',
+          artifactIds: [],
+        },
+        { cwd: root, taskId: 't1', agentId: 'image-stego' },
+      )
+      expect(emitted.result.isError).toBe(false)
+      expect(emitted.result.content).toMatch(/Finding stored/)
 
-    const emitted = await h.broker.execute('emit_finding', {
-      category: 'image',
-      title: 'PNG magic detected',
-      summary: '89 50 4e 47 (PNG) magic found in ctf-sample.png',
-      confidence: 'high',
-      artifactIds: [],
-    }, { cwd: root, taskId: 't1', agentId: 'image-stego' })
-    expect(emitted.result.isError).toBe(false)
-    expect(emitted.result.content).toMatch(/Finding stored/)
+      const fid = (emitted.result.content.match(/id=(\S+)/) ?? [])[1]
+      expect(fid).toBeTruthy()
 
-    const fid = (emitted.result.content.match(/id=(\S+)/) ?? [])[1]
-    expect(fid).toBeTruthy()
+      const handoffRes = await h.broker.execute(
+        'request_handoff',
+        {
+          suggestedAgent: 'file-forensics',
+          reason: 'Extracted nested archive.zip — needs recursive extraction',
+          objective: 'Recursively extract archive.zip and report contents',
+          findingIds: [fid ?? ''],
+        },
+        { cwd: root, taskId: 't1', agentId: 'image-stego' },
+      )
+      expect(handoffRes.result.isError).toBe(false)
+      const legacyHid = (handoffRes.result.content.match(/id=(\S+)/) ?? [])[1]
+      expect(legacyHid).toBeTruthy()
 
-    const handoffRes = await h.broker.execute('request_handoff', {
-      suggestedAgent: 'file-forensics',
-      reason: 'Extracted nested archive.zip — needs recursive extraction',
-      objective: 'Recursively extract archive.zip and report contents',
-      findingIds: [fid ?? ''],
-    }, { cwd: root, taskId: 't1', agentId: 'image-stego' })
-    expect(handoffRes.result.isError).toBe(false)
-    const legacyHid = (handoffRes.result.content.match(/id=(\S+)/) ?? [])[1]
-    expect(legacyHid).toBeTruthy()
+      const pending = h.handoffStore.pending()
+      expect(pending.length).toBe(1)
+      expect(pending[0].suggestedAgent).toBe('file-forensics')
+      expect(pending[0].status).toBe('pending')
 
-    const pending = h.handoffStore.pending()
-    expect(pending.length).toBe(1)
-    expect(pending[0].suggestedAgent).toBe('file-forensics')
-    expect(pending[0].status).toBe('pending')
-
-    // The orchestrator owns the lifecycle. We mirror the legacy submission
-    // into the orchestrator's TaskState and approve through it. Use
-    // 'triage' as the target — it has no required external binaries so the
-    // specialist binary-availability gate doesn't reject the spawn.
-    const ho = orch.requestHandoff({
-      fromAgentRunId: 'run_main',
-      targetCapability: 'triage',
-      reason: 'Extracted nested archive.zip — needs recursive extraction',
-      objective: 'Recursively extract archive.zip and report contents',
-      findingIds: [fid ?? ''],
-    })
-    const decision = await orch.approveHandoff(ho.id)
-    expect(decision).toBeTruthy()
-    // The handoff closed (status moved past 'requested').
-    const closed = orch.getState().handoffs.find((x) => x.id === ho.id)
-    expect(closed).toBeTruthy()
-    expect(['approved', 'running', 'completed', 'failed', 'cancelled']).toContain(closed!.status)
+      // The orchestrator owns the lifecycle. We mirror the legacy submission
+      // into the orchestrator's TaskState and approve through it. Use
+      // 'triage' as the target — it has no required external binaries so the
+      // specialist binary-availability gate doesn't reject the spawn.
+      const ho = orch.requestHandoff({
+        fromAgentRunId: 'run_main',
+        targetCapability: 'triage',
+        reason: 'Extracted nested archive.zip — needs recursive extraction',
+        objective: 'Recursively extract archive.zip and report contents',
+        findingIds: [fid ?? ''],
+      })
+      const decision = await orch.approveHandoff(ho.id)
+      expect(decision).toBeTruthy()
+      // The handoff closed (status moved past 'requested').
+      const closed = orch.getState().handoffs.find((x) => x.id === ho.id)
+      expect(closed).toBeTruthy()
+      expect(['approved', 'running', 'completed', 'failed', 'cancelled']).toContain(closed!.status)
     } finally {
       await orch.dispose()
     }
@@ -156,12 +195,26 @@ describe('Meta tools — emit_finding / request_handoff round-trip', () => {
 
   it('inspectNextHandoff returns the highest priority first', async () => {
     const h = createHarness({ cwd: root, profile: 'image-stego' })
-    await h.broker.execute('request_handoff', {
-      suggestedAgent: 'crypto', reason: 'a', objective: 'b', priority: 1,
-    }, { cwd: root, taskId: 't1', agentId: 'image-stego' })
-    await h.broker.execute('request_handoff', {
-      suggestedAgent: 'file-forensics', reason: 'c', objective: 'd', priority: 9,
-    }, { cwd: root, taskId: 't1', agentId: 'image-stego' })
+    await h.broker.execute(
+      'request_handoff',
+      {
+        suggestedAgent: 'crypto',
+        reason: 'a',
+        objective: 'b',
+        priority: 1,
+      },
+      { cwd: root, taskId: 't1', agentId: 'image-stego' },
+    )
+    await h.broker.execute(
+      'request_handoff',
+      {
+        suggestedAgent: 'file-forensics',
+        reason: 'c',
+        objective: 'd',
+        priority: 9,
+      },
+      { cwd: root, taskId: 't1', agentId: 'image-stego' },
+    )
     const next = inspectNextHandoff(h)
     expect(next?.suggestedAgent).toBe('file-forensics')
   })
@@ -176,7 +229,8 @@ describe('Bash policy in real Broker flow', () => {
     const scopeMod = await import('../src/core/contestScope.js')
     const checker = new scopeMod.ContestScopeChecker(
       scopeMod.parseContestScope({
-        allowedFilesRoot: root, allowPublicNetwork: false,
+        allowedFilesRoot: root,
+        allowPublicNetwork: false,
         allowedHosts: ['safe.example'],
       }),
     )
@@ -195,15 +249,27 @@ describe('Bash policy in real Broker flow', () => {
 
     // Allowed host — the policy should not refuse; whether the bash tool
     // actually completes a curl is irrelevant to the test (no real DNS).
-    const yesRes = await h.broker.execute('Bash', { command: 'curl -sS --max-time 2 http://safe.example/health' }, {
-      cwd: root, taskId: 't1', agentId: 'image-stego',
-    })
+    const yesRes = await h.broker.execute(
+      'Bash',
+      { command: 'curl -sS --max-time 2 http://safe.example/health' },
+      {
+        cwd: root,
+        taskId: 't1',
+        agentId: 'image-stego',
+      },
+    )
     expect(yesRes.result.content).not.toMatch(/outside contest network scope/)
 
     // Blocked host — the policy must refuse BEFORE invoking curl.
-    const noRes = await h.broker.execute('Bash', { command: 'curl -sS http://blocked.example/' }, {
-      cwd: root, taskId: 't1', agentId: 'image-stego',
-    })
+    const noRes = await h.broker.execute(
+      'Bash',
+      { command: 'curl -sS http://blocked.example/' },
+      {
+        cwd: root,
+        taskId: 't1',
+        agentId: 'image-stego',
+      },
+    )
     expect(noRes.result.isError).toBe(true)
     expect(noRes.result.content).toMatch(/outside contest network scope/)
   })
@@ -272,15 +338,22 @@ describe('switchProfile and Event log presence', () => {
     // profile identity directly.
     expect(h.profile.id).toBe('image-stego')
     h.switchProfile('crypto')
-    const brokerProfile = (h.broker as unknown as { opts: { profile: { id: string } } }).opts.profile
+    const brokerProfile = (h.broker as unknown as { opts: { profile: { id: string } } }).opts
+      .profile
     expect(brokerProfile.id).toBe('crypto')
   })
 
   it('events.ndjson exists in the task workspace', async () => {
     const h = createHarness({ cwd: root, profile: 'image-stego' })
-    await h.broker.execute('emit_finding', { category: 'triage', title: 't', summary: 's' }, {
-      cwd: root, taskId: h.taskWorkspace.paths.taskId, agentId: 'image-stego',
-    })
+    await h.broker.execute(
+      'emit_finding',
+      { category: 'triage', title: 't', summary: 's' },
+      {
+        cwd: root,
+        taskId: h.taskWorkspace.paths.taskId,
+        agentId: 'image-stego',
+      },
+    )
     const { existsSync } = await import('fs')
     expect(existsSync(h.taskWorkspace.paths.eventsFile)).toBe(true)
   })

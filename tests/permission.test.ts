@@ -44,7 +44,10 @@ describe('PermissionChecker — modes', () => {
   it('ask mode prompts via the approver when no rule matches', async () => {
     let asked = false
     // eslint-disable-next-line @typescript-eslint/require-await
-    const approver: Approver = async () => { asked = true; return true }
+    const approver: Approver = async () => {
+      asked = true
+      return true
+    }
     const checker = new PermissionChecker('ask', [], approver)
     const d = await checker.check({ tool: 'Read', input: { file_path: '/a' } })
     expect(asked).toBe(true)
@@ -56,7 +59,10 @@ describe('PermissionChecker — rules', () => {
   it('default rule escalates rm -rf to ask even in auto mode', async () => {
     let asked = false
     // eslint-disable-next-line @typescript-eslint/require-await
-    const approver: Approver = async () => { asked = true; return false }
+    const approver: Approver = async () => {
+      asked = true
+      return false
+    }
     const checker = new PermissionChecker('auto', [], approver)
     const d = await checker.check({ tool: 'Bash', input: { command: 'rm -rf /tmp/x' } })
     expect(asked).toBe(true)
@@ -65,9 +71,7 @@ describe('PermissionChecker — rules', () => {
   })
 
   it('a consumer allow rule overrides deny mode', async () => {
-    const checker = new PermissionChecker('deny', [
-      { tool: 'Read', action: 'allow' },
-    ])
+    const checker = new PermissionChecker('deny', [{ tool: 'Read', action: 'allow' }])
     const d = await checker.check({ tool: 'Read', input: { file_path: '/a' } })
     expect(d.allowed).toBe(true)
   })
@@ -92,9 +96,7 @@ describe('PermissionChecker — rules', () => {
     // allow must NOT mask the built-in `rm -rf` / `sudo ` / `git push
     // --force` escalations. The previous ordering let broad consumer
     // allows silently override built-in destructive asks.
-    const checker = new PermissionChecker('auto', [
-      { tool: '*', action: 'allow' },
-    ])
+    const checker = new PermissionChecker('auto', [{ tool: '*', action: 'allow' }])
     const d = await checker.check({ tool: 'Bash', input: { command: 'sudo rm -rf /' } })
     expect(d.allowed).toBe(false)
     expect(d.reason).toMatch(/no approver|ask|denied/)
@@ -107,9 +109,11 @@ describe('PermissionChecker — rules', () => {
     // rank lowest and cannot override built-ins.
     // eslint-disable-next-line @typescript-eslint/require-await
     const approver: Approver = async () => true
-    const checker = new PermissionChecker('auto', [
-      { tool: 'Bash', pattern: 'ls', action: 'allow' },
-    ], approver)
+    const checker = new PermissionChecker(
+      'auto',
+      [{ tool: 'Bash', pattern: 'ls', action: 'allow' }],
+      approver,
+    )
     // `ls` does not match any built-in destructive pattern, so the
     // consumer allow rule is the first match and wins.
     const d = await checker.check({ tool: 'Bash', input: { command: 'ls -la' } })
@@ -136,14 +140,16 @@ describe('PermissionChecker — rules', () => {
 
   it('a thrown approver error is caught and treated as deny', async () => {
     // eslint-disable-next-line @typescript-eslint/require-await
-    const approver: Approver = async () => { throw new Error('boom') }
+    const approver: Approver = async () => {
+      throw new Error('boom')
+    }
     const checker = new PermissionChecker('ask', [], approver)
     const d = await checker.check({ tool: 'Read', input: { file_path: '/a' } })
     expect(d.allowed).toBe(false)
   })
 
   it('default rules include common destructive patterns', () => {
-    const patterns = DEFAULT_PERMISSION_RULES.map(r => r.pattern)
+    const patterns = DEFAULT_PERMISSION_RULES.map((r) => r.pattern)
     expect(patterns).toContain('rm -rf')
     expect(patterns).toContain('sudo ')
     expect(patterns).toContain('git push --force')

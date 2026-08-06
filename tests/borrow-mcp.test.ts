@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createMcpExecutor, mcpToolId, describeMcpTools } from '../src/core/mcp/mcpExecutorAdapter.js'
+import {
+  createMcpExecutor,
+  mcpToolId,
+  describeMcpTools,
+} from '../src/core/mcp/mcpExecutorAdapter.js'
 import type { McpCallResult, McpClient } from '../src/core/mcp/mcpClient.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 import type { CTFAttempt } from '../src/core/ctfRuntime/taskState.js'
@@ -13,9 +17,19 @@ import type { StrategyActionExecutorContext } from '../src/core/ctfReasoning/str
 
 function makeAttempt(id: string): CTFAttempt {
   return {
-    id, taskId: 't1', kind: 'tool', targetId: 'mcp:echo:echo', input: {},
-    fingerprint: 'fp1', hypothesisIds: [], status: 'running',
-    observationIds: [], evidenceIds: [], artifactIds: [], flagCandidateIds: [], createdAt: 0,
+    id,
+    taskId: 't1',
+    kind: 'tool',
+    targetId: 'mcp:echo:echo',
+    input: {},
+    fingerprint: 'fp1',
+    hypothesisIds: [],
+    status: 'running',
+    observationIds: [],
+    evidenceIds: [],
+    artifactIds: [],
+    flagCandidateIds: [],
+    createdAt: 0,
   }
 }
 
@@ -33,9 +47,11 @@ function makeStubClient(behaviour: {
     callTool: async (_toolName: string, args: Record<string, unknown>) => {
       if (behaviour.delayMs) await new Promise((r) => setTimeout(r, behaviour.delayMs))
       if (behaviour.throw) throw behaviour.throw
-      return behaviour.result ?? {
-        content: [{ type: 'text', text: 'ECHO:' + JSON.stringify(args) }],
-      }
+      return (
+        behaviour.result ?? {
+          content: [{ type: 'text', text: 'ECHO:' + JSON.stringify(args) }],
+        }
+      )
     },
   }
 }
@@ -46,8 +62,12 @@ describe('MCP (C)', () => {
     const ctx: StrategyActionExecutorContext = {
       taskState: createTestTaskState({ taskId: 't1' }),
       action: {
-        type: 'call_tool', toolId: mcpToolId('echo', 'echo'),
-        input: { x: 1, y: 'two' }, reason: 'r', priority: 1, costTier: 'cheap',
+        type: 'call_tool',
+        toolId: mcpToolId('echo', 'echo'),
+        input: { x: 1, y: 'two' },
+        reason: 'r',
+        priority: 1,
+        costTier: 'cheap',
       },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
@@ -69,8 +89,12 @@ describe('MCP (C)', () => {
       // eslint-disable-next-line @typescript-eslint/require-await
       listTools: async () => [],
       callTool: async (_t, _a, signal) => {
-        signal?.addEventListener('abort', () => { abortObserved = true })
-        return new Promise((_, reject) => signal?.addEventListener('abort', () => reject(new Error('aborted'))))
+        signal?.addEventListener('abort', () => {
+          abortObserved = true
+        })
+        return new Promise((_, reject) =>
+          signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+        )
       },
     }
     const executor = createMcpExecutor(client)
@@ -79,8 +103,12 @@ describe('MCP (C)', () => {
     const r = await executor.execute({
       taskState: createTestTaskState({ taskId: 't1' }),
       action: {
-        type: 'call_tool', toolId: mcpToolId('x', 'y'),
-        input: {}, reason: 'r', priority: 1, costTier: 'cheap',
+        type: 'call_tool',
+        toolId: mcpToolId('x', 'y'),
+        input: {},
+        reason: 'r',
+        priority: 1,
+        costTier: 'cheap',
       },
       attempt: makeAttempt('att1'),
       signal: ac.signal,
@@ -98,8 +126,12 @@ describe('MCP (C)', () => {
     const r = await executor.execute({
       taskState: createTestTaskState({ taskId: 't1' }),
       action: {
-        type: 'call_tool', toolId: mcpToolId('echo', 'echo'),
-        input: {}, reason: 'r', priority: 1, costTier: 'cheap',
+        type: 'call_tool',
+        toolId: mcpToolId('echo', 'echo'),
+        input: {},
+        reason: 'r',
+        priority: 1,
+        costTier: 'cheap',
       },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
@@ -114,7 +146,15 @@ describe('MCP (C)', () => {
     const executor = createMcpExecutor(makeStubClient({}))
     const r = await executor.execute({
       taskState: createTestTaskState({ taskId: 't1' }),
-      action: { type: 'request_handoff', capability: 'x', objective: 'o', artifactIds: [], reason: 'r', priority: 1, costTier: 'cheap' },
+      action: {
+        type: 'request_handoff',
+        capability: 'x',
+        objective: 'o',
+        artifactIds: [],
+        reason: 'r',
+        priority: 1,
+        costTier: 'cheap',
+      },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
     })
@@ -126,8 +166,12 @@ describe('MCP (C)', () => {
     const r = await executor.execute({
       taskState: createTestTaskState({ taskId: 't1' }),
       action: {
-        type: 'call_tool', toolId: 'mcp:other-server:foo',
-        input: {}, reason: 'r', priority: 1, costTier: 'cheap',
+        type: 'call_tool',
+        toolId: 'mcp:other-server:foo',
+        input: {},
+        reason: 'r',
+        priority: 1,
+        costTier: 'cheap',
       },
       attempt: makeAttempt('att1'),
       signal: new AbortController().signal,
@@ -142,10 +186,7 @@ describe('MCP (C)', () => {
   })
 
   it('describeMcpTools lists all tools', () => {
-    const ids = describeMcpTools('chrome', [
-      { name: 'navigate' },
-      { name: 'screenshot' },
-    ])
+    const ids = describeMcpTools('chrome', [{ name: 'navigate' }, { name: 'screenshot' }])
     expect(ids).toEqual(['mcp:chrome:navigate', 'mcp:chrome:screenshot'])
   })
 })

@@ -17,7 +17,8 @@ import type { WorkflowDefinition } from '../src/core/workflowDefinition.js'
 function buildMockRunner(behaviors: Record<string, () => string>): WorkflowRunner {
   return {
     runStep(step, _ctx) {
-      if (step.kind !== 'tool' && step.kind !== 'shell') return Promise.resolve({ content: '', isError: false, artifactIds: [] })
+      if (step.kind !== 'tool' && step.kind !== 'shell')
+        return Promise.resolve({ content: '', isError: false, artifactIds: [] })
       const fp = step.kind === 'tool' ? `${step.toolId}::${step.id}` : `shell::${step.id}`
       const fn = behaviors[fp] ?? behaviors[step.id]
       const content = fn ? fn() : `mock-output-${step.id}`
@@ -50,7 +51,13 @@ describe('WorkflowEngine', () => {
       a: () => 'AAAA',
       b: () => 'BBBB',
     })
-    const ctx: RunContext = { taskId: 't', agentId: 'a', workflowId: 'unit-seq', inputs: {}, capturedOutputs: new Map() }
+    const ctx: RunContext = {
+      taskId: 't',
+      agentId: 'a',
+      workflowId: 'unit-seq',
+      inputs: {},
+      capturedOutputs: new Map(),
+    }
     const engine = new WorkflowEngine(runner)
     const result = await engine.run(def, ctx)
 
@@ -85,7 +92,13 @@ describe('WorkflowEngine', () => {
       partialFailurePolicy: 'continue',
     }
     const runner = buildMockRunner({})
-    const ctx: RunContext = { taskId: 't', agentId: 'a', workflowId: 'unit-par', inputs: {}, capturedOutputs: new Map() }
+    const ctx: RunContext = {
+      taskId: 't',
+      agentId: 'a',
+      workflowId: 'unit-par',
+      inputs: {},
+      capturedOutputs: new Map(),
+    }
     const engine = new WorkflowEngine(runner)
     const result = await engine.run(def, ctx)
     expect(result.status).toBe('success')
@@ -115,7 +128,13 @@ describe('WorkflowEngine', () => {
       partialFailurePolicy: 'continue',
     }
     const runner = buildMockRunner({ capture: () => 'hello' })
-    const ctx: RunContext = { taskId: 't', agentId: 'a', workflowId: 'unit-if', inputs: {}, capturedOutputs: new Map() }
+    const ctx: RunContext = {
+      taskId: 't',
+      agentId: 'a',
+      workflowId: 'unit-if',
+      inputs: {},
+      capturedOutputs: new Map(),
+    }
     const engine = new WorkflowEngine(runner)
     const result = await engine.run(def, ctx)
     const ids = result.stepOutcomes.map((s) => s.stepId)
@@ -146,10 +165,21 @@ describe('WorkflowEngine', () => {
     }
     let emitted = 0
     const runner: WorkflowRunner = {
-      runStep() { return Promise.resolve({ content: 'ok', isError: false, artifactIds: [] }) },
-      emitFinding(_step, _ctx) { emitted++; return Promise.resolve() },
+      runStep() {
+        return Promise.resolve({ content: 'ok', isError: false, artifactIds: [] })
+      },
+      emitFinding(_step, _ctx) {
+        emitted++
+        return Promise.resolve()
+      },
     }
-    const result = await new WorkflowEngine(runner).run(def, { taskId: 't', agentId: 'a', workflowId: 'unit-find', inputs: {}, capturedOutputs: new Map() })
+    const result = await new WorkflowEngine(runner).run(def, {
+      taskId: 't',
+      agentId: 'a',
+      workflowId: 'unit-find',
+      inputs: {},
+      capturedOutputs: new Map(),
+    })
     expect(result.emittedFindingCount).toBe(1)
     expect(emitted).toBe(1)
   })

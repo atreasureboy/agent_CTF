@@ -18,10 +18,27 @@ describe('TaskEventLogger (A1)', () => {
       const state = createTestTaskState({ taskId: 'evt-1' })
       const store = new CTFTaskStateStore(state)
       const log = await TaskEventLogger.attach(store, dir)
-      store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision: {
-        id: 'sd1', taskId: 'evt-1', selectedAction: { type: 'call_tool', toolId: 'file', input: {}, reason: 'r', priority: 1, costTier: 'cheap' } as never,
-        rejectedActions: [], reason: 'first decision', basedOnObservationIds: [], basedOnEvidenceIds: [], basedOnHypothesisIds: [], createdAt: 100,
-      } })
+      store.apply({
+        type: 'STRATEGY_DECISION_RECORDED',
+        decision: {
+          id: 'sd1',
+          taskId: 'evt-1',
+          selectedAction: {
+            type: 'call_tool',
+            toolId: 'file',
+            input: {},
+            reason: 'r',
+            priority: 1,
+            costTier: 'cheap',
+          } as never,
+          rejectedActions: [],
+          reason: 'first decision',
+          basedOnObservationIds: [],
+          basedOnEvidenceIds: [],
+          basedOnHypothesisIds: [],
+          createdAt: 100,
+        },
+      })
       store.apply({ type: 'REASONING_BUDGET_CONSUMED', snapshot: state.reasoningBudget })
       await log.close()
       expect(log.written).toBe(2)
@@ -42,10 +59,27 @@ describe('TaskEventLogger (A1)', () => {
       const store = new CTFTaskStateStore(state)
       const log = await TaskEventLogger.attach(store, dir)
       store.apply({ type: 'TASK_CREATED', taskId: 'rt-1', initial: state })
-      store.apply({ type: 'STRATEGY_DECISION_RECORDED', decision: {
-        id: 'sd1', taskId: 'rt-1', selectedAction: { type: 'call_tool', toolId: 'file', input: {}, reason: 'r', priority: 1, costTier: 'cheap' } as never,
-        rejectedActions: [], reason: 'first decision', basedOnObservationIds: [], basedOnEvidenceIds: [], basedOnHypothesisIds: [], createdAt: 200,
-      } })
+      store.apply({
+        type: 'STRATEGY_DECISION_RECORDED',
+        decision: {
+          id: 'sd1',
+          taskId: 'rt-1',
+          selectedAction: {
+            type: 'call_tool',
+            toolId: 'file',
+            input: {},
+            reason: 'r',
+            priority: 1,
+            costTier: 'cheap',
+          } as never,
+          rejectedActions: [],
+          reason: 'first decision',
+          basedOnObservationIds: [],
+          basedOnEvidenceIds: [],
+          basedOnHypothesisIds: [],
+          createdAt: 200,
+        },
+      })
       await log.close()
       const out = await replayFromEventLog(log.path)
       expect(out.taskId).toBe('rt-1')

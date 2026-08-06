@@ -8,7 +8,10 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createOpenAiCompatibleProvider, type OpenAiCompatibleConfig } from '../src/core/llm/openAiCompatibleProvider.js'
+import {
+  createOpenAiCompatibleProvider,
+  type OpenAiCompatibleConfig,
+} from '../src/core/llm/openAiCompatibleProvider.js'
 import { askLlmForAction } from '../src/core/llm/llmToolUse.js'
 import { buildActionTool, buildActionPrompt } from '../src/core/llm/actionTool.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
@@ -51,34 +54,44 @@ describe('OpenAiCompatibleProvider (real D3)', () => {
     const tool = buildActionTool([{ name: 'f', description: 'd', inputSchema: { type: 'object' } }])
     expect(tool.function.name).toBe('ctf_action')
     expect(tool.function.description).toContain('CTF')
-    const prompt = buildActionPrompt([{ name: 'f', description: 'd', inputSchema: { type: 'object' } }])
+    const prompt = buildActionPrompt([
+      { name: 'f', description: 'd', inputSchema: { type: 'object' } },
+    ])
     expect(prompt).toContain('Available tools')
     expect(prompt).toContain('f — d')
   })
 
   it('parses a successful tool call into a SuggestedAction', async () => {
-    const provider = createOpenAiCompatibleProvider(cfgWith([{
-      body: {
-        choices: [{
-          message: {
-            tool_calls: [{
-              id: 'tc1',
-              function: {
-                name: 'ctf_action',
-                arguments: JSON.stringify({
-                  type: 'call_tool',
-                  toolId: 'file',
-                  input: { path: '/tmp/x' },
-                  reason: 'identify file',
-                  priority: 5,
-                  costTier: 'cheap',
-                }),
+    const provider = createOpenAiCompatibleProvider(
+      cfgWith([
+        {
+          body: {
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    {
+                      id: 'tc1',
+                      function: {
+                        name: 'ctf_action',
+                        arguments: JSON.stringify({
+                          type: 'call_tool',
+                          toolId: 'file',
+                          input: { path: '/tmp/x' },
+                          reason: 'identify file',
+                          priority: 5,
+                          costTier: 'cheap',
+                        }),
+                      },
+                    },
+                  ],
+                },
               },
-            }],
+            ],
           },
-        }],
-      },
-    }]))
+        },
+      ]),
+    )
     const r = await askLlmForAction(provider, 'solve this', [
       { name: 'file', description: 'identify a file', inputSchema: { type: 'object' } },
     ])
@@ -92,26 +105,41 @@ describe('OpenAiCompatibleProvider (real D3)', () => {
   })
 
   it('returns no-tool-call when the LLM emits free-form text', async () => {
-    const provider = createOpenAiCompatibleProvider(cfgWith([{
-      body: { choices: [{ message: { content: 'no tool call' } }] },
-    }]))
+    const provider = createOpenAiCompatibleProvider(
+      cfgWith([
+        {
+          body: { choices: [{ message: { content: 'no tool call' } }] },
+        },
+      ]),
+    )
     const r = await askLlmForAction(provider, 'p', [])
     expect(r.kind).toBe('no-tool-call')
   })
 
   it('returns invalid when the JSON is malformed', async () => {
-    const provider = createOpenAiCompatibleProvider(cfgWith([{
-      body: {
-        choices: [{
-          message: {
-            tool_calls: [{
-              id: 'tc1',
-              function: { name: 'ctf_action', arguments: JSON.stringify({ type: 'call_tool' }) },
-            }],
+    const provider = createOpenAiCompatibleProvider(
+      cfgWith([
+        {
+          body: {
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    {
+                      id: 'tc1',
+                      function: {
+                        name: 'ctf_action',
+                        arguments: JSON.stringify({ type: 'call_tool' }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
           },
-        }],
-      },
-    }]))
+        },
+      ]),
+    )
     const r = await askLlmForAction(provider, 'p', [])
     expect(r.kind).toBe('invalid')
   })
@@ -122,7 +150,9 @@ describe('OpenAiCompatibleProvider (real D3)', () => {
       return new Response('{"error":"bad gateway"}', { status: 502, statusText: 'Bad Gateway' })
     }
     const provider = createOpenAiCompatibleProvider({
-      id: 'x', baseUrl: 'http://x/v1', fetchImpl: failingFetch,
+      id: 'x',
+      baseUrl: 'http://x/v1',
+      fetchImpl: failingFetch,
     })
     await expect(askLlmForAction(provider, 'p', [])).rejects.toThrow(/HTTP 502/)
   })

@@ -218,7 +218,8 @@ function getCtfCompetitionSection(): string {
 | 逆向 | file / strings / objdump / gdb |
 | Web | curl / gobuster / sqlmap / nikto |
 | Pwn | checksec / gdb / python pwntools |
-| 流量 | tshark -r / tcpdump / strings |`}
+| 流量 | tshark -r / tcpdump / strings |`
+}
 
 // ─── assembly ───────────────────────────────────────────────────────────────
 

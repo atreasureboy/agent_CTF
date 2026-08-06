@@ -35,8 +35,20 @@ describe('SemanticMemory', () => {
   })
 
   it('deduplicates by content hash', () => {
-    mem.write({ content: 'Use tabs not spaces', tags: [], source: 'user_stated', confidence: 0.9, timestamp: '' })
-    mem.write({ content: 'Use tabs not spaces', tags: [], source: 'user_stated', confidence: 0.8, timestamp: '' })
+    mem.write({
+      content: 'Use tabs not spaces',
+      tags: [],
+      source: 'user_stated',
+      confidence: 0.9,
+      timestamp: '',
+    })
+    mem.write({
+      content: 'Use tabs not spaces',
+      tags: [],
+      source: 'user_stated',
+      confidence: 0.8,
+      timestamp: '',
+    })
     expect(mem.readAll()).toHaveLength(1)
     // Higher confidence wins
     expect(mem.readAll()[0].confidence).toBe(0.9)
@@ -44,38 +56,92 @@ describe('SemanticMemory', () => {
 
   it('source priority: user_stated overrides agent_inferred', () => {
     // Write agent_inferred first
-    mem.write({ content: 'Deploy on Fridays is fine', tags: [], source: 'agent_inferred', confidence: 0.9, timestamp: '' })
+    mem.write({
+      content: 'Deploy on Fridays is fine',
+      tags: [],
+      source: 'agent_inferred',
+      confidence: 0.9,
+      timestamp: '',
+    })
     // Try to override with tool_observed (lower priority) — should NOT override
-    mem.write({ content: 'Deploy on Fridays is fine', tags: [], source: 'tool_observed', confidence: 1.0, timestamp: '' })
+    mem.write({
+      content: 'Deploy on Fridays is fine',
+      tags: [],
+      source: 'tool_observed',
+      confidence: 1.0,
+      timestamp: '',
+    })
     expect(mem.readAll()).toHaveLength(1)
     expect(mem.readAll()[0].source).toBe('agent_inferred')
   })
 
   it('source priority: user_stated overrides existing agent_inferred', () => {
-    mem.write({ content: 'Use pnpm', tags: [], source: 'agent_inferred', confidence: 0.5, timestamp: '' })
-    mem.write({ content: 'Use pnpm', tags: [], source: 'user_stated', confidence: 0.9, timestamp: '' })
+    mem.write({
+      content: 'Use pnpm',
+      tags: [],
+      source: 'agent_inferred',
+      confidence: 0.5,
+      timestamp: '',
+    })
+    mem.write({
+      content: 'Use pnpm',
+      tags: [],
+      source: 'user_stated',
+      confidence: 0.9,
+      timestamp: '',
+    })
     expect(mem.readAll()).toHaveLength(1)
     expect(mem.readAll()[0].source).toBe('user_stated')
   })
 
   it('searches by keywords', () => {
-    mem.write({ content: 'TypeScript strict mode is recommended', tags: ['ts'], source: 'agent_inferred', confidence: 0.8, timestamp: '' })
-    mem.write({ content: 'Use ESLint for linting', tags: ['lint'], source: 'agent_inferred', confidence: 0.7, timestamp: '' })
+    mem.write({
+      content: 'TypeScript strict mode is recommended',
+      tags: ['ts'],
+      source: 'agent_inferred',
+      confidence: 0.8,
+      timestamp: '',
+    })
+    mem.write({
+      content: 'Use ESLint for linting',
+      tags: ['lint'],
+      source: 'agent_inferred',
+      confidence: 0.7,
+      timestamp: '',
+    })
     const results = mem.search({ keywords: ['typescript'] })
     expect(results).toHaveLength(1)
     expect(results[0].content).toContain('TypeScript')
   })
 
   it('searches by tags', () => {
-    mem.write({ content: 'entry1', tags: ['security'], source: 'agent_inferred', confidence: 0.8, timestamp: '' })
-    mem.write({ content: 'entry2', tags: ['performance'], source: 'agent_inferred', confidence: 0.8, timestamp: '' })
+    mem.write({
+      content: 'entry1',
+      tags: ['security'],
+      source: 'agent_inferred',
+      confidence: 0.8,
+      timestamp: '',
+    })
+    mem.write({
+      content: 'entry2',
+      tags: ['performance'],
+      source: 'agent_inferred',
+      confidence: 0.8,
+      timestamp: '',
+    })
     const results = mem.search({ tags: ['security'] })
     expect(results).toHaveLength(1)
     expect(results[0].tags).toContain('security')
   })
 
   it('persists to disk and reloads', () => {
-    mem.write({ content: 'persisted entry', tags: ['test'], source: 'user_stated', confidence: 0.9, timestamp: '' })
+    mem.write({
+      content: 'persisted entry',
+      tags: ['test'],
+      source: 'user_stated',
+      confidence: 0.9,
+      timestamp: '',
+    })
     const mem2 = new SemanticMemory(tmpDir)
     expect(mem2.readAll()).toHaveLength(1)
     expect(mem2.readAll()[0].content).toBe('persisted entry')
@@ -84,9 +150,23 @@ describe('SemanticMemory', () => {
   it('updates use atomic persistAll (no temp file left behind)', () => {
     // Phase 1.7 audit — duplicate source-priority case triggers persistAll.
     // After the rewrite the temp file must be renamed away.
-    mem.write({ content: 'override target', tags: [], source: 'agent_inferred', confidence: 0.5, timestamp: '' })
-    mem.write({ content: 'override target', tags: [], source: 'user_stated', confidence: 0.9, timestamp: '' })
-    const tmpFiles = readdirSync(join(tmpDir, 'memory')).filter((f) => f.startsWith('semantic.jsonl.tmp.'))
+    mem.write({
+      content: 'override target',
+      tags: [],
+      source: 'agent_inferred',
+      confidence: 0.5,
+      timestamp: '',
+    })
+    mem.write({
+      content: 'override target',
+      tags: [],
+      source: 'user_stated',
+      confidence: 0.9,
+      timestamp: '',
+    })
+    const tmpFiles = readdirSync(join(tmpDir, 'memory')).filter((f) =>
+      f.startsWith('semantic.jsonl.tmp.'),
+    )
     expect(tmpFiles).toEqual([])
     expect(mem.readAll()).toHaveLength(1)
     expect(mem.readAll()[0].source).toBe('user_stated')
@@ -110,23 +190,65 @@ describe('EpisodicMemory', () => {
   })
 
   it('writes and reads episodes', () => {
-    mem.write({ turn: 1, toolName: 'Bash', inputSummary: 'ls', resultSummary: 'file1.ts', outcome: 'success', timestamp: '' })
-    mem.write({ turn: 2, toolName: 'Read', inputSummary: 'file1.ts', resultSummary: 'contents', outcome: 'success', timestamp: '' })
+    mem.write({
+      turn: 1,
+      toolName: 'Bash',
+      inputSummary: 'ls',
+      resultSummary: 'file1.ts',
+      outcome: 'success',
+      timestamp: '',
+    })
+    mem.write({
+      turn: 2,
+      toolName: 'Read',
+      inputSummary: 'file1.ts',
+      resultSummary: 'contents',
+      outcome: 'success',
+      timestamp: '',
+    })
     const recent = mem.recent(10)
     expect(recent).toHaveLength(2)
   })
 
   it('filters by tool name', () => {
-    mem.write({ turn: 1, toolName: 'Bash', inputSummary: '', resultSummary: '', outcome: 'success', timestamp: '' })
-    mem.write({ turn: 2, toolName: 'Read', inputSummary: '', resultSummary: '', outcome: 'success', timestamp: '' })
-    mem.write({ turn: 3, toolName: 'Bash', inputSummary: '', resultSummary: '', outcome: 'failure', timestamp: '' })
+    mem.write({
+      turn: 1,
+      toolName: 'Bash',
+      inputSummary: '',
+      resultSummary: '',
+      outcome: 'success',
+      timestamp: '',
+    })
+    mem.write({
+      turn: 2,
+      toolName: 'Read',
+      inputSummary: '',
+      resultSummary: '',
+      outcome: 'success',
+      timestamp: '',
+    })
+    mem.write({
+      turn: 3,
+      toolName: 'Bash',
+      inputSummary: '',
+      resultSummary: '',
+      outcome: 'failure',
+      timestamp: '',
+    })
     const bashOnly = mem.findByTool('Bash')
     expect(bashOnly).toHaveLength(2)
   })
 
   it('returns limited recent episodes', () => {
     for (let i = 0; i < 20; i++) {
-      mem.write({ turn: i, toolName: 'Bash', inputSummary: '', resultSummary: '', outcome: 'success', timestamp: '' })
+      mem.write({
+        turn: i,
+        toolName: 'Bash',
+        inputSummary: '',
+        resultSummary: '',
+        outcome: 'success',
+        timestamp: '',
+      })
     }
     expect(mem.recent(5)).toHaveLength(5)
   })
@@ -136,9 +258,23 @@ describe('EpisodicMemory', () => {
     // left a half-written line. Atomic write + trim-partial must drop the
     // dangling line and keep going.
     const filePath = join(tmpDir, 'memory', 'episodes.jsonl')
-    mem.write({ turn: 1, toolName: 'Bash', inputSummary: 'a', resultSummary: 'b', outcome: 'success', timestamp: '' })
+    mem.write({
+      turn: 1,
+      toolName: 'Bash',
+      inputSummary: 'a',
+      resultSummary: 'b',
+      outcome: 'success',
+      timestamp: '',
+    })
     appendFileSync(filePath, '{"id":"epi_partial","turn":2,"toolName":"Bash",') // dangling
-    mem.write({ turn: 3, toolName: 'Bash', inputSummary: 'c', resultSummary: 'd', outcome: 'success', timestamp: '' })
+    mem.write({
+      turn: 3,
+      toolName: 'Bash',
+      inputSummary: 'c',
+      resultSummary: 'd',
+      outcome: 'success',
+      timestamp: '',
+    })
     const all = mem.readAll()
     // Both valid entries survive; the dangling partial line is dropped.
     expect(all.length).toBe(2)

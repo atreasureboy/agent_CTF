@@ -6,9 +6,7 @@ import {
   ModelCircuitBreaker,
   ModelCapabilityRegistry,
 } from '../src/core/modelReliability/index.js'
-import type {
-  ModelCapabilityProfile,
-} from '../src/core/modelReliability/index.js'
+import type { ModelCapabilityProfile } from '../src/core/modelReliability/index.js'
 import type {
   ModelProvider,
   ProviderAgentTurnInput,
@@ -24,10 +22,7 @@ import {
   ChallengeSwarm,
   NativeSolverAdapter,
 } from '../src/core/solverPortfolio/index.js'
-import {
-  TrajectoryRecorder,
-  TrajectoryReplay,
-} from '../src/core/trajectory/index.js'
+import { TrajectoryRecorder, TrajectoryReplay } from '../src/core/trajectory/index.js'
 import { computeCanonicalSnapshotHash } from '../src/core/contextCompiler/canonicalSnapshot.js'
 import type OpenAI from 'openai'
 import * as fs from 'node:fs'
@@ -100,11 +95,28 @@ describe('Phase 3.2 Smoke Tests', () => {
       trustLevel: 'standard',
       reliabilityClass: 'standard',
       contextWindow: 32000,
-      capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: false, codeExecutionPlanning: false },
-      reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+      capabilities: {
+        toolCalling: true,
+        structuredOutput: true,
+        vision: false,
+        longContext: false,
+        codeExecutionPlanning: false,
+      },
+      reliability: {
+        structuredOutput: 0.9,
+        toolArguments: 0.9,
+        longHorizonPlanning: 0.8,
+        summarization: 0.9,
+        instructionFollowing: 0.9,
+      },
       economics: {},
       allowedRoles: ['deep_solver'],
-      limits: { maxVisibleTools: 10, maxIterations: 10, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+      limits: {
+        maxVisibleTools: 10,
+        maxIterations: 10,
+        maxRepairAttempts: 1,
+        maxConsecutiveFailures: 2,
+      },
       fallbackModelIds: [],
     })
 
@@ -150,11 +162,28 @@ describe('Phase 3.2 Smoke Tests', () => {
       trustLevel: 'standard',
       reliabilityClass: 'standard',
       contextWindow: 32000,
-      capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: false, codeExecutionPlanning: false },
-      reliability: { structuredOutput: 0.9, toolArguments: 0.9, longHorizonPlanning: 0.8, summarization: 0.9, instructionFollowing: 0.9 },
+      capabilities: {
+        toolCalling: true,
+        structuredOutput: true,
+        vision: false,
+        longContext: false,
+        codeExecutionPlanning: false,
+      },
+      reliability: {
+        structuredOutput: 0.9,
+        toolArguments: 0.9,
+        longHorizonPlanning: 0.8,
+        summarization: 0.9,
+        instructionFollowing: 0.9,
+      },
       economics: {},
       allowedRoles: ['deep_solver'],
-      limits: { maxVisibleTools: 10, maxIterations: 10, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+      limits: {
+        maxVisibleTools: 10,
+        maxIterations: 10,
+        maxRepairAttempts: 1,
+        maxConsecutiveFailures: 2,
+      },
       fallbackModelIds: [],
     })
 
@@ -238,7 +267,10 @@ describe('Phase 3.2 Smoke Tests', () => {
     const hash2 = computeCanonicalSnapshotHash({
       taskId: 'smoke_4',
       stateRevision: 1,
-      evidence: [{ id: 'ev1', confidence: 0.9 }, { id: 'ev2', confidence: 0.95 }],
+      evidence: [
+        { id: 'ev1', confidence: 0.9 },
+        { id: 'ev2', confidence: 0.95 },
+      ],
       hypotheses: [{ id: 'h1', status: 'testing' }],
       attempts: [],
       artifacts: [],
@@ -256,7 +288,10 @@ describe('Phase 3.2 Smoke Tests', () => {
     const nativeAdapter = new NativeSolverAdapter({
       async runMainAgent() {
         await Promise.resolve()
-        return { summary: 'Native solver done', observations: [{ summary: 'Obs 1', confidence: 0.9 }] }
+        return {
+          summary: 'Native solver done',
+          observations: [{ summary: 'Obs 1', confidence: 0.9 }],
+        }
       },
     })
     swarm.registerAdapter(nativeAdapter)

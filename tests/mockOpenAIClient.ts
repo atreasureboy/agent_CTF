@@ -10,11 +10,14 @@
  * fully wired and that the LLM multi-round loop converges.
  */
 
-
 export type ScriptedAction =
   | { type: 'text'; content: string }
   | { type: 'tool_call'; toolName: string; args: object; callId?: string; index?: number }
-  | { type: 'finish'; reason?: 'stop' | 'tool_calls' | 'length'; usage?: { prompt: number; completion: number } }
+  | {
+      type: 'finish'
+      reason?: 'stop' | 'tool_calls' | 'length'
+      usage?: { prompt: number; completion: number }
+    }
   | { type: 'error'; message: string }
   /** Concatenated multiple actions into a single response (no separate choice). */
   | { type: 'sequence'; actions: ScriptedAction[] }
@@ -62,29 +65,37 @@ function renderTurn(actions: ScriptedAction[], callIdCounter: { i: number }): un
       const tcIndex = typeof action.index === 'number' ? action.index : toolCallOrdinal++
       chunks.push({
         id: 'mock',
-        choices: [{
-          delta: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              index: tcIndex,
-              id: callId,
-              type: 'function',
-              function: { name: action.toolName, arguments: '' },
-            }],
-          } as Record<string, unknown>,
-        }],
+        choices: [
+          {
+            delta: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  index: tcIndex,
+                  id: callId,
+                  type: 'function',
+                  function: { name: action.toolName, arguments: '' },
+                },
+              ],
+            } as Record<string, unknown>,
+          },
+        ],
       })
       chunks.push({
         id: 'mock',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              index: tcIndex,
-              function: { arguments: JSON.stringify(action.args) },
-            }],
-          } as Record<string, unknown>,
-        }],
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: tcIndex,
+                  function: { arguments: JSON.stringify(action.args) },
+                },
+              ],
+            } as Record<string, unknown>,
+          },
+        ],
       })
     } else if (action.type === 'finish') {
       // If the user-supplied finish reason is 'stop' but the response has
@@ -94,10 +105,12 @@ function renderTurn(actions: ScriptedAction[], callIdCounter: { i: number }): un
       const reason = explicit === 'stop' && hasToolCall ? 'tool_calls' : explicit
       chunks.push({
         id: 'mock',
-        choices: [{
-          delta: {} as Record<string, unknown>,
-          finish_reason: reason,
-        }],
+        choices: [
+          {
+            delta: {} as Record<string, unknown>,
+            finish_reason: reason,
+          },
+        ],
       })
       if (action.usage) {
         chunks.push({
@@ -182,7 +195,7 @@ export class ScriptedClient {
   /** Recorded conversations seen by the engine (debug + assertions). */
   readonly log: { turn: number; userMessage: string; emitted: string }[] = []
 
-  chat: unknown = undefined  // assigned below
+  chat: unknown = undefined // assigned below
 
   constructor() {
     this.chat = {
@@ -194,8 +207,8 @@ export class ScriptedClient {
         ): Promise<AsyncIterable<unknown>> => {
           const counter = { i: 0 }
           const thisCall = this.callCount++
-          const userMsgs = (params.messages ?? []).filter((m: unknown) =>
-            (m as { role?: string })?.role === 'user',
+          const userMsgs = (params.messages ?? []).filter(
+            (m: unknown) => (m as { role?: string })?.role === 'user',
           )
           const lastUser = userMsgs[userMsgs.length - 1] as { content?: unknown } | undefined
           const userContent = typeof lastUser?.content === 'string' ? lastUser.content : ''
@@ -218,7 +231,13 @@ export class ScriptedClient {
     // Otherwise fall back to the predicate-based match.
     for (const t of this.script) {
       if (!t.match) continue
-      if (t.match(userContent, this.log.flatMap((l) => [l.emitted]))) return t
+      if (
+        t.match(
+          userContent,
+          this.log.flatMap((l) => [l.emitted]),
+        )
+      )
+        return t
     }
     return this.defaultTurn
   }

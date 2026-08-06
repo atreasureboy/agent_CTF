@@ -34,6 +34,8 @@ describe('HITL pause (H)', () => {
     const initial = createTestTaskState({ taskId: 'p3' })
     const store = new CTFTaskStateStore(initial)
     store.apply({ type: 'TASK_COMPLETED', status: 'failed', reason: 'done' })
-    expect(() => store.apply({ type: 'TASK_PAUSED', pausedBy: 'system', reason: 'audit', at: 99 })).not.toThrow()
+    expect(() =>
+      store.apply({ type: 'TASK_PAUSED', pausedBy: 'system', reason: 'audit', at: 99 }),
+    ).not.toThrow()
   })
 })

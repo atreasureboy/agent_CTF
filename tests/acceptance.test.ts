@@ -50,10 +50,13 @@ function buildSession(): {
   const registry = ToolRegistry.fromLegacyTools(createTools([]), TOOL_METADATA)
   const eventLog = new EventLog(sessionDir)
   const artifactStore = new ArtifactStore(sessionDir)
-  const jobManager = new BackgroundJobManager({ taskWorkspaceDir: sessionDir }, async (_s, signal) => {
-    await new Promise((r) => signal.addEventListener('abort', r))
-    return { error: 'cancelled' }
-  })
+  const jobManager = new BackgroundJobManager(
+    { taskWorkspaceDir: sessionDir },
+    async (_s, signal) => {
+      await new Promise((r) => signal.addEventListener('abort', r))
+      return { error: 'cancelled' }
+    },
+  )
   return {
     broker: new ToolBroker({
       registry,
@@ -86,9 +89,7 @@ describe('场景 1: 图片专业化', () => {
     expect(visible).not.toContain('Agent')
     // 当前基础工具中已注册 Bash/Read 等;ImageStego 允许 Bash,不允许 nmap 等专业工具,
     // 因此它的可见工具集合是 Bash/Read/Glob/Grep + meta 类工具。
-    expect(visible).toEqual(
-      expect.arrayContaining(['Bash', 'Read']),
-    )
+    expect(visible).toEqual(expect.arrayContaining(['Bash', 'Read']))
     // nmap/sqlmap/gdb/tshark 这些是后续 CTF 工具集要加的,目前不存在;
     // 我们直接通过 Profile.deniedTools 的契约验证它们一旦注册即被屏蔽。
     expect(profile.deniedTools).toEqual(expect.arrayContaining(['nmap', 'sqlmap', 'gdb', 'tshark']))
@@ -116,25 +117,34 @@ describe('场景 1: 图片专业化', () => {
 // ──────────────────────────────────────────────────────────────────────────
 describe('场景 2: 跨领域接力', () => {
   it('ImageStegoAgent 能提交 HandoffRequest 给 file-forensics / crypto,Findings + Artifact 在接力中继承', async () => {
-    const { FindingStore, HandoffStore } = await import('../src/core/findings.js').then(async (m) => {
-      const handoffMod = await import('../src/core/handoff.js')
-      return { FindingStore: m.FindingStore, HandoffStore: handoffMod.HandoffStore }
-    })
+    const { FindingStore, HandoffStore } = await import('../src/core/findings.js').then(
+      async (m) => {
+        const handoffMod = await import('../src/core/handoff.js')
+        return { FindingStore: m.FindingStore, HandoffStore: handoffMod.HandoffStore }
+      },
+    )
 
     const findings = new FindingStore(sessionDir)
     const handoffs = new HandoffStore(sessionDir)
 
     const extracted = findings.append({
-      taskId: 't1', producerAgentId: 'image-stego',
-      category: 'image', title: 'extracted ZIP', summary: 'art_xx1 contains ZIP',
-      confidence: 'high', artifactIds: ['art_xx1'],
+      taskId: 't1',
+      producerAgentId: 'image-stego',
+      category: 'image',
+      title: 'extracted ZIP',
+      summary: 'art_xx1 contains ZIP',
+      confidence: 'high',
+      artifactIds: ['art_xx1'],
       suggestedAgent: 'file-forensics',
     })
     const req = handoffs.submit({
-      taskId: 't1', fromAgent: 'image-stego', suggestedAgent: 'file-forensics',
+      taskId: 't1',
+      fromAgent: 'image-stego',
+      suggestedAgent: 'file-forensics',
       reason: 'Extracted nested ZIP — needs archive extraction',
       objective: 'Recursively extract the nested ZIP and submit findings',
-      artifactIds: ['art_xx1'], findingIds: [extracted.id],
+      artifactIds: ['art_xx1'],
+      findingIds: [extracted.id],
     })
     expect(req.status).toBe('pending')
     handoffs.decide(req.id, 'approved', 'proceed')
@@ -161,7 +171,11 @@ describe('场景 2: 跨领域接力', () => {
 describe('场景 3: 工具优先策略', () => {
   it('"full port scan" + curl/nc 时,ToolFirstPolicy 提醒走 host_service_enumeration workflow', () => {
     const policy = new ToolFirstPolicy()
-    const v = policy.advise('Bash', { command: 'curl http://target:80; we need full port scan' }, PROFILES['triage'])
+    const v = policy.advise(
+      'Bash',
+      { command: 'curl http://target:80; we need full port scan' },
+      PROFILES['triage'],
+    )
     expect(v.rule).toBe('web-enumeration')
     expect(v.advice).toMatch(/nmap/)
   })
@@ -185,7 +199,14 @@ describe('场景 3: 工具优先策略', () => {
 // ──────────────────────────────────────────────────────────────────────────
 describe('场景 4: 工具禁用', () => {
   it('Bash 暴露给 image-stego;但当 profile 把 Bash 列在 denied 时,Bash 被完全屏蔽', () => {
-    const { broker: _broker, profile, registry, eventLog, artifactStore, jobManager } = buildSession()
+    const {
+      broker: _broker,
+      profile,
+      registry,
+      eventLog,
+      artifactStore,
+      jobManager,
+    } = buildSession()
     const stricterProfile: CapabilityProfile = { ...profile, deniedTools: ['Bash'] }
     const stricter = new ToolBroker({
       registry,
@@ -196,7 +217,8 @@ describe('场景 4: 工具禁用', () => {
       // eslint-disable-next-line @typescript-eslint/require-await
       jobRunner: async () => ({ error: 'unused' }),
     })
-    return stricter.execute('Bash', { command: 'ls' }, { cwd: sessionDir, taskId: 't1', agentId: 'image-stego' })
+    return stricter
+      .execute('Bash', { command: 'ls' }, { cwd: sessionDir, taskId: 't1', agentId: 'image-stego' })
       .then((r) => {
         expect(r.result.isError).toBe(true)
         expect(r.result.content).toMatch(/denied by profile/)
@@ -209,7 +231,11 @@ describe('场景 4: 工具禁用', () => {
     // broker a checker that denies any "curl " pattern (the legacy
     // PermissionChecker is layered before the Broker — here we exercise the
     // Broker's resilience by using ToolFirstPolicy reminders as an analogue).
-    const r = await broker.execute('Bash', { command: 'curl http://target/' }, { cwd: sessionDir, taskId: 't1', agentId: 'image-stego' })
+    const r = await broker.execute(
+      'Bash',
+      { command: 'curl http://target/' },
+      { cwd: sessionDir, taskId: 't1', agentId: 'image-stego' },
+    )
     expect(r.result.isError).toBe(false) // image-stego does not deny curl directly; reminder is advice, not a block
     expect(r.policyVerdict?.rule).toBeDefined() // some reminder applies
   })
@@ -269,8 +295,11 @@ describe('场景 7: 后台任务取消', () => {
   it('后台任务可以被取消且产生 cancelled 状态', async () => {
     const { jobManager } = buildSession()
     const job = await jobManager.spawn({
-      taskId: 't1', agentId: 'image-stego', toolId: 'Bash',
-      input: { command: 'sleep 999' }, timeoutMs: 10_000,
+      taskId: 't1',
+      agentId: 'image-stego',
+      toolId: 'Bash',
+      input: { command: 'sleep 999' },
+      timeoutMs: 10_000,
     })
     // Give the run loop a moment to start.
     await new Promise((r) => setTimeout(r, 30))
@@ -282,8 +311,20 @@ describe('场景 7: 后台任务取消', () => {
 
   it('cancelTask 取消任务下所有在跑作业', async () => {
     const { jobManager } = buildSession()
-    await jobManager.spawn({ taskId: 't1', agentId: 'a1', toolId: 'Bash', input: {}, timeoutMs: 10_000 })
-    await jobManager.spawn({ taskId: 't1', agentId: 'a2', toolId: 'Bash', input: {}, timeoutMs: 10_000 })
+    await jobManager.spawn({
+      taskId: 't1',
+      agentId: 'a1',
+      toolId: 'Bash',
+      input: {},
+      timeoutMs: 10_000,
+    })
+    await jobManager.spawn({
+      taskId: 't1',
+      agentId: 'a2',
+      toolId: 'Bash',
+      input: {},
+      timeoutMs: 10_000,
+    })
     await new Promise((r) => setTimeout(r, 30))
     const n = jobManager.cancelTask('t1', 'task_done')
     expect(n).toBeGreaterThanOrEqual(2)
@@ -302,14 +343,22 @@ describe('集成:HandoffRequest → Orchestrator → 接班 Agent', () => {
     const handoffs = new HandoffStore(sessionDir)
 
     const f = findings.append({
-      taskId: 't1', producerAgentId: 'image-stego',
-      category: 'image', title: 'Extracted ZIP', summary: 'art_xx1',
-      confidence: 'high', artifactIds: ['art_xx1'],
+      taskId: 't1',
+      producerAgentId: 'image-stego',
+      category: 'image',
+      title: 'Extracted ZIP',
+      summary: 'art_xx1',
+      confidence: 'high',
+      artifactIds: ['art_xx1'],
     })
     const req = handoffs.submit({
-      taskId: 't1', fromAgent: 'image-stego', suggestedAgent: 'file-forensics',
-      reason: 'Need archive extraction', objective: 'Recursively extract and submit findings',
-      artifactIds: ['art_xx1'], findingIds: [f.id],
+      taskId: 't1',
+      fromAgent: 'image-stego',
+      suggestedAgent: 'file-forensics',
+      reason: 'Need archive extraction',
+      objective: 'Recursively extract and submit findings',
+      artifactIds: ['art_xx1'],
+      findingIds: [f.id],
     })
 
     // Orchestrator reads pending — sees the request.
@@ -343,7 +392,16 @@ describe('SpecialistAgentFactory — Profile → AgentConfig', () => {
       profile,
       cwd: sessionDir,
       resolver: {
-        resolveToolIds: () => ['Bash', 'Read', 'Glob', 'Grep', 'TodoWrite', 'load_skill', 'memory_search', 'memory_recall'],
+        resolveToolIds: () => [
+          'Bash',
+          'Read',
+          'Glob',
+          'Grep',
+          'TodoWrite',
+          'load_skill',
+          'memory_search',
+          'memory_recall',
+        ],
         resolveWorkflowIds: () => ['image_quick_scan', 'png_stego_sweep'],
       },
       basePrompt: '你是一个图片隐写专项 Agent。',
@@ -361,7 +419,8 @@ describe('SpecialistAgentFactory — Profile → AgentConfig', () => {
 // ──────────────────────────────────────────────────────────────────────────
 describe('TaskWorkspace 会话目录结构', () => {
   it('建立 sessions/<contest>/tasks/<task>/ 的标准布局', async () => {
-    const { TaskWorkspace, makeContestId, makeTaskId } = await import('../src/modules/taskWorkspace.js')
+    const { TaskWorkspace, makeContestId, makeTaskId } =
+      await import('../src/modules/taskWorkspace.js')
     const ws = new TaskWorkspace({
       sessionsRoot: join(root, 'sessions'),
       contestId: makeContestId('CTF Demo'),
@@ -385,10 +444,8 @@ describe('Workflow 集成执行', () => {
   it('unknown_file_triage 用 mocks 跑通 step 序列', async () => {
     const { WorkflowEngine } = await import('../src/core/workflowEngine.js')
     const { WorkflowRegistry } = await import('../src/core/workflowRegistry.js')
-    const {
-      ensureWorkflowsRegistered,
-      __resetWorkflowRegistrationForTests,
-    } = await import('../src/workflows/index.js')
+    const { ensureWorkflowsRegistered, __resetWorkflowRegistrationForTests } =
+      await import('../src/workflows/index.js')
     __resetWorkflowRegistrationForTests()
     const reg = new WorkflowRegistry()
     ensureWorkflowsRegistered(reg)
@@ -399,13 +456,26 @@ describe('Workflow 集成执行', () => {
 
     const runner = {
       // eslint-disable-next-line @typescript-eslint/require-await
-      async runStep(step: { id: string }, _ctx: { capturedOutputs: Map<string, string>; taskId: string; agentId: string; workflowId: string; inputs: Record<string, unknown> }) {
+      async runStep(
+        step: { id: string },
+        _ctx: {
+          capturedOutputs: Map<string, string>
+          taskId: string
+          agentId: string
+          workflowId: string
+          inputs: Record<string, unknown>
+        },
+      ) {
         return { content: `mock-${step.id}`, isError: false, artifactIds: [] }
       },
       async emitFinding(_step: unknown, _ctx: unknown) {},
     }
     const ctx = {
-      taskId: 't1', agentId: 'triage', workflowId: wf.id, inputs: {}, capturedOutputs: outputs,
+      taskId: 't1',
+      agentId: 'triage',
+      workflowId: wf.id,
+      inputs: {},
+      capturedOutputs: outputs,
     }
     const result = await new WorkflowEngine(runner).run(wf, ctx)
     expect(result.status).toBe('success')

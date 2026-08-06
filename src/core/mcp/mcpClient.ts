@@ -75,8 +75,17 @@ export function createMcpClient(config: McpServerConfig): McpClient {
     if (state.started) return state.started
     state.started = new Promise<void>((resolve, reject) => {
       try {
+        // §Round-4 — minimal safe env; the config.env can override/extend.
+        const safeEnv: Record<string, string> = {
+          PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+          HOME: process.env.HOME ?? '/root',
+          LANG: process.env.LANG ?? 'en_US.UTF-8',
+          TMPDIR: process.env.TMPDIR ?? '/tmp',
+        }
+        if (process.env.LC_ALL) safeEnv.LC_ALL = process.env.LC_ALL
+        if (process.env.USER) safeEnv.USER = process.env.USER
         child = spawn(config.command, config.args, {
-          env: { ...process.env, ...config.env },
+          env: { ...safeEnv, ...config.env },
           cwd: config.cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
         })

@@ -12,12 +12,15 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/bin/ovogogogo.js",
     "dev": "tsx bin/ovogogogo.ts",
+    "ci": "pnpm run format:check && pnpm run lint && pnpm run build && pnpm run test",
     "lint": "eslint src/ bin/ tests/",
     "lint:fix": "eslint src/ bin/ --fix",
-    "format": "prettier --write src/ bin/",
-    "format:check": "prettier --check src/ bin/",
+    "format": "prettier --write src/ bin/ tests/",
+    "format:check": "prettier --check src/ bin/ tests/",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepare": "husky"
   },
   "dependencies": {
     "glob": "^11.0.0",
@@ -27,8 +30,11 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
     "prettier": "^3.8.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
@@ -41,5 +47,14 @@
     "README.md",
     "AUDIT.md",
     "LICENSE"
-  ]
+  ],
+  "lint-staged": {
+    "*.{ts,js,mjs}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yaml,yml}": [
+      "prettier --write"
+    ]
+  }
 }

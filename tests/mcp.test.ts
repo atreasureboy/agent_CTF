@@ -3,7 +3,10 @@ import { wrapMcpTool } from '../src/mcp/wrapper.js'
 import type { McpClient, McpContentBlock } from '../src/mcp/client.js'
 
 /** Minimal McpClient double — only serverName + callTool are used by the wrapper. */
-function mockClient(serverName: string, callTool: (name: string, args: Record<string, unknown>) => Promise<McpContentBlock[]>): McpClient {
+function mockClient(
+  serverName: string,
+  callTool: (name: string, args: Record<string, unknown>) => Promise<McpContentBlock[]>,
+): McpClient {
   return { serverName, callTool } as unknown as McpClient
 }
 
@@ -25,7 +28,9 @@ describe('wrapMcpTool', () => {
       inputSchema: { type: 'object', properties: { x: { type: 'string' } }, required: ['x'] },
     })
     expect(tool.definition.function.parameters).toEqual({
-      type: 'object', properties: { x: { type: 'string' } }, required: ['x'],
+      type: 'object',
+      properties: { x: { type: 'string' } },
+      required: ['x'],
     })
   })
 
@@ -49,7 +54,9 @@ describe('wrapMcpTool', () => {
 
   it('execute returns an error result when the client throws', async () => {
     // eslint-disable-next-line @typescript-eslint/require-await
-    const client = mockClient('srv', async () => { throw new Error('boom') })
+    const client = mockClient('srv', async () => {
+      throw new Error('boom')
+    })
     const tool = wrapMcpTool(client, { name: 'do' })
     const res = await tool.execute({}, {} as never)
     expect(res.isError).toBe(true)

@@ -6,7 +6,11 @@ import { describe, it, expect } from 'vitest'
 import { processNewReasoningInputs } from '../src/core/ctfReasoning/reasoningCoordinator.js'
 import { CTFTaskStateStore } from '../src/core/ctfRuntime/taskStateStore.js'
 import { createNoopStrategyActionExecutor } from '../src/core/ctfReasoning/runtimeStrategyActionExecutor.js'
-import { NoOpLMSummarizer, LMSummarizer, type LanguageModel } from '../src/core/ctfReasoning/lmSummarizer.js'
+import {
+  NoOpLMSummarizer,
+  LMSummarizer,
+  type LanguageModel,
+} from '../src/core/ctfReasoning/lmSummarizer.js'
 import { createObservation } from '../src/core/ctfReasoning/observation.js'
 import { createTestTaskState } from './fixtures/createTestTaskState.js'
 
@@ -14,8 +18,10 @@ function stateWithManyObs(taskId: string, n: number) {
   let cur = createTestTaskState({ taskId })
   for (let i = 0; i < n; i++) {
     const obs = createObservation(taskId, {
-      kind: 'generic', source: { type: 'manual' },
-      summary: `obs ${i}`, confidence: 0.5,
+      kind: 'generic',
+      source: { type: 'manual' },
+      summary: `obs ${i}`,
+      confidence: 0.5,
     })
     cur = { ...cur, observations: [...cur.observations, obs] }
   }
@@ -38,7 +44,13 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
         taskId: 'c3r-1',
         state: initial,
         store,
-        budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
+        budgetLimits: {
+          fastConcurrency: 1,
+          mediumConcurrency: 1,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 4,
+          perTaskHeavyRuns: 1,
+        },
         heavyApproved: false,
         executor: createNoopStrategyActionExecutor(),
         maxStrategyCycles: 1,
@@ -77,7 +89,13 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
         taskId: 'c3r-2',
         state: initial,
         store,
-        budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
+        budgetLimits: {
+          fastConcurrency: 1,
+          mediumConcurrency: 1,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 4,
+          perTaskHeavyRuns: 1,
+        },
         heavyApproved: false,
         executor: createNoopStrategyActionExecutor(),
         maxStrategyCycles: 1,
@@ -104,25 +122,33 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
       },
     }
     const summary = new LMSummarizer(failingLM)
-    await expect(processNewReasoningInputs(
-      {
-        taskId: 'c3r-3',
-        state: initial,
-        store,
-        budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
-        heavyApproved: false,
-        executor: createNoopStrategyActionExecutor(),
-        maxStrategyCycles: 1,
-      },
-      {
-        source: 'main-agent',
-        newObservationIds: [],
-        newEvidenceIds: [],
-        suggestedActions: [],
-        lmSummarizer: summary,
-        compactionThreshold: 64,
-      },
-    )).resolves.toBeDefined()
+    await expect(
+      processNewReasoningInputs(
+        {
+          taskId: 'c3r-3',
+          state: initial,
+          store,
+          budgetLimits: {
+            fastConcurrency: 1,
+            mediumConcurrency: 1,
+            heavyConcurrency: 1,
+            perTaskMaxRuns: 4,
+            perTaskHeavyRuns: 1,
+          },
+          heavyApproved: false,
+          executor: createNoopStrategyActionExecutor(),
+          maxStrategyCycles: 1,
+        },
+        {
+          source: 'main-agent',
+          newObservationIds: [],
+          newEvidenceIds: [],
+          suggestedActions: [],
+          lmSummarizer: summary,
+          compactionThreshold: 64,
+        },
+      ),
+    ).resolves.toBeDefined()
   })
 
   it('NoOpLMSummarizer is a safe default in tests', async () => {
@@ -134,7 +160,13 @@ describe('LMSummarizer in the live loop (C3-real)', () => {
         taskId: 'c3r-4',
         state: initial,
         store,
-        budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 4, perTaskHeavyRuns: 1 },
+        budgetLimits: {
+          fastConcurrency: 1,
+          mediumConcurrency: 1,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 4,
+          perTaskHeavyRuns: 1,
+        },
         heavyApproved: false,
         executor: createNoopStrategyActionExecutor(),
         maxStrategyCycles: 1,

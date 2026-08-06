@@ -30,11 +30,38 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
         trustLevel: 'privileged',
         reliabilityClass: 'privileged',
         contextWindow: 128000,
-        capabilities: { toolCalling: true, structuredOutput: true, vision: true, longContext: true, codeExecutionPlanning: true },
-        reliability: { structuredOutput: 0.98, toolArguments: 0.95, longHorizonPlanning: 0.92, summarization: 0.95, instructionFollowing: 0.96 },
+        capabilities: {
+          toolCalling: true,
+          structuredOutput: true,
+          vision: true,
+          longContext: true,
+          codeExecutionPlanning: true,
+        },
+        reliability: {
+          structuredOutput: 0.98,
+          toolArguments: 0.95,
+          longHorizonPlanning: 0.92,
+          summarization: 0.95,
+          instructionFollowing: 0.96,
+        },
         economics: {},
-        allowedRoles: ['competition_coordinator', 'task_planner', 'solver_scout', 'deep_solver', 'context_compiler', 'progress_summarizer', 'specialist', 'flag_discriminator', 'reporter'],
-        limits: { maxVisibleTools: 50, maxIterations: 30, maxRepairAttempts: 2, maxConsecutiveFailures: 3 },
+        allowedRoles: [
+          'competition_coordinator',
+          'task_planner',
+          'solver_scout',
+          'deep_solver',
+          'context_compiler',
+          'progress_summarizer',
+          'specialist',
+          'flag_discriminator',
+          'reporter',
+        ],
+        limits: {
+          maxVisibleTools: 50,
+          maxIterations: 30,
+          maxRepairAttempts: 2,
+          maxConsecutiveFailures: 3,
+        },
         fallbackModelIds: [],
       },
       {
@@ -46,11 +73,28 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
         trustLevel: 'auxiliary',
         reliabilityClass: 'auxiliary',
         contextWindow: 32768,
-        capabilities: { toolCalling: true, structuredOutput: true, vision: false, longContext: false, codeExecutionPlanning: false },
-        reliability: { structuredOutput: 0.8, toolArguments: 0.75, longHorizonPlanning: 0.6, summarization: 0.85, instructionFollowing: 0.8 },
+        capabilities: {
+          toolCalling: true,
+          structuredOutput: true,
+          vision: false,
+          longContext: false,
+          codeExecutionPlanning: false,
+        },
+        reliability: {
+          structuredOutput: 0.8,
+          toolArguments: 0.75,
+          longHorizonPlanning: 0.6,
+          summarization: 0.85,
+          instructionFollowing: 0.8,
+        },
         economics: {},
         allowedRoles: ['solver_scout', 'progress_summarizer', 'context_compiler', 'specialist'],
-        limits: { maxVisibleTools: 12, maxIterations: 10, maxRepairAttempts: 1, maxConsecutiveFailures: 2 },
+        limits: {
+          maxVisibleTools: 12,
+          maxIterations: 10,
+          maxRepairAttempts: 1,
+          maxConsecutiveFailures: 2,
+        },
         fallbackModelIds: ['high-tier-model'],
       },
     ])
@@ -67,7 +111,9 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
         })()
       },
       // eslint-disable-next-line @typescript-eslint/require-await
-      async executeStructured() { return { rawText: 'ok' } },
+      async executeStructured() {
+        return { rawText: 'ok' }
+      },
     }
     const gateway = new StructuredModelGateway({
       router,
@@ -106,7 +152,10 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
     const policy = new ToolVisibilityPolicy()
     policy.addRule({ toolId: 'admin_exec', visibleTo: ['specialist:admin'] })
 
-    const m3Visible = policy.isToolVisible('admin_exec', { modelId: 'm3-mini', role: 'solver_scout' })
+    const m3Visible = policy.isToolVisible('admin_exec', {
+      modelId: 'm3-mini',
+      role: 'solver_scout',
+    })
     expect(m3Visible).toBe(false)
   })
 
@@ -118,7 +167,9 @@ describe('Phase 3.0 Smoke Tests (Smoke 1 - 6)', () => {
         stateSnapshotHash: 'hash',
         objective: 'Objective',
         scopeSummary: '127.0.0.1',
-        evidences: [{ id: 'e1', title: 'ev', factSummary: 'fact', confidence: 0.9, confirmed: true }],
+        evidences: [
+          { id: 'e1', title: 'ev', factSummary: 'fact', confidence: 0.9, confirmed: true },
+        ],
         hypotheses: [],
         attempts: [],
         artifacts: [],

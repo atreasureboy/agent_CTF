@@ -124,7 +124,7 @@ def common_modulus_attack(c1, c2, e1, e2, n):
 
 ### 1.4 Franklin-Reiter 相关消息攻击
 
-两个明文 m1, m2 满足线性关系 m2 = a*m1 + b，用相同公钥加密：
+两个明文 m1, m2 满足线性关系 m2 = a\*m1 + b，用相同公钥加密：
 
 ```python
 # sage
@@ -217,7 +217,7 @@ def recover_byte(oracle, known, block_size=16):
     block_num = len(known) // block_size
     padding = b'A' * (block_size - 1 - (len(known) % block_size))
     target = oracle(padding)[block_num*block_size:(block_num+1)*block_size]
-    
+
     for byte in range(256):
         candidate = padding + known + bytes([byte])
         result = oracle(candidate)[block_num*block_size:(block_num+1)*block_size]
@@ -233,7 +233,7 @@ def recover_byte(oracle, known, block_size=16):
 def padding_oracle_attack(ct, iv, oracle, block_size=16):
     blocks = [ct[i:i+block_size] for i in range(0, len(ct), block_size)]
     plaintext = b''
-    
+
     for block_idx in range(len(blocks)):
         decrypted = bytearray(block_size)
         for pad_byte in range(1, block_size + 1):
@@ -243,7 +243,7 @@ def padding_oracle_attack(ct, iv, oracle, block_size=16):
                 for i in range(1, pad_byte):
                     modified_prev[-i] = decrypted[-i] ^ pad_byte
                 modified_prev[-pad_byte] = guess
-                
+
                 prev_block = iv if block_idx == 0 else blocks[block_idx - 1]
                 test_ct = bytes(modified_prev) + blocks[block_idx]
                 if oracle(bytes(modified_prev) + blocks[block_idx]):
@@ -252,7 +252,7 @@ def padding_oracle_attack(ct, iv, oracle, block_size=16):
         # XOR with previous block to get plaintext
         prev = iv if block_idx == 0 else blocks[block_idx - 1]
         plaintext += bytes([d ^ p for d, p in zip(decrypted, prev)])
-    
+
     return pkcs7_unpad(plaintext)
 ```
 
@@ -292,7 +292,7 @@ def mtp_attack(ciphertexts):
     # 1. 截断到最短长度
     min_len = min(len(c) for c in ciphertexts)
     truncated = [c[:min_len] for c in ciphertexts]
-    
+
     # 2. 计算 XOR 矩阵
     # 3. 使用空格特征：空格(0x20) XOR 字母 = 大写/小写切换
     #    c1[i] ^ c2[i] 若为字母，说明其中一个是空格
@@ -508,23 +508,23 @@ print(f"Private key: {d}")
 def SmartAttack(P, Q, p):
     E = P.curve()
     Eqp = EllipticCurve(Qp(p, 2), [ZZ(t) + randint(0,p)*p for t in E.a_invariants()])
-    
+
     P_Qps = Eqp.lift_x(ZZ(P.xy()[0]), all=True)
     for P_Qp in P_Qps:
         if GF(p)(P_Qp.xy()[1]) == P.xy()[1]:
             break
-    
+
     Q_Qps = Eqp.lift_x(ZZ(Q.xy()[0]), all=True)
     for Q_Qp in Q_Qps:
         if GF(p)(Q_Qp.xy()[1]) == Q.xy()[1]:
             break
-    
+
     p_times_P = p * P_Qp
     p_times_Q = p * Q_Qp
-    
+
     x_P, y_P = p_times_P.xy()
     x_Q, y_Q = p_times_Q.xy()
-    
+
     return int(GF(p)((x_Q * y_P) / (x_P * y_Q)))
 
 # 检查是否异常曲线
@@ -647,13 +647,13 @@ def recover_lcg_params(outputs, m=None):
         # 使用差值法恢复 m
         diffs = [outputs[i+1] - outputs[i] for i in range(len(outputs)-1)]
         m = recover_modulus(diffs)
-    
+
     # 恢复 a
     a = ((outputs[2] - outputs[1]) * pow(outputs[1] - outputs[0], -1, m)) % m
-    
+
     # 恢复 c
     c = (outputs[1] - a * outputs[0]) % m
-    
+
     return a, c, m
 ```
 
@@ -679,13 +679,13 @@ def knapsack_lll(public_key, ciphertext):
 
 ## 常用工具速查
 
-| 工具 | 用途 | 命令示例 |
-|------|------|----------|
-| **RsaCtfTool** | RSA 综合攻击 | `RsaCtfTool --publickey pub.pem --uncipherfile flag.enc` |
-| **yafu** | 大整数分解 | `yafu "factor(@)" -batchfile num.txt` |
-| **sage** | 数学计算 | `sage -python script.py` |
-| **factordb** | 在线因数分解 | `http://factordb.com/` |
-| **CyberChef** | 编解码 | `https://gchq.github.io/CyberChef/` |
-| **hash_extender** | 长度扩展 | `hash_extender -d data -s secret -a append -f sha256 --signature sig` |
-| **hashcat** | 哈希破解 | `hashcat -m 0 -a 3 hash.txt ?a?a?a?a?a?a` |
-| **john** | 哈希破解 | `john --wordlist=rockyou.txt hash.txt` |
+| 工具              | 用途         | 命令示例                                                              |
+| ----------------- | ------------ | --------------------------------------------------------------------- |
+| **RsaCtfTool**    | RSA 综合攻击 | `RsaCtfTool --publickey pub.pem --uncipherfile flag.enc`              |
+| **yafu**          | 大整数分解   | `yafu "factor(@)" -batchfile num.txt`                                 |
+| **sage**          | 数学计算     | `sage -python script.py`                                              |
+| **factordb**      | 在线因数分解 | `http://factordb.com/`                                                |
+| **CyberChef**     | 编解码       | `https://gchq.github.io/CyberChef/`                                   |
+| **hash_extender** | 长度扩展     | `hash_extender -d data -s secret -a append -f sha256 --signature sig` |
+| **hashcat**       | 哈希破解     | `hashcat -m 0 -a 3 hash.txt ?a?a?a?a?a?a`                             |
+| **john**          | 哈希破解     | `john --wordlist=rockyou.txt hash.txt`                                |

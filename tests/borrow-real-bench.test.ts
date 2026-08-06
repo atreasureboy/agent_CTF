@@ -33,8 +33,12 @@ describe('LiveBenchRunner (real D2)', () => {
     // Single response: the right flag. The LLM wins in cycle 0.
     const responses: ToolUseRequest[] = [
       makeReq({
-        type: 'call_tool', toolId: 'submit_flag', input: { flag: challenge.expectedFlag },
-        reason: 'try the right one', priority: 2, costTier: 'cheap',
+        type: 'call_tool',
+        toolId: 'submit_flag',
+        input: { flag: challenge.expectedFlag },
+        reason: 'try the right one',
+        priority: 2,
+        costTier: 'cheap',
       }),
     ]
     let idx = 0
@@ -74,8 +78,12 @@ describe('LiveBenchRunner (real D2)', () => {
     // Only the wrong flag — never the right one.
     const responses: ToolUseRequest[] = [
       makeReq({
-        type: 'call_tool', toolId: 'submit_flag', input: { flag: 'flag{wrong}' },
-        reason: 'try', priority: 1, costTier: 'cheap',
+        type: 'call_tool',
+        toolId: 'submit_flag',
+        input: { flag: 'flag{wrong}' },
+        reason: 'try',
+        priority: 1,
+        costTier: 'cheap',
       }),
     ]
     let idx = 0

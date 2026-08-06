@@ -21,13 +21,15 @@ import type { CapabilityProfile } from '../src/core/capabilityProfile.js'
 import { PROFILES } from '../src/capabilityProfiles/builtin.js'
 import type { ContestScopeChecker } from '../src/core/contestScope.js'
 
-function makeContext(overrides: Partial<{
-  cwd: string
-  profile: CapabilityProfile | undefined
-  contestScope: ContestScopeChecker | undefined
-  eventLog: unknown
-  signal: AbortSignal | undefined
-}>): ToolContext {
+function makeContext(
+  overrides: Partial<{
+    cwd: string
+    profile: CapabilityProfile | undefined
+    contestScope: ContestScopeChecker | undefined
+    eventLog: unknown
+    signal: AbortSignal | undefined
+  }>,
+): ToolContext {
   return {
     cwd: overrides.cwd ?? '/tmp',
     permissionMode: 'auto',
@@ -110,14 +112,17 @@ describe('P0 #7: CTF tools quote LLM-controlled args', () => {
     // binaries are unlikely to be installed in CI, we assert the
     // structure rather than executing.
     const tools = createCTFTools()
-    const zsteg = tools.find(t => t.name === 'zsteg')
+    const zsteg = tools.find((t) => t.name === 'zsteg')
     expect(zsteg).toBeDefined()
     // The execute() path runs buildCommand(input); because `zsteg` is
     // missing, the tool returns the "unavailable" message before any
     // shell exec, so we can call execute() safely and just verify it
     // returns without throwing on malicious input.
     expect(() =>
-      zsteg!.execute({ target: '"; rm -rf /; echo "' }, makeContext({ profile: PROFILES['image-stego'] })),
+      zsteg!.execute(
+        { target: '"; rm -rf /; echo "' },
+        makeContext({ profile: PROFILES['image-stego'] }),
+      ),
     ).not.toThrow()
   })
 })
@@ -134,10 +139,7 @@ describe('P1 #25: GrepTool quotes glob + pattern via JSON.stringify', () => {
     // rg/grep; if either is unavailable the call returns an error but
     // must NOT throw synchronously on a malformed input that would
     // previously have produced shell injection.
-    const result = await grep.execute(
-      { pattern: 'foo', glob: '"; rm -rf /; echo "' },
-      ctx,
-    )
+    const result = await grep.execute({ pattern: 'foo', glob: '"; rm -rf /; echo "' }, ctx)
     // Either an error (binary missing) or empty matches — but never a
     // synchronous throw from buildCommand.
     expect(result).toBeDefined()
@@ -158,7 +160,9 @@ describe('P1 #23: WebSearchTool honors context.signal + contest scope', () => {
       isHostAllowed: () => false,
       isPortAllowed: () => false,
       assertFile: () => undefined,
-      assertNetwork: () => { throw new Error('denied') },
+      assertNetwork: () => {
+        throw new Error('denied')
+      },
     } as unknown as ContestScopeChecker
     const ctx = makeContext({
       profile: PROFILES['image-stego'],
@@ -204,7 +208,9 @@ describe('P0 #11: FileWriteTool atomic temp+rename + scope gate', () => {
       isNetworkAllowed: () => true,
       isHostAllowed: () => true,
       isPortAllowed: () => true,
-      assertFile: () => { throw new Error('out of scope') },
+      assertFile: () => {
+        throw new Error('out of scope')
+      },
       assertNetwork: () => undefined,
     } as unknown as ContestScopeChecker
     const ctx = makeContext({ profile: PROFILES['image-stego'], contestScope: denyAll })
@@ -232,7 +238,9 @@ describe('P0 #11: FileWriteTool atomic temp+rename + scope gate', () => {
       try {
         const { unlinkSync } = await import('fs')
         unlinkSync(tmpFile)
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
   })
 })
@@ -245,7 +253,9 @@ describe('P0 #12: FileEditTool atomic temp+rename + .bak snapshot', () => {
       isNetworkAllowed: () => true,
       isHostAllowed: () => true,
       isPortAllowed: () => true,
-      assertFile: () => { throw new Error('out of scope') },
+      assertFile: () => {
+        throw new Error('out of scope')
+      },
       assertNetwork: () => undefined,
     } as unknown as ContestScopeChecker
     const ctx = makeContext({ profile: PROFILES['image-stego'], contestScope: denyAll })
@@ -284,9 +294,17 @@ describe('P0 #12: FileEditTool atomic temp+rename + .bak snapshot', () => {
       // just confirm the original was renamed atomically (no .tmp leak).
       expect(existsSync(`${tmpFile}.tmp.${process.pid}`)).toBe(false)
       // The original backup is left on disk intentionally
-      try { unlinkSync(bak) } catch { /* ignore */ }
+      try {
+        unlinkSync(bak)
+      } catch {
+        /* ignore */
+      }
     } finally {
-      try { unlinkSync(tmpFile) } catch { /* ignore */ }
+      try {
+        unlinkSync(tmpFile)
+      } catch {
+        /* ignore */
+      }
     }
   })
 })
@@ -299,7 +317,9 @@ describe('P1: FileReadTool signal propagation + scope gate', () => {
       isNetworkAllowed: () => true,
       isHostAllowed: () => true,
       isPortAllowed: () => true,
-      assertFile: () => { throw new Error('out of scope') },
+      assertFile: () => {
+        throw new Error('out of scope')
+      },
       assertNetwork: () => undefined,
     } as unknown as ContestScopeChecker
     const ctx = makeContext({ profile: PROFILES['image-stego'], contestScope: denyAll })
@@ -327,7 +347,11 @@ describe('P1: FileReadTool signal propagation + scope gate', () => {
       expect(result.isError).toBe(false)
       expect(result.content).toMatch(/audit-read-ok/)
     } finally {
-      try { unlinkSync(tmpFile) } catch { /* ignore */ }
+      try {
+        unlinkSync(tmpFile)
+      } catch {
+        /* ignore */
+      }
     }
   })
 })

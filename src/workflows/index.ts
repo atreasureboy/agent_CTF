@@ -31,3 +31,10 @@ export function __resetWorkflowRegistrationForTests(): void {
 }
 
 export { BUILTIN_WORKFLOWS }
+
+// ─── Typed workflow definitions (Phase 2.1 DAG executor) ──────────
+// Runtime bridging via WorkflowEngine is pending; for now these are
+// available for direct use via runTypedDag().
+export { ENCODING_SWEEP_TYPED } from './typed/encodingSweep.js'
+export { IMAGE_QUICK_SCAN_TYPED } from './typed/imageQuickScan.js'
+export { UNKNOWN_FILE_TRIAGE_TYPED } from './typed/unknownFileTriage.js'

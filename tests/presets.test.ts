@@ -31,13 +31,17 @@ describe('resolveAgentConfig', () => {
 
   it('falls back to general-purpose for unknown preset', () => {
     const config = resolveAgentConfig({ preset: 'nonexistent' })
-    expect(config.identity.systemPrompt).toBe(AGENT_PRESETS['general-purpose'].identity.systemPrompt)
+    expect(config.identity.systemPrompt).toBe(
+      AGENT_PRESETS['general-purpose'].identity.systemPrompt,
+    )
     expect(config.maxIterations).toBe(AGENT_PRESETS['general-purpose'].maxIterations)
   })
 
   it('falls back to general-purpose when nothing specified', () => {
     const config = resolveAgentConfig({})
-    expect(config.identity.systemPrompt).toBe(AGENT_PRESETS['general-purpose'].identity.systemPrompt)
+    expect(config.identity.systemPrompt).toBe(
+      AGENT_PRESETS['general-purpose'].identity.systemPrompt,
+    )
     expect(config.maxIterations).toBe(AGENT_PRESETS['general-purpose'].maxIterations)
   })
 
@@ -177,9 +181,7 @@ describe('applyAgentToConfig', () => {
       },
     }
     const result = applyAgentToConfig(config)
-    expect(result.enabledModules).toEqual(
-      expect.arrayContaining(['memory', 'reflection']),
-    )
+    expect(result.enabledModules).toEqual(expect.arrayContaining(['memory', 'reflection']))
   })
 
   it('preserves base config fields not overridden by agent', () => {

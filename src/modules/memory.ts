@@ -76,7 +76,9 @@ Higher-priority sources override lower ones on conflict.`,
       const confidence =
         typeof input.confidence === 'number' ? Math.min(Math.max(input.confidence, 0), 1) : 0.7
       const source = str(input.source, 'agent_inferred') as
-        'user_stated' | 'agent_inferred' | 'tool_observed'
+        | 'user_stated'
+        | 'agent_inferred'
+        | 'tool_observed'
 
       const entry = semantic.write({
         content: content.slice(0, 500),

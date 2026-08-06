@@ -1,0 +1,20 @@
+# Gitleaks configuration for agent_CTF
+# Excludes vendored reference repos, external comparison projects,
+# and common false-positive patterns.
+
+[allowlist]
+  description = "Global allowlist for test fixtures and known non-secrets"
+  paths = [
+    '''node_modules''',
+    '''dist''',
+    '''CAI/''',
+    '''HackSynth/''',
+    '''cyber-zero/''',
+    '''nyuctf_agents/''',
+    '''swe-agent/''',
+    '''BUUCTF_Agent/''',
+    '''scratch/''',
+    '''CHYing-agent/''',
+    '''ctf-agent/''',
+    '''.env.example''',
+  ]

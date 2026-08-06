@@ -13,21 +13,28 @@ describe('Phase 2.2 §二十九 — smoke tests', () => {
   it('Stop: Planner returns stop → Coordinator ends → stopped=true', async () => {
     const state = createTestTaskState({ taskId: 'smoke-stop' })
     const store = new CTFTaskStateStore(state)
-    const result = await processNewReasoningInputs({
-      taskId: 'smoke-stop',
-      state,
-      store,
-      executor: createNoopStrategyActionExecutor(),
-      budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
-      heavyApproved: false,
-    }, {
-      source: 'manual',
-      newObservationIds: [],
-      newEvidenceIds: [],
-      suggestedActions: [
-        { type: 'stop', reason: 'manual stop', priority: 1, costTier: 'cheap' },
-      ],
-    })
+    const result = await processNewReasoningInputs(
+      {
+        taskId: 'smoke-stop',
+        state,
+        store,
+        executor: createNoopStrategyActionExecutor(),
+        budgetLimits: {
+          fastConcurrency: 1,
+          mediumConcurrency: 1,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 100,
+          perTaskHeavyRuns: 1,
+        },
+        heavyApproved: false,
+      },
+      {
+        source: 'manual',
+        newObservationIds: [],
+        newEvidenceIds: [],
+        suggestedActions: [{ type: 'stop', reason: 'manual stop', priority: 1, costTier: 'cheap' }],
+      },
+    )
     expect(result.stopped).toBe(true)
     expect(result.stopReason).toContain('stop')
     // No tool Attempt was created.
@@ -43,25 +50,29 @@ describe('Phase 2.2 §二十九 — smoke tests', () => {
         return {
           status: 'executed',
           materializedResult: {
-            observations: [{
-              kind: 'command_status',
-              source: { type: 'tool', toolId: 'fake' },
-              summary: 'fake tool ran',
-              confidence: 0.5,
-            }],
-            evidence: [{
-        kind: 'tool_failure',
-        claim: 'fake tool produced evidence',
-        polarity: 'neutral',
-        source: {
-          producer: { type: 'parser', id: 'fake' },
-          observationIds: [],
-          artifactIds: [],
-          attemptIds: [],
-          confidence: 0.5,
-          createdAt: 0,
-        },
-      }],
+            observations: [
+              {
+                kind: 'command_status',
+                source: { type: 'tool', toolId: 'fake' },
+                summary: 'fake tool ran',
+                confidence: 0.5,
+              },
+            ],
+            evidence: [
+              {
+                kind: 'tool_failure',
+                claim: 'fake tool produced evidence',
+                polarity: 'neutral',
+                source: {
+                  producer: { type: 'parser', id: 'fake' },
+                  observationIds: [],
+                  artifactIds: [],
+                  attemptIds: [],
+                  confidence: 0.5,
+                  createdAt: 0,
+                },
+              },
+            ],
             suggestedActions: [],
             flagCandidateDrafts: [],
             warnings: [],
@@ -71,21 +82,37 @@ describe('Phase 2.2 §二十九 — smoke tests', () => {
         }
       },
     }
-    await processNewReasoningInputs({
-      taskId: 'smoke-bind',
-      state,
-      store,
-      budgetLimits: { fastConcurrency: 1, mediumConcurrency: 1, heavyConcurrency: 1, perTaskMaxRuns: 100, perTaskHeavyRuns: 1 },
-      heavyApproved: false,
-      executor,
-    }, {
-      source: 'main-agent',
-      newObservationIds: [],
-      newEvidenceIds: [],
-      suggestedActions: [
-        { type: 'call_tool', toolId: 'fake', input: {}, reason: 'fake', priority: 1, costTier: 'cheap' },
-      ],
-    })
+    await processNewReasoningInputs(
+      {
+        taskId: 'smoke-bind',
+        state,
+        store,
+        budgetLimits: {
+          fastConcurrency: 1,
+          mediumConcurrency: 1,
+          heavyConcurrency: 1,
+          perTaskMaxRuns: 100,
+          perTaskHeavyRuns: 1,
+        },
+        heavyApproved: false,
+        executor,
+      },
+      {
+        source: 'main-agent',
+        newObservationIds: [],
+        newEvidenceIds: [],
+        suggestedActions: [
+          {
+            type: 'call_tool',
+            toolId: 'fake',
+            input: {},
+            reason: 'fake',
+            priority: 1,
+            costTier: 'cheap',
+          },
+        ],
+      },
+    )
     const attempt = store.getState().attempts[0]
     expect(attempt?.status).toBe('succeeded')
     expect(attempt?.observationIds.length).toBeGreaterThan(0)

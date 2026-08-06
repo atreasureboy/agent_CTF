@@ -216,7 +216,7 @@ export class ToolBroker {
         taskId: ctx.taskId || 'task',
         agentRunId: ctx.agentId,
         modelRole:
-          activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator'
+          activeProf.id === 'orchestrator'
             ? 'task_planner'
             : activeProf.id.includes('scout')
               ? 'solver_scout'
@@ -224,8 +224,7 @@ export class ToolBroker {
         modelProfileId: activeProf.id,
         providerId: 'openai-compatible',
         capabilityProfileId: activeProf.id,
-        isOrchestrator:
-          activeProf.id === 'orchestrator' || activeProf.id === 'competition_coordinator',
+        isOrchestrator: activeProf.id === 'orchestrator',
       }
       try {
         this.opts.toolExposureResolver.assertExecutable({
@@ -426,11 +425,7 @@ export class ToolBroker {
       // emit_finding step to inter-step-data-mux through capturedOutputs.
       // Without this, the legacy workflow runs decode_tree successfully
       // but the user-visible finding is hardcoded "所有命中解码的简要结果".
-      if (
-        !result.isError &&
-        this.opts.findingStore &&
-        typeof result.content === 'string'
-      ) {
+      if (!result.isError && this.opts.findingStore && typeof result.content === 'string') {
         // Use the same default pattern as encoding_sweep's flag pattern.
         // Matches `flag{...}`, `flag(...)`, and `flag(...}` (open-paren /
         // close-brace — forensics2 variant).

@@ -450,8 +450,7 @@ export async function createCTFTaskRuntime(
 
   // ── Competition concurrency pool ──────────────────────────────────────
   const maxConcurrency =
-    input.maxConcurrency ??
-    (parseInt(process.env.OVOGO_MAX_CONCURRENCY ?? '4', 10) || 4)
+    input.maxConcurrency ?? (parseInt(process.env.OVOGO_MAX_CONCURRENCY ?? '4', 10) || 4)
 
   const concurrencyPool = new ChallengeConcurrencyPool(maxConcurrency, {
     executor: async (challenge, _handle, _signal): Promise<TaskExecutorResult> => {

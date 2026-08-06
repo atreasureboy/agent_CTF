@@ -32,7 +32,9 @@ describe('firstExecutable', () => {
 
 describe('extractNetworkTargets', () => {
   it('extracts URL from curl', () => {
-    expect(extractNetworkTargets('curl http://example.com/path')).toContain('http://example.com/path')
+    expect(extractNetworkTargets('curl http://example.com/path')).toContain(
+      'http://example.com/path',
+    )
   })
   it('extracts host:port from nmap', () => {
     const result = extractNetworkTargets('nmap -sV 10.0.0.1')
@@ -56,7 +58,11 @@ describe('evaluateCommandPolicy', () => {
   })
 
   it('denies when allowlist is set and the binary is not in it', () => {
-    const profile = { ...PROFILES['image-stego'], allowedCommands: ['zsteg'], deniedCommands: undefined }
+    const profile = {
+      ...PROFILES['image-stego'],
+      allowedCommands: ['zsteg'],
+      deniedCommands: undefined,
+    }
     const v = evaluateCommandPolicy({ command: 'curl http://target/', profile })
     expect(v.allowed).toBe(false)
   })
@@ -84,10 +90,18 @@ describe('evaluateCommandPolicy', () => {
       }),
     )
 
-    const yesRun = evaluateCommandPolicy({ command: 'curl http://allowed.example/path', profile, contestScope: checker })
+    const yesRun = evaluateCommandPolicy({
+      command: 'curl http://allowed.example/path',
+      profile,
+      contestScope: checker,
+    })
     expect(yesRun.allowed).toBe(true)
 
-    const noRun = evaluateCommandPolicy({ command: 'curl http://blocked.example/', profile, contestScope: checker })
+    const noRun = evaluateCommandPolicy({
+      command: 'curl http://blocked.example/',
+      profile,
+      contestScope: checker,
+    })
     expect(noRun.allowed).toBe(false)
   })
 })
@@ -97,7 +111,7 @@ describe('BashTool integration with policy', () => {
     const bash = new BashTool()
     const profile = { ...PROFILES['image-stego'], deniedCommands: ['ls'] }
     const eventLog = {
-      append: () => ({})
+      append: () => ({}),
     } as unknown as EventLog
     const ctx = {
       cwd: '/tmp',

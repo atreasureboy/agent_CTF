@@ -1152,15 +1152,19 @@ TOOL_METADATA['response_diff'] = {
 function pngAfterIendTool(): Tool {
   return makeUtilTool(
     'png_after_iend',
-    'Extract bytes appended after a PNG file\'s IEND chunk. Accepts either hex input or a filesystem path. Returns the trailing payload as utf-8 (or hex if non-printable).',
+    "Extract bytes appended after a PNG file's IEND chunk. Accepts either hex input or a filesystem path. Returns the trailing payload as utf-8 (or hex if non-printable).",
     {
       type: 'object',
       properties: {
-        input: { type: 'string', description: 'Hex-encoded file contents (alternative to filePath).' },
+        input: {
+          type: 'string',
+          description: 'Hex-encoded file contents (alternative to filePath).',
+        },
         filePath: { type: 'string', description: 'Path to a PNG file (alternative to input).' },
         asHex: {
           type: 'boolean',
-          description: 'If true, return the trailing bytes as hex instead of utf-8 (default false).',
+          description:
+            'If true, return the trailing bytes as hex instead of utf-8 (default false).',
         },
       },
     },
@@ -1209,12 +1213,16 @@ function pngAfterIendTool(): Tool {
         const text = asHex ? trailing.toString('hex') : trailing.toString('utf-8')
         return {
           isError: false,
-          content: JSON.stringify({
-            trailing: text,
-            trailingLength: trailing.length,
-            trailingHex: trailing.toString('hex'),
-            note: trailing.length === 0 ? 'no trailing data' : 'extracted',
-          }, null, 2),
+          content: JSON.stringify(
+            {
+              trailing: text,
+              trailingLength: trailing.length,
+              trailingHex: trailing.toString('hex'),
+              note: trailing.length === 0 ? 'no trailing data' : 'extracted',
+            },
+            null,
+            2,
+          ),
         }
       } catch (e) {
         return { isError: true, content: `png_after_iend: ${(e as Error).message}` }
@@ -1303,12 +1311,16 @@ function bmpLsbExtractTool(): Tool {
         const trimmed = nulAt >= 0 ? out.subarray(0, nulAt) : out
         return {
           isError: false,
-          content: JSON.stringify({
-            lsb: trimmed.toString('utf-8'),
-            lsbLength: trimmed.length,
-            fullLength: out.length,
-            note: 'first NUL trimmed',
-          }, null, 2),
+          content: JSON.stringify(
+            {
+              lsb: trimmed.toString('utf-8'),
+              lsbLength: trimmed.length,
+              fullLength: out.length,
+              note: 'first NUL trimmed',
+            },
+            null,
+            2,
+          ),
         }
       } catch (e) {
         return { isError: true, content: `bmp_lsb_extract: ${(e as Error).message}` }
@@ -1367,17 +1379,24 @@ function unzipInnerTool(): Tool {
         if (!existsSync(filePath)) {
           return { isError: true, content: `unzip_inner: filePath not found: ${filePath}` }
         }
-        const { stdout } = await execAsync(`unzip -p ${JSON.stringify(filePath)} ${JSON.stringify(innerName)}`, {
-          encoding: 'utf-8',
-          timeout: 10_000,
-        })
+        const { stdout } = await execAsync(
+          `unzip -p ${JSON.stringify(filePath)} ${JSON.stringify(innerName)}`,
+          {
+            encoding: 'utf-8',
+            timeout: 10_000,
+          },
+        )
         return {
           isError: false,
-          content: JSON.stringify({
-            innerName,
-            content: stdout,
-            length: stdout.length,
-          }, null, 2),
+          content: JSON.stringify(
+            {
+              innerName,
+              content: stdout,
+              length: stdout.length,
+            },
+            null,
+            2,
+          ),
         }
       } catch (e) {
         return { isError: true, content: `unzip_inner: ${(e as Error).message}` }
@@ -1444,8 +1463,10 @@ function rsaWienerAttackTool(): Tool {
         }
         const a = cf(e, n)
         // Convergents — track (h_k, k_k) where p_k/q_k approximates e/n.
-        let h0 = 1n, h1 = a[0] ?? 0n
-        let k0 = 0n, k1 = 1n
+        let h0 = 1n,
+          h1 = a[0] ?? 0n
+        let k0 = 0n,
+          k1 = 1n
         function powmod(base: bigint, exp: bigint, mod: bigint): bigint {
           let r = 1n
           base = ((base % mod) + mod) % mod
@@ -1473,7 +1494,7 @@ function rsaWienerAttackTool(): Tool {
             // any flag-shaped substring; if absent, return the raw
             // bytes as hex.
             const flagMatch = utf8.match(/flag\{[^}]+\}/)
-                        if (flagMatch) {
+            if (flagMatch) {
               return {
                 isError: false,
                 content: JSON.stringify(
@@ -1665,7 +1686,8 @@ function webFetchTool(): Tool {
     async (input) => {
       try {
         const url = String((input.url as string) ?? '').trim()
-        const method = (String((input.method as string) ?? 'GET').toUpperCase() === 'POST') ? 'POST' : 'GET'
+        const method =
+          String((input.method as string) ?? 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET'
         const body = String((input.body as string) ?? '')
         if (!url) return { isError: true, content: 'web_fetch: url is required' }
         const args = ['-sS', '-X', method, url]
@@ -1716,7 +1738,10 @@ function xorSingleByteTool(): Tool {
       type: 'object',
       properties: {
         input: { type: 'string', description: 'Hex-encoded ciphertext (alt to filePath).' },
-        filePath: { type: 'string', description: 'Path to binary file containing encrypted bytes (alt to input).' },
+        filePath: {
+          type: 'string',
+          description: 'Path to binary file containing encrypted bytes (alt to input).',
+        },
         offset: {
           type: 'integer',
           description: 'Byte offset within the file to start reading from. Default 0.',
@@ -1737,7 +1762,10 @@ function xorSingleByteTool(): Tool {
           }
           const file = readFileSync(filePath)
           const offset = Math.max(Number(input.offset ?? 0) || 0, 0)
-          const length = Math.max(Number(input.length ?? file.length - offset) || file.length - offset, 1)
+          const length = Math.max(
+            Number(input.length ?? file.length - offset) || file.length - offset,
+            1,
+          )
           data = file.subarray(offset, Math.min(offset + length, file.length))
         } else {
           const hex = String((input.input as string) ?? '').replace(/\s+/g, '')
@@ -1934,7 +1962,12 @@ function reverseElfDecryptTool(): Tool {
         //    search for the 8-byte pattern 66 0f 6f 05.
         let rodataOffset = -1
         for (let i = 0; i < buf.length - 7; i++) {
-          if (buf[i] === 0x66 && buf[i + 1] === 0x0f && buf[i + 2] === 0x6f && buf[i + 3] === 0x05) {
+          if (
+            buf[i] === 0x66 &&
+            buf[i + 1] === 0x0f &&
+            buf[i + 2] === 0x6f &&
+            buf[i + 3] === 0x05
+          ) {
             // disp32 at i+4
             const disp = buf.readInt32LE(i + 4)
             const abs = i + 8 + disp
@@ -2204,14 +2237,18 @@ function decodeTreeTool(): Tool {
     {
       type: 'object',
       properties: {
-        text: { type: 'string', description: 'Encoded text (single string or whitespace-separated).' },
+        text: {
+          type: 'string',
+          description: 'Encoded text (single string or whitespace-separated).',
+        },
         flagPattern: {
           type: 'string',
           description: 'JS regex source. Default "flag\\\\{[^}]+\\}".',
         },
         maxDepth: {
           type: 'integer',
-          description: 'Maximum decode layers. Default 4. Capped at 12 to prevent runaway recursion.',
+          description:
+            'Maximum decode layers. Default 4. Capped at 12 to prevent runaway recursion.',
           minimum: 1,
           maximum: 12,
         },
@@ -2230,10 +2267,7 @@ function decodeTreeTool(): Tool {
         return { isError: true, content: 'decode_tree: empty text input' }
       }
       const patternStr = String((input.flagPattern as string) ?? 'flag\\{[^}]+\\}')
-      const maxDepth = Math.min(
-        Math.max(Number(input.maxDepth ?? 4) || 4, 1),
-        12,
-      )
+      const maxDepth = Math.min(Math.max(Number(input.maxDepth ?? 4) || 4, 1), 12)
       let pattern: RegExp
       try {
         pattern = new RegExp(patternStr, 'g')
@@ -2259,9 +2293,7 @@ function decodeTreeTool(): Tool {
           codecsApplied: result.codecsApplied,
           decodedTrailLength: result.decodedTrail.length,
           // Show first 200 chars of trail[0] for at-a-glance debugging.
-          trailPreview: result.decodedTrail.length > 0
-            ? result.decodedTrail[0].slice(0, 200)
-            : '',
+          trailPreview: result.decodedTrail.length > 0 ? result.decodedTrail[0].slice(0, 200) : '',
         },
         null,
         2,
@@ -2321,7 +2353,8 @@ function xorKnownPlaintextTool(): Tool {
         },
         knownCiphertextHex: {
           type: 'string',
-          description: 'Known plaintext encrypted under the same key (hex). Optional: if omitted, treated as empty.',
+          description:
+            'Known plaintext encrypted under the same key (hex). Optional: if omitted, treated as empty.',
         },
         flagPattern: {
           type: 'string',
@@ -2366,7 +2399,8 @@ function xorKnownPlaintextTool(): Tool {
           // to test; without a key reference we can't decrypt, so fail.
           return {
             isError: true,
-            content: 'xor_known_plaintext: knownCiphertextHex is required (hex string of the known plaintext encrypted under the same key).',
+            content:
+              'xor_known_plaintext: knownCiphertextHex is required (hex string of the known plaintext encrypted under the same key).',
           }
         }
         // pattern reserved for future input; current code uses a fixed regex
@@ -2407,14 +2441,15 @@ function xorKnownPlaintextTool(): Tool {
                 (code >= 0x41 && code <= 0x5a) ||
                 code === 0x5f ||
                 (code >= 0x61 && code <= 0x7a)
-              ) alphaUnderscore++
+              )
+                alphaUnderscore++
             }
             // Loose alpha gate: ≥50% alphanumerics. The tie-break below
             // selects the strongest overall candidate.
             if (inner.length === 0) continue
             const alphaRatio = alphaUnderscore / inner.length
             if (alphaRatio < 0.5) continue
-                    // Pick strictly better candidates: more alphas OR equal alphas
+            // Pick strictly better candidates: more alphas OR equal alphas
             // with longer inner content wins (more of the flag recovered).
             if (
               alphaUnderscore > bestAlphaCount ||
@@ -2539,7 +2574,10 @@ function aesEcbDecryptTool(): Tool {
           }
         }
         if (ct.length % 16 !== 0) {
-          return { isError: true, content: 'aes_ecb_decrypt: ciphertext length must be a multiple of 16' }
+          return {
+            isError: true,
+            content: 'aes_ecb_decrypt: ciphertext length must be a multiple of 16',
+          }
         }
         const d = createDecipheriv(algo, key, Buffer.alloc(0))
         const pt = Buffer.concat([d.update(ct), d.final()])
@@ -2589,7 +2627,8 @@ function rot13Tool(): Tool {
         text: { type: 'string', description: 'Text to encode/decode.' },
         variant: {
           type: 'string',
-          description: 'ROT variant: "rot13" (letters only) or "rot47" (all printable ASCII). Default "rot13".',
+          description:
+            'ROT variant: "rot13" (letters only) or "rot47" (all printable ASCII). Default "rot13".',
           enum: ['rot13', 'rot47'],
         },
       },
@@ -2646,20 +2685,63 @@ TOOL_METADATA['rot13'] = {
  */
 function morseCodeTool(): Tool {
   const MORSE_ENCODE: Record<string, string> = {
-    A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.',
-    H: '....', I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.',
-    O: '---', P: '.--.', Q: '--.-', R: '.-.', S: '...', T: '-', U: '..-',
-    V: '...-', W: '.--', X: '-..-', Y: '-.--', Z: '--..',
-    '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
-    '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
-    '.': '.-.-.-', ',': '--..--', '?': '..--..', "'": '.----.', '!': '-.-.--',
-    '/': '-..-.', '(': '-.--.', ')': '-.--.-', '&': '.-...', ':': '---...',
-    ';': '-.-.-.', '=': '-...-', '+': '.-.-.', '-': '-....-', '_': '..--.-',
-    '"': '.-..-.', '$': '...-..-', '@': '.--.-.', ' ': '/',
+    A: '.-',
+    B: '-...',
+    C: '-.-.',
+    D: '-..',
+    E: '.',
+    F: '..-.',
+    G: '--.',
+    H: '....',
+    I: '..',
+    J: '.---',
+    K: '-.-',
+    L: '.-..',
+    M: '--',
+    N: '-.',
+    O: '---',
+    P: '.--.',
+    Q: '--.-',
+    R: '.-.',
+    S: '...',
+    T: '-',
+    U: '..-',
+    V: '...-',
+    W: '.--',
+    X: '-..-',
+    Y: '-.--',
+    Z: '--..',
+    '0': '-----',
+    '1': '.----',
+    '2': '..---',
+    '3': '...--',
+    '4': '....-',
+    '5': '.....',
+    '6': '-....',
+    '7': '--...',
+    '8': '---..',
+    '9': '----.',
+    '.': '.-.-.-',
+    ',': '--..--',
+    '?': '..--..',
+    "'": '.----.',
+    '!': '-.-.--',
+    '/': '-..-.',
+    '(': '-.--.',
+    ')': '-.--.-',
+    '&': '.-...',
+    ':': '---...',
+    ';': '-.-.-.',
+    '=': '-...-',
+    '+': '.-.-.',
+    '-': '-....-',
+    _: '..--.-',
+    '"': '.-..-.',
+    $: '...-..-',
+    '@': '.--.-.',
+    ' ': '/',
   }
-  const MORSE_DECODE = Object.fromEntries(
-    Object.entries(MORSE_ENCODE).map(([k, v]) => [v, k]),
-  )
+  const MORSE_DECODE = Object.fromEntries(Object.entries(MORSE_ENCODE).map(([k, v]) => [v, k]))
 
   return makeUtilTool(
     'morse_decode',
@@ -2817,10 +2899,13 @@ function vigenereTool(): Tool {
     },
     (input) => {
       const text = String((input.text as string) ?? '')
-      const key = String((input.key as string) ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+      const key = String((input.key as string) ?? '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
       const mode = String((input.mode as string) ?? 'decrypt')
       try {
-        if (!key) return { isError: true, content: 'vigenere: key must contain at least one A-Z letter' }
+        if (!key)
+          return { isError: true, content: 'vigenere: key must contain at least one A-Z letter' }
         let ki = 0
         const out = text
           .split('')
@@ -2909,7 +2994,8 @@ function multiByteXorTool(): Tool {
         if (cipher.length === 0) {
           return { isError: true, content: 'multi_byte_xor: empty ciphertext' }
         }
-        const results: { keyLen: number; key: string; plaintext: string; flag: string | null }[] = []
+        const results: { keyLen: number; key: string; plaintext: string; flag: string | null }[] =
+          []
         const flagRe = /flag\{[^}]+\}/
 
         for (let klen = minKeyLen; klen <= maxKeyLen && results.length < maxResults * 3; klen++) {
@@ -3032,7 +3118,7 @@ function railFenceTool(): Tool {
       try {
         if (text.length === 0) return { isError: false, content: '' }
         const n = text.length
-        const rail: number[] = new Array(n).fill(0)
+        const rail: number[] = new Array<number>(n).fill(0)
         let dirDown = false
         let row = 0
         for (let i = 0; i < n; i++) {
@@ -3040,7 +3126,7 @@ function railFenceTool(): Tool {
           if (row === 0 || row === rails - 1) dirDown = !dirDown
           row += dirDown ? 1 : -1
         }
-        const counts: number[] = new Array(rails).fill(0)
+        const counts: number[] = new Array<number>(rails).fill(0)
         for (let i = 0; i < n; i++) counts[rail[i]]++
         const chunks: string[] = []
         let pos = 0
@@ -3048,7 +3134,7 @@ function railFenceTool(): Tool {
           chunks.push(text.slice(pos, pos + counts[r]))
           pos += counts[r]
         }
-        const idx: number[] = new Array(rails).fill(0)
+        const idx: number[] = new Array<number>(rails).fill(0)
         const out: string[] = []
         for (let i = 0; i < n; i++) {
           out.push(chunks[rail[i]][idx[rail[i]]])
@@ -3195,7 +3281,8 @@ function binaryDecodeTool(): Tool {
         text: { type: 'string', description: 'Binary or octal string to decode.' },
         format: {
           type: 'string',
-          description: 'Input format: "binary" (8-bit, e.g. "01100001 01100010") or "octal" (e.g. "141 142"). Default "binary".',
+          description:
+            'Input format: "binary" (8-bit, e.g. "01100001 01100010") or "octal" (e.g. "141 142"). Default "binary".',
           enum: ['binary', 'octal'],
         },
       },
@@ -3245,20 +3332,70 @@ TOOL_METADATA['binary_decode'] = {
  */
 function brailleTool(): Tool {
   const BRAILLE_TO_ASCII: Record<number, string> = {
-    0x01: 'a', 0x03: 'b', 0x09: 'c', 0x19: 'd', 0x11: 'e',
-    0x0b: 'f', 0x1b: 'g', 0x13: 'h', 0x0a: 'i', 0x1a: 'j',
-    0x05: 'k', 0x07: 'l', 0x0d: 'm', 0x1d: 'n', 0x15: 'o',
-    0x0f: 'p', 0x1f: 'q', 0x17: 'r', 0x0e: 's', 0x1e: 't',
-    0x25: 'u', 0x27: 'v', 0x3a: 'w', 0x2d: 'x', 0x3d: 'y',
+    0x01: 'a',
+    0x03: 'b',
+    0x09: 'c',
+    0x19: 'd',
+    0x11: 'e',
+    0x0b: 'f',
+    0x1b: 'g',
+    0x13: 'h',
+    0x0a: 'i',
+    0x1a: 'j',
+    0x05: 'k',
+    0x07: 'l',
+    0x0d: 'm',
+    0x1d: 'n',
+    0x15: 'o',
+    0x0f: 'p',
+    0x1f: 'q',
+    0x17: 'r',
+    0x0e: 's',
+    0x1e: 't',
+    0x25: 'u',
+    0x27: 'v',
+    0x3a: 'w',
+    0x2d: 'x',
+    0x3d: 'y',
     0x35: 'z',
-    0x02: '1', 0x06: '2', 0x12: '3', 0x32: '4', 0x22: '5',
-    0x16: '6', 0x36: '7', 0x26: '8', 0x14: '9', 0x34: '0',
-    0x00: ' ', 0x28: '.', 0x10: ',', 0x2e: '?', 0x30: '!',
-    0x24: ':', 0x2c: ';', 0x38: '-', 0x0c: "'", 0x20: '"',
-    0x2b: '(', 0x33: ')', 0x2a: '/', 0x3c: '#', 0x3e: '+',
-    0x1c: '*', 0x08: '@', 0x18: '&', 0x31: '=', 0x21: '_',
-    0x29: '$', 0x2f: '%', 0x37: '^', 0x23: '~', 0x39: '<',
-    0x04: '>', 0x3f: '[', 0x3b: ']',
+    0x02: '1',
+    0x06: '2',
+    0x12: '3',
+    0x32: '4',
+    0x22: '5',
+    0x16: '6',
+    0x36: '7',
+    0x26: '8',
+    0x14: '9',
+    0x34: '0',
+    0x00: ' ',
+    0x28: '.',
+    0x10: ',',
+    0x2e: '?',
+    0x30: '!',
+    0x24: ':',
+    0x2c: ';',
+    0x38: '-',
+    0x0c: "'",
+    0x20: '"',
+    0x2b: '(',
+    0x33: ')',
+    0x2a: '/',
+    0x3c: '#',
+    0x3e: '+',
+    0x1c: '*',
+    0x08: '@',
+    0x18: '&',
+    0x31: '=',
+    0x21: '_',
+    0x29: '$',
+    0x2f: '%',
+    0x37: '^',
+    0x23: '~',
+    0x39: '<',
+    0x04: '>',
+    0x3f: '[',
+    0x3b: ']',
   }
 
   return makeUtilTool(
@@ -3267,7 +3404,10 @@ function brailleTool(): Tool {
     {
       type: 'object',
       properties: {
-        text: { type: 'string', description: 'Text containing Braille Unicode characters to decode.' },
+        text: {
+          type: 'string',
+          description: 'Text containing Braille Unicode characters to decode.',
+        },
       },
       required: ['text'],
     },

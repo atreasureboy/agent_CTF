@@ -17,13 +17,8 @@
 
 import { describe, it, expect } from 'vitest'
 
-import {
-  ChallengeConcurrencyPool,
-} from '../src/core/ctfRuntime/challengeConcurrencyPool.js'
-import type {
-  QueuedChallenge,
-  TaskExecutor,
-} from '../src/core/ctfRuntime/challengeConcurrencyPool.js'
+import { ChallengeConcurrencyPool } from '../src/core/ctfRuntime/challengeConcurrencyPool.js'
+import type { TaskExecutor } from '../src/core/ctfRuntime/challengeConcurrencyPool.js'
 
 /** Helper to wait one tick so all queued microtasks settle. */
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
@@ -73,6 +68,7 @@ describe('ChallengeConcurrencyPool — Round-8 executor wiring', () => {
 
   it('waitForAll drains the queue even if spawnNext was never called', async () => {
     const pool = new ChallengeConcurrencyPool(2, {
+      // eslint-disable-next-line @typescript-eslint/require-await
       executor: async () => ({ status: 'solved' as const }),
     })
     pool.addChallenges([
@@ -103,6 +99,7 @@ describe('ChallengeConcurrencyPool — Round-8 executor wiring', () => {
   })
 
   it('rejects duplicate IDs already completed', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
     const executor: TaskExecutor = async () => ({ status: 'solved' as const })
     const pool = new ChallengeConcurrencyPool(2, { executor })
     pool.addChallenge({ id: 'done', title: '', category: 'crypto' })
@@ -146,6 +143,7 @@ describe('ChallengeConcurrencyPool — Round-8 executor wiring', () => {
   it('onCompleted hook fires once per handle', async () => {
     const seen: string[] = []
     const pool = new ChallengeConcurrencyPool(2, {
+      // eslint-disable-next-line @typescript-eslint/require-await
       executor: async (ch) => ({ status: 'solved' as const, flag: `f{${ch.id}}` }),
       onCompleted: (h) => {
         seen.push(h.challenge.id)
@@ -162,6 +160,7 @@ describe('ChallengeConcurrencyPool — Round-8 executor wiring', () => {
 
   it('failed executor auto-marks handle as failed (no manual markCompleted)', async () => {
     const pool = new ChallengeConcurrencyPool(2, {
+      // eslint-disable-next-line @typescript-eslint/require-await
       executor: async () => ({ status: 'failed' as const }),
     })
     pool.addChallenge({ id: 'fail1', title: '', category: 'crypto' })
@@ -178,6 +177,7 @@ describe('ChallengeConcurrencyPool — Round-8 executor wiring', () => {
 
   it('executor throwing is captured (handle marked failed)', async () => {
     const pool = new ChallengeConcurrencyPool(2, {
+      // eslint-disable-next-line @typescript-eslint/require-await
       executor: async () => {
         throw new Error('synthetic boom')
       },

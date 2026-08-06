@@ -42,6 +42,7 @@ import type { AgentModule, ModuleBootResult, ModuleBootContext } from './module.
 import { globalModuleRegistry } from './moduleRegistry.js'
 import { applyAgentToConfig } from './agentPresets.js'
 import { createLinkedAbortController } from './ctfRuntime/linkedAbortController.js'
+import { redactSecrets } from './ctfReasoning/redaction.js'
 import type { ModelCapabilityProfile } from './modelReliability/modelCapability.js'
 import type { ModelExecutionIdentity } from './modelReliability/modelExecutionIdentity.js'
 import { MissingModelInvocationGatewayError } from './modelReliability/errors.js'
@@ -149,14 +150,17 @@ function partitionToolCalls(
   return batches
 }
 
-/** Truncate a tool result to stay within token budget */
+/** Truncate a tool result to stay within token budget.
+ *  §Round-4 — redact secrets before truncation so API keys, JWTs,
+ *  and tokens never reach the LLM context window. */
 function truncateToolResult(result: string): string {
-  if (result.length <= MAX_TOOL_RESULT_LENGTH) return result
+  const clean = redactSecrets(result)
+  if (clean.length <= MAX_TOOL_RESULT_LENGTH) return clean
   const half = MAX_TOOL_RESULT_LENGTH / 2
   return (
-    result.slice(0, half) +
-    `\n\n[... ${result.length - MAX_TOOL_RESULT_LENGTH} chars truncated ...]\n\n` +
-    result.slice(result.length - half)
+    clean.slice(0, half) +
+    `\n\n[... ${clean.length - MAX_TOOL_RESULT_LENGTH} chars truncated ...]\n\n` +
+    clean.slice(clean.length - half)
   )
 }
 
@@ -532,7 +536,9 @@ export class ExecutionEngine {
         ],
         tools: toolDefs,
         temperature: this.config.temperature ?? parseFloat(process.env.OVOGO_TEMPERATURE ?? '0'),
-        maxOutputTokens: this.config.maxOutputTokens ?? (parseInt(process.env.OVOGO_MAX_OUTPUT_TOKENS ?? '8192', 10) || 8192),
+        maxOutputTokens:
+          this.config.maxOutputTokens ??
+          (parseInt(process.env.OVOGO_MAX_OUTPUT_TOKENS ?? '8192', 10) || 8192),
         signal: turnAbortSignal,
       })
     } catch (err: unknown) {
@@ -558,7 +564,8 @@ export class ExecutionEngine {
     const toolCallsMap = new Map<number, StreamingToolCall>()
     let firstToken = true
     let usage:
-      { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
+      | { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+      | undefined
 
     try {
       for await (const chunk of stream) {

@@ -4,6 +4,7 @@
 
 import type { Tool } from '../core/types.js'
 import { BashTool } from './bash.js'
+import { PythonTool } from './python.js'
 import { FileReadTool } from './fileRead.js'
 import { FileWriteTool } from './fileWrite.js'
 import { FileEditTool } from './fileEdit.js'
@@ -20,10 +21,12 @@ import { createCTFTools } from './ctf.js'
 import { createVulnDetectionTools } from './vulnDetection.js'
 import { createCTFUtilTools } from './ctfUtils.js'
 import { createWebExplorerTool } from './webExplorer.js'
+import { createLoadSkillTool } from './loadSkill.js'
 
 export function createTools(extraTools: Tool[] = []): Tool[] {
   return [
     new BashTool(),
+    new PythonTool(),
     new FileReadTool(),
     new FileWriteTool(),
     new FileEditTool(),
@@ -37,6 +40,7 @@ export function createTools(extraTools: Tool[] = []): Tool[] {
     ...makeAllMetaTools(),
     ...createCTFTools(),
     ...createCTFUtilTools(),
+    createLoadSkillTool(new Map()), // CTF path: no skills loaded; tool returns "not found"
     ...createWebExplorerTool(),
     ...createVulnDetectionTools(),
     ...extraTools,
@@ -53,6 +57,7 @@ export function findTool(tools: Tool[], name: string): Tool | undefined {
 
 export {
   BashTool,
+  PythonTool,
   FileReadTool,
   FileWriteTool,
   FileEditTool,

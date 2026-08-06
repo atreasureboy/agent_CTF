@@ -32,7 +32,9 @@ describe('AutoPrompter (B1)', () => {
   it('pwn framing mentions checksec / UAF', async () => {
     const prompter = new TemplateAutoPrompter()
     const out = await prompter.generate({
-      taskId: 't1', category: 'pwn', rawPrompt: '',
+      taskId: 't1',
+      category: 'pwn',
+      rawPrompt: '',
       suggestedActions: [],
     })
     expect(out.framing.toLowerCase()).toContain('checksec')
@@ -41,7 +43,9 @@ describe('AutoPrompter (B1)', () => {
   it('web framing mentions cookies / XSS / SQLi', async () => {
     const prompter = new TemplateAutoPrompter()
     const out = await prompter.generate({
-      taskId: 't1', category: 'web', rawPrompt: '',
+      taskId: 't1',
+      category: 'web',
+      rawPrompt: '',
       suggestedActions: [],
     })
     expect(out.framing.toLowerCase()).toContain('cookies')
@@ -50,7 +54,9 @@ describe('AutoPrompter (B1)', () => {
   it('reverse framing mentions file / strings', async () => {
     const prompter = new TemplateAutoPrompter()
     const out = await prompter.generate({
-      taskId: 't1', category: 'reverse', rawPrompt: '',
+      taskId: 't1',
+      category: 'reverse',
+      rawPrompt: '',
       suggestedActions: [],
     })
     expect(out.framing.toLowerCase()).toContain('strings')
@@ -61,7 +67,9 @@ describe('AutoPrompter (B1)', () => {
       generate: () => Promise.reject(new Error('LLM offline')),
     }
     const out = await safeGenerate(failingPrompter, {
-      taskId: 't1', category: 'misc', rawPrompt: '',
+      taskId: 't1',
+      category: 'misc',
+      rawPrompt: '',
       suggestedActions: [],
     })
     expect(out).toBeUndefined()

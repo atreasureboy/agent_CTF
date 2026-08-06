@@ -90,7 +90,9 @@ function makeEngine(
         ],
         stream: false,
       })
-      const text = res.choices?.[0]?.message?.content || '<summary>The user worked through ten earlier tasks; all completed.</summary>'
+      const text =
+        res.choices?.[0]?.message?.content ||
+        '<summary>The user worked through ten earlier tasks; all completed.</summary>'
       return { rawText: text, value: { summary: text } }
     },
   }
@@ -139,7 +141,7 @@ describe('ExecutionEngine runTurn — error path', () => {
   it('writes an "error" event to the EventLog with the message', async () => {
     const { engine, eventLog } = makeEngine([errorResponse(new Error('boom'))])
     await engine.runTurn('go', [])
-    const errors = eventLog.readAll().filter(e => e.type === 'error')
+    const errors = eventLog.readAll().filter((e) => e.type === 'error')
     expect(errors).toHaveLength(1)
     expect(String(errors[0].detail.error)).toContain('boom')
   })
@@ -160,10 +162,13 @@ describe('ExecutionEngine runTurn — token usage', () => {
 
   it('accumulates usage across multiple LLM calls in one turn', async () => {
     const rec = makeRecordingTool()
-    const { engine } = makeEngine([
-      toolCallResponse([{ name: 'Recorder', arguments: { input: 'a' } }]),
-      textResponse('done', { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 }),
-    ], { extraTools: [rec.tool] })
+    const { engine } = makeEngine(
+      [
+        toolCallResponse([{ name: 'Recorder', arguments: { input: 'a' } }]),
+        textResponse('done', { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 }),
+      ],
+      { extraTools: [rec.tool] },
+    )
     await engine.runTurn('run it', [])
     expect(engine.getTokenUsage().totalTokens).toBe(60) // usage absent on the tool-call leg
   })
@@ -172,15 +177,18 @@ describe('ExecutionEngine runTurn — token usage', () => {
 describe('ExecutionEngine runTurn — tool loop', () => {
   it('executes a requested tool then stops on a text reply', async () => {
     const rec = makeRecordingTool()
-    const { engine } = makeEngine([
-      toolCallResponse([{ name: 'Recorder', arguments: { input: 'hello' } }]),
-      textResponse('all done'),
-    ], { extraTools: [rec.tool] })
+    const { engine } = makeEngine(
+      [
+        toolCallResponse([{ name: 'Recorder', arguments: { input: 'hello' } }]),
+        textResponse('all done'),
+      ],
+      { extraTools: [rec.tool] },
+    )
     const { result, newHistory } = await engine.runTurn('use the tool', [])
     expect(rec.calls).toEqual([{ input: 'hello' }])
     expect(result.reason).toBe('stop_sequence')
     // history: user, assistant(tool_call), tool(result), assistant(text)
-    const roles = newHistory.map(m => m.role)
+    const roles = newHistory.map((m) => m.role)
     expect(roles).toContain('tool')
   })
 })
@@ -189,13 +197,13 @@ describe('ExecutionEngine runTurn — permission gate', () => {
   it('blocks a denied tool and feeds back an error tool_result without executing', async () => {
     const rec = makeRecordingTool()
     const deny = new PermissionChecker('auto', [{ tool: 'Recorder', action: 'deny' }])
-    const { engine } = makeEngine([
-      toolCallResponse([{ name: 'Recorder', arguments: { input: 'x' } }]),
-      textResponse('okay'),
-    ], { extraTools: [rec.tool], permissionChecker: deny })
+    const { engine } = makeEngine(
+      [toolCallResponse([{ name: 'Recorder', arguments: { input: 'x' } }]), textResponse('okay')],
+      { extraTools: [rec.tool], permissionChecker: deny },
+    )
     const { newHistory } = await engine.runTurn('try the tool', [])
     expect(rec.calls).toHaveLength(0) // never executed
-    const toolMsg = newHistory.find(m => m.role === 'tool')
+    const toolMsg = newHistory.find((m) => m.role === 'tool')
     expect(toolMsg).toBeDefined()
     expect(String(toolMsg!.content)).toContain('Permission denied')
   })
@@ -228,7 +236,7 @@ describe('ExecutionEngine runTurn — permission gate', () => {
     )
     const { newHistory } = await engine.runTurn('use it', [])
     expect(rec.calls).toHaveLength(0) // approver said no → never ran
-    const toolMsg = newHistory.find(m => m.role === 'tool')
+    const toolMsg = newHistory.find((m) => m.role === 'tool')
     expect(String(toolMsg!.content)).toContain('denied by user')
   })
 })
@@ -246,7 +254,7 @@ describe('ExecutionEngine runTurn — bad-args self-heal', () => {
     })
     const { newHistory } = await engine.runTurn('call it badly', [])
     expect(rec.calls).toHaveLength(0) // never executed with garbage
-    const toolMsg = newHistory.find(m => m.role === 'tool')
+    const toolMsg = newHistory.find((m) => m.role === 'tool')
     expect(toolMsg).toBeDefined()
     expect(String(toolMsg!.content).toLowerCase()).toMatch(/error|invalid|parse/)
   })
@@ -284,7 +292,9 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
         }) as any
       },
       // eslint-disable-next-line @typescript-eslint/require-await
-      async executeStructured() { return { rawText: 'ok' } },
+      async executeStructured() {
+        return { rawText: 'ok' }
+      },
     }
     const config: EngineConfig = {
       model: 'test-model',
@@ -297,20 +307,20 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       extraTools: [rec.tool],
       client,
       modelGateway: fakeGateway as any,
-        identity: {
-      taskId: 'session',
-      agentRunId: 'agent-1',
-      modelRole: 'deep_solver' as const,
-      modelProfileId: 'test-model',
-      providerId: 'openai-compatible',
-      capabilityProfileId: 'test-model',
-      modelId: 'test-model',
-      solverId: 'agent-1',
-      isOrchestrator: false,
-      isWorkflow: false,
-      isOneShot: false,
-    },
-  }
+      identity: {
+        taskId: 'session',
+        agentRunId: 'agent-1',
+        modelRole: 'deep_solver' as const,
+        modelProfileId: 'test-model',
+        providerId: 'openai-compatible',
+        capabilityProfileId: 'test-model',
+        modelId: 'test-model',
+        solverId: 'agent-1',
+        isOrchestrator: false,
+        isWorkflow: false,
+        isOneShot: false,
+      },
+    }
     const engine = new ExecutionEngine(config, new Renderer())
     // Register the faulty module directly on the engine.
     ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]
@@ -319,7 +329,9 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
     expect(rec.calls).toHaveLength(1)
     const errs = eventLog
       .readAll()
-      .filter((e) => e.type === 'module_error' && (e.detail as { hook?: string }).hook === 'onToolCall')
+      .filter(
+        (e) => e.type === 'module_error' && (e.detail as { hook?: string }).hook === 'onToolCall',
+      )
     expect(errs.length).toBeGreaterThan(0)
     expect(String(errs[0].detail.error)).toContain('boom from onToolCall')
   })
@@ -346,7 +358,9 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
         }) as any
       },
       // eslint-disable-next-line @typescript-eslint/require-await
-      async executeStructured() { return { rawText: 'ok' } },
+      async executeStructured() {
+        return { rawText: 'ok' }
+      },
     }
     const config: EngineConfig = {
       model: 'test-model',
@@ -358,27 +372,29 @@ describe('ExecutionEngine runTurn — module hook errors are swallowed', () => {
       eventLog,
       client,
       modelGateway: fakeGateway as any,
-        identity: {
-      taskId: 'session',
-      agentRunId: 'agent-1',
-      modelRole: 'deep_solver' as const,
-      modelProfileId: 'test-model',
-      providerId: 'openai-compatible',
-      capabilityProfileId: 'test-model',
-      modelId: 'test-model',
-      solverId: 'agent-1',
-      isOrchestrator: false,
-      isWorkflow: false,
-      isOneShot: false,
-    },
-  }
+      identity: {
+        taskId: 'session',
+        agentRunId: 'agent-1',
+        modelRole: 'deep_solver' as const,
+        modelProfileId: 'test-model',
+        providerId: 'openai-compatible',
+        capabilityProfileId: 'test-model',
+        modelId: 'test-model',
+        solverId: 'agent-1',
+        isOrchestrator: false,
+        isWorkflow: false,
+        isOneShot: false,
+      },
+    }
     const engine = new ExecutionEngine(config, new Renderer())
     ;(engine as unknown as { modules: unknown[] }).modules = [faultyModule]
     const { result } = await engine.runTurn('go', [])
     expect(result.reason).toBe('stop_sequence')
     const errs = eventLog
       .readAll()
-      .filter((e) => e.type === 'module_error' && (e.detail as { hook?: string }).hook === 'onIteration')
+      .filter(
+        (e) => e.type === 'module_error' && (e.detail as { hook?: string }).hook === 'onIteration',
+      )
     expect(errs.length).toBeGreaterThan(0)
     expect(String(errs[0].detail.error)).toContain('iteration boom')
   })
@@ -401,7 +417,7 @@ describe('ExecutionEngine runTurn — concurrency actually executes in parallel'
       execute(): Promise<{ content: string; isError: boolean }> {
         tracker.active++
         if (tracker.active > tracker.max) tracker.max = tracker.active
-        return new Promise(resolve =>
+        return new Promise((resolve) =>
           setTimeout(() => {
             tracker.active--
             resolve({ content: `ok:${name}`, isError: false })
@@ -455,15 +471,23 @@ describe('ExecutionEngine runTurn — context compaction', () => {
     // (aggressive strategy keeps 4 recent; needs >= 8 total to proceed).
     const longHistory: { role: 'user' | 'assistant'; content: string }[] = []
     for (let i = 0; i < 10; i++) {
-      longHistory.push({ role: 'user', content: `earlier task number ${i} with plenty of detail `.repeat(4) })
-      longHistory.push({ role: 'assistant', content: `acknowledged task ${i} and did substantial work on it`.repeat(4) })
+      longHistory.push({
+        role: 'user',
+        content: `earlier task number ${i} with plenty of detail `.repeat(4),
+      })
+      longHistory.push({
+        role: 'assistant',
+        content: `acknowledged task ${i} and did substantial work on it`.repeat(4),
+      })
     }
     const preCount = longHistory.length + 1 // +1 for the new user message
 
     // scripts[0] = compaction summarization (non-streaming); scripts[1] = final reply (streaming)
     const { engine, eventLog } = makeEngine(
       [
-        textResponse('<summary>The user worked through ten earlier tasks; all completed.</summary>'),
+        textResponse(
+          '<summary>The user worked through ten earlier tasks; all completed.</summary>',
+        ),
         textResponse('all done'),
       ],
       { maxContextTokens: 100 }, // tiny window → pressure forces aggressive compaction
@@ -471,12 +495,12 @@ describe('ExecutionEngine runTurn — context compaction', () => {
     const { result, newHistory } = await engine.runTurn('next step', longHistory)
 
     // A compaction event was recorded with the strategy + token reduction.
-    const compactions = eventLog.readAll().filter(e => e.type === 'context_compact')
+    const compactions = eventLog.readAll().filter((e) => e.type === 'context_compact')
     expect(compactions.length).toBeGreaterThan(0)
 
     // The compacted history carries the summary marker and is smaller than before.
     const hasSummary = newHistory.some(
-      m => typeof m.content === 'string' && m.content.includes('CONVERSATION SUMMARY'),
+      (m) => typeof m.content === 'string' && m.content.includes('CONVERSATION SUMMARY'),
     )
     expect(hasSummary).toBe(true)
     expect(newHistory.length).toBeLessThan(preCount)

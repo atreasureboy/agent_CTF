@@ -189,9 +189,7 @@ export async function runSolveCommand(
       // answers only the inner answer ("61") and solve.ts can't
       // reconstruct the wrapper.
       const cleanDesc = manifest.description.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
-      const hintBlock = dispatch.categoryHint
-        ? `\n\n${dispatch.categoryHint}`
-        : ''
+      const hintBlock = dispatch.categoryHint ? `\n\n${dispatch.categoryHint}` : ''
       const taskPrompt =
         `${cleanDesc}\n\n` +
         `Solve the challenge. When you find the flag, write it in the ` +
@@ -243,6 +241,7 @@ export async function runSolveCommand(
     // incomplete match. Fall back to scanning findings.jsonl written by
     // the agent's `emit_finding` call, which carries the full flag in
     // its `summary` field without inline-cap.
+    // eslint-disable-next-line no-control-regex
     const stripped = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '')
     // §Round-4c — restrict the inner charset to flag-shaped bytes
     // ([A-Za-z0-9_]). The old `[^}]+` was greedy and ate anything up to
@@ -276,12 +275,15 @@ export async function runSolveCommand(
         )
       })
     if (flagFromFindings) flagCandidates.unshift(flagFromFindings)
-    const flag = flagCandidates.length > 0
-      ? flagCandidates.reduce((best, cur) => (cur.length > best.length ? cur : best))
-      : null
+    const flag =
+      flagCandidates.length > 0
+        ? flagCandidates.reduce((best, cur) => (cur.length > best.length ? cur : best))
+        : null
     if (process.env['SOLVEBENCH_DEBUG_FLAG']) {
       stdout.write(`\n[debug] findingsFlag=${flagFromFindings ?? '(none)'}\n`)
-      stdout.write(`[debug] stdoutCandidates=${flagCandidates.filter((c) => c !== flagFromFindings).join(' | ')}\n`)
+      stdout.write(
+        `[debug] stdoutCandidates=${flagCandidates.filter((c) => c !== flagFromFindings).join(' | ')}\n`,
+      )
     }
     if (!flag) {
       stdout.write(`\n✗ No flag found in output\n`)
@@ -373,17 +375,20 @@ const CATEGORY_HINTS: Record<string, string> = {
     'Hint: this is a forensics challenge. Inspect the attachment with ' +
     'file/strings/binwalk/exiftool and look for hidden payloads (LSB ' +
     'stego, data after IEND, zip-in-zip, alternate streams).',
-  web: 'Hint: this is a web challenge. Try curl/sqlmap/nikto/gobuster; ' +
+  web:
+    'Hint: this is a web challenge. Try curl/sqlmap/nikto/gobuster; ' +
     'look for SQLi, path traversal, SSRF, or known-CMS exploits.',
   reverse:
     'Hint: this is a reverse engineering challenge. Read the binary, ' +
     'run `strings` / `objdump`, then trace logic with gdb or radare2.',
-  pwn: 'Hint: this is a pwn / exploitation challenge. Check the binary ' +
+  pwn:
+    'Hint: this is a pwn / exploitation challenge. Check the binary ' +
     'with file/checksec, find the vuln, then craft a payload with pwntools.',
   pcap:
     'Hint: this is a traffic / pcap challenge. Use tshark / tcpflow / ' +
     'strings on the capture; grep for `flag{` and `picoCTF{` literals.',
-  misc: 'Hint: this is a misc challenge. Read the description carefully; ' +
+  misc:
+    'Hint: this is a misc challenge. Read the description carefully; ' +
     'the answer often involves encoding, conversion, or math.',
 }
 
@@ -447,13 +452,15 @@ function detectDescriptionHint(desc: string): string | null {
         'bytes, classify each, and decode.',
     )
   if (/\bnumbers?\b.*\bdecipher|decipher.*\bnumbers/.test(d) && hints.length === 0)
-    hints.push(
-      'Try simple A1Z26 substitution (1=A, ..., 26=Z) or ROT13.',
-    )
+    hints.push('Try simple A1Z26 substitution (1=A, ..., 26=Z) or ROT13.')
   return hints.length === 0 ? null : 'Domain-specific hints:\n- ' + hints.join('\n- ')
 }
 
-function readAttachment(manifest: SolveBenchManifest, challengeDir: string, name: string): string | null {
+function readAttachment(
+  manifest: SolveBenchManifest,
+  challengeDir: string,
+  name: string,
+): string | null {
   if (!manifest.attachmentPaths?.includes(name)) return null
   const p = resolve(challengeDir, name)
   if (!existsSync(p)) return null
@@ -547,17 +554,16 @@ function extractKnownPlaintextFromDescription(desc: string): {
   cipherHex: string
 } | null {
   const plainMatch = desc.match(/Known\s*plaintext\s*[:=]\s*"?([^\n"]+?)"?\s*(?:\(|$|\n|Known)/i)
-  const encMatch = desc.match(/Known\s*(?:encrypted|cipher(?:text)?)\s*\(?hex\)?\s*[:=]\s*([0-9a-fA-F]+)/i)
+  const encMatch = desc.match(
+    /Known\s*(?:encrypted|cipher(?:text)?)\s*\(?hex\)?\s*[:=]\s*([0-9a-fA-F]+)/i,
+  )
   const plain = plainMatch?.[1]?.trim()
   const enc = encMatch?.[1]?.toLowerCase()
   if (!plain || !enc) return null
   return { plain, cipherHex: enc }
 }
 
-function planSolveDispatch(
-  manifest: SolveBenchManifest,
-  challengeDir: string,
-): SolveDispatchPlan {
+function planSolveDispatch(manifest: SolveBenchManifest, challengeDir: string): SolveDispatchPlan {
   // §Round-4 — chat-mode is the default. The LLM reads the description,
   // inspects attachments, and chooses its own tools via the agent's
   // normal reasoning loop. Hardcoded category→workflow routing only
@@ -588,13 +594,13 @@ function planSolveDispatch(
   // XOR known-plaintext attacks: requires cipher + known_plaintext +
   // known_ciphertext in the challenge description OR as files.
   if (id.includes('xor') || /known.plain.*attack|known.*plain/i.test(manifest.description)) {
-    const cipher = readAttachment(manifest, challengeDir, 'encrypted.hex')
-      ?? readAttachment(manifest, challengeDir, 'ciphertext.hex')
+    const cipher =
+      readAttachment(manifest, challengeDir, 'encrypted.hex') ??
+      readAttachment(manifest, challengeDir, 'ciphertext.hex')
     const fromDesc = extractKnownPlaintextFromDescription(manifest.description)
-    const knownPlain = readAttachment(manifest, challengeDir, 'known.txt')
-      ?? fromDesc?.plain
-    const knownEnc = readAttachment(manifest, challengeDir, 'known_encrypted.hex')
-      ?? fromDesc?.cipherHex
+    const knownPlain = readAttachment(manifest, challengeDir, 'known.txt') ?? fromDesc?.plain
+    const knownEnc =
+      readAttachment(manifest, challengeDir, 'known_encrypted.hex') ?? fromDesc?.cipherHex
     if (cipher && knownPlain && knownEnc) {
       return {
         mode: 'workflow',
@@ -625,12 +631,7 @@ function planSolveDispatch(
         reason: 'crypto aes attack detected — dispatch to aes_ecb_attack workflow',
         profileId,
         workflowId: 'aes_ecb_attack',
-        workflowInputs: [
-          '--text',
-          `TEXT_INPUT=${cipher}`,
-          '--text',
-          `KEY_HEX=${key}`,
-        ],
+        workflowInputs: ['--text', `TEXT_INPUT=${cipher}`, '--text', `KEY_HEX=${key}`],
       }
     }
   }
@@ -641,10 +642,15 @@ function planSolveDispatch(
   // encoding_sweep accepts both TEXT_INPUT (inline) and FILE_INPUT
   // (path). Use description as the inline text fallback (encoding
   // challenges often embed the cipher in the description).
-  if (manifest.category === 'encoding' || id.startsWith('multi_encoding') || id.startsWith('encoding')) {
-    const inlineText = readAttachment(manifest, challengeDir, 'encoded.txt')
-      ?? readAttachment(manifest, challengeDir, 'ciphertext.txt')
-      ?? readAttachment(manifest, challengeDir, 'message.txt')
+  if (
+    manifest.category === 'encoding' ||
+    id.startsWith('multi_encoding') ||
+    id.startsWith('encoding')
+  ) {
+    const inlineText =
+      readAttachment(manifest, challengeDir, 'encoded.txt') ??
+      readAttachment(manifest, challengeDir, 'ciphertext.txt') ??
+      readAttachment(manifest, challengeDir, 'message.txt')
     if (inlineText) {
       return {
         mode: 'workflow',
@@ -663,8 +669,9 @@ function planSolveDispatch(
   //   - archive.zip with embedded file -> forensics_unzip
   if (manifest.category === 'forensics' || id.startsWith('forensics') || id === 'stego_bmp') {
     const hasBmp = manifest.attachmentPaths?.includes('image.bmp')
-    const hasZip = manifest.attachmentPaths?.includes('archive.zip')
-      || manifest.attachmentPaths?.includes('flag.zip')
+    const hasZip =
+      manifest.attachmentPaths?.includes('archive.zip') ||
+      manifest.attachmentPaths?.includes('flag.zip')
     const hasPng = manifest.attachmentPaths?.includes('image.png')
     if (hasBmp) {
       const bmpPath = resolve(challengeDir, 'image.bmp')
@@ -691,9 +698,7 @@ function planSolveDispatch(
       }
     }
     if (hasZip) {
-      const zipName = manifest.attachmentPaths?.find(
-        (p) => p.endsWith('.zip'),
-      )
+      const zipName = manifest.attachmentPaths?.find((p) => p.endsWith('.zip'))
       if (zipName) {
         const zipPath = resolve(challengeDir, zipName)
         if (existsSync(zipPath)) {
@@ -748,14 +753,7 @@ function planSolveDispatch(
         reason: 'RSA challenge detected — dispatch to rsa_wiener_attack workflow',
         profileId,
         workflowId: 'rsa_wiener_attack',
-        workflowInputs: [
-          '--text',
-          `N=${nStr}`,
-          '--text',
-          `E=${eStr}`,
-          '--text',
-          `C=${cStr}`,
-        ],
+        workflowInputs: ['--text', `N=${nStr}`, '--text', `E=${eStr}`, '--text', `C=${cStr}`],
       }
     }
   }
@@ -790,12 +788,7 @@ function planSolveDispatch(
           reason: 'web1 directory-traversal detected — dispatch to web_shell_fetch workflow',
           profileId,
           workflowId: 'web_shell_fetch',
-          workflowInputs: [
-            '--text',
-            `URL=${url}`,
-            '--text',
-            'METHOD=GET',
-          ],
+          workflowInputs: ['--text', `URL=${url}`, '--text', 'METHOD=GET'],
         }
       }
     }
@@ -828,9 +821,7 @@ function planSolveDispatch(
     (manifest.category === 'pwn' || manifest.category === 'reverse') &&
     /pwn\d+|pwn_overflow/i.test(manifest.id)
   ) {
-    const binName = manifest.attachmentPaths?.find((p) =>
-      /^(vuln|checker|server)/.test(p),
-    )
+    const binName = manifest.attachmentPaths?.find((p) => /^(vuln|checker|server)/.test(p))
     if (binName) {
       const binPath = resolve(challengeDir, binName)
       if (existsSync(binPath)) {
@@ -849,7 +840,10 @@ function planSolveDispatch(
   // every byte; the tool extracts the .data section and tries all
   // 256 keys, returning the candidate that produces a flag-shaped
   // plaintext.
-  if (manifest.id === 'reverse1' || /single.byte.*xor|brute.force.*key/i.test(manifest.description)) {
+  if (
+    manifest.id === 'reverse1' ||
+    /single.byte.*xor|brute.force.*key/i.test(manifest.description)
+  ) {
     const binName = manifest.attachmentPaths?.find((p) => /^checker/.test(p))
     if (binName) {
       const binPath = resolve(challengeDir, binName)
@@ -895,7 +889,10 @@ function planSolveDispatch(
   // which inverts the encryption by extracting the 16-byte .rodata
   // target + the 8-byte movabs immediate operand and applying the
   // inverse of the encrypt function.
-  if (manifest.id === 'reverse_elf' || /bit.*rotat|rol.*xor|custom.*encrypt/i.test(manifest.description)) {
+  if (
+    manifest.id === 'reverse_elf' ||
+    /bit.*rotat|rol.*xor|custom.*encrypt/i.test(manifest.description)
+  ) {
     const binName = manifest.attachmentPaths?.find((p) => /^checker$/.test(p))
     if (binName) {
       const binPath = resolve(challengeDir, binName)
@@ -983,9 +980,7 @@ const invokedDirectly = (() => {
 if (invokedDirectly) {
   const challengePath = process.argv[2]
   if (!challengePath) {
-    process.stderr.write(
-      'usage: solve <challenge.json>  [-- one-shot flags accepted]\n',
-    )
+    process.stderr.write('usage: solve <challenge.json>  [-- one-shot flags accepted]\n')
     process.exitCode = 1
   } else {
     runSolveCommand(challengePath, {

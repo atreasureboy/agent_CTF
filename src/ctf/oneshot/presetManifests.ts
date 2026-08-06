@@ -18,7 +18,16 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     },
     runner: {
       type: 'process',
-      command: ['python3', 'oneshot/scripts/crypto_rsa_small_e.py', '--n', '${n}', '--e', '${e}', '--c', '${c}'],
+      command: [
+        'python3',
+        'oneshot/scripts/crypto_rsa_small_e.py',
+        '--n',
+        '${n}',
+        '--e',
+        '${e}',
+        '--c',
+        '${c}',
+      ],
     },
     resources: {
       timeoutSeconds: 10,
@@ -50,7 +59,17 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     enabledByDefault: true,
     allowedProfiles: ['crypto', 'default'],
     inputMatchers: {
-      taskTags: ['encoding', 'cipher', 'base64', 'decode', 'encoded', 'rot13', 'hex', 'base32', 'base85'],
+      taskTags: [
+        'encoding',
+        'cipher',
+        'base64',
+        'decode',
+        'encoded',
+        'rot13',
+        'hex',
+        'base32',
+        'base85',
+      ],
       taskCategories: ['crypto'],
     },
     runner: {
@@ -226,8 +245,7 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     id: 'general-flag-extract',
     displayName: 'General Flag Pattern Scanner',
     category: 'forensics',
-    description:
-      'Scans files or text for 15+ CTF flag patterns including Chinese CTF formats.',
+    description: 'Scans files or text for 15+ CTF flag patterns including Chinese CTF formats.',
     source: {
       repository: 'https://github.com/ovogogogo/agent_CTF',
     },
@@ -235,7 +253,18 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     enabledByDefault: true,
     allowedProfiles: ['forensics', 'reverse', 'default'],
     inputMatchers: {
-      extensions: ['.txt', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.bin', '.zip', '.pcap', '.pcapng'],
+      extensions: [
+        '.txt',
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.bmp',
+        '.bin',
+        '.zip',
+        '.pcap',
+        '.pcapng',
+      ],
       taskTags: ['flag', 'forensics', 'file', 'attachment', 'download'],
     },
     runner: {
@@ -252,7 +281,9 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     },
     output: {
       parser: 'regex',
-      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|DASCTF\\{[^}]+\\}|XHLJ\\{[^}]+\\}|key\\{[^}]+\\})'],
+      flagPatterns: [
+        '(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|DASCTF\\{[^}]+\\}|XHLJ\\{[^}]+\\}|key\\{[^}]+\\})',
+      ],
     },
     scheduling: {
       costTier: 'fast',
@@ -289,7 +320,9 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
     },
     output: {
       parser: 'regex',
-      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|DASCTF\\{[^}]+\\}|XHLJ\\{[^}]+\\}|key\\{[^}]+\\})'],
+      flagPatterns: [
+        '(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|DASCTF\\{[^}]+\\}|XHLJ\\{[^}]+\\}|key\\{[^}]+\\})',
+      ],
     },
     scheduling: {
       costTier: 'medium',

@@ -43,10 +43,17 @@ interface ParsedEvent {
 function readEvents(taskDir: string): ParsedEvent[] {
   const p = join(taskDir, 'events.ndjson')
   if (!existsSync(p)) return []
-  return readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  return readFileSync(p, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l))
 }
 
-function findEvent(events: ParsedEvent[], predicate: (e: ParsedEvent) => boolean): ParsedEvent | undefined {
+function findEvent(
+  events: ParsedEvent[],
+  predicate: (e: ParsedEvent) => boolean,
+): ParsedEvent | undefined {
   return events.find(predicate)
 }
 
@@ -75,7 +82,10 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
 
     // 2. Audit trail (grep-able)
     const evts = readEvents(h.taskWorkspace.paths.root)
-    const perm = findEvent(evts, (e) => e.type === 'permission' && (e.tags?.includes('nmap') ?? false))
+    const perm = findEvent(
+      evts,
+      (e) => e.type === 'permission' && (e.tags?.includes('nmap') ?? false),
+    )
     expect(perm).toBeDefined()
     expect(perm?.source).toBe('broker')
     expect((perm?.detail as { decision: string }).decision).toBe('deny')
@@ -107,10 +117,12 @@ describe('Code Review — Broker rejection paths are explainable + auditable', (
 
     // Audit trail — bash-policy emits a permission event with command, reason, profile
     const evts = readEvents(h.taskWorkspace.paths.root)
-    const perm = findEvent(evts, (e) =>
-      e.type === 'permission' &&
-      e.source === 'bash-policy' &&
-      (e.detail as { command?: string }).command === 'nmap'
+    const perm = findEvent(
+      evts,
+      (e) =>
+        e.type === 'permission' &&
+        e.source === 'bash-policy' &&
+        (e.detail as { command?: string }).command === 'nmap',
     )
     expect(perm).toBeDefined()
     expect((perm?.detail as { decision: string }).decision).toBe('deny')
@@ -347,7 +359,11 @@ describe('Code Review — HandoffRequest creates a discoverable event', () => {
       },
     }
     const r = await metaTool!.execute(
-      { suggestedAgent: 'file-forensics', reason: 'png has zip', objective: 'extract and submit finding' },
+      {
+        suggestedAgent: 'file-forensics',
+        reason: 'png has zip',
+        objective: 'extract and submit finding',
+      },
       ctx,
     )
     expect(r.isError).not.toBe(true)

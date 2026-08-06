@@ -8,7 +8,12 @@ export interface BannedActionCheckResult {
 export interface ModelRoleResolverInput {
   capabilityProfileId: string
   agentKind:
-    'orchestrator' | 'main-agent' | 'specialist' | 'solver' | 'summarizer' | 'flag-discriminator'
+    | 'orchestrator'
+    | 'main-agent'
+    | 'specialist'
+    | 'solver'
+    | 'summarizer'
+    | 'flag-discriminator'
 
   workflowId?: string
   specialistId?: string

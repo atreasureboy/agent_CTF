@@ -17,17 +17,24 @@ describe('ContextCompiler Suite', () => {
     objective: 'Extract flag from binary',
     scopeSummary: 'Target host 127.0.0.1:8080 only',
     evidences: [
-      { id: 'ev_1', title: 'HTTP 200', factSummary: 'Server runs Nginx', confidence: 0.9, confirmed: true },
+      {
+        id: 'ev_1',
+        title: 'HTTP 200',
+        factSummary: 'Server runs Nginx',
+        confidence: 0.9,
+        confirmed: true,
+      },
     ],
-    hypotheses: [
-      { id: 'hyp_1', title: 'SQL Injection in /login', status: 'active' as const },
-    ],
+    hypotheses: [{ id: 'hyp_1', title: 'SQL Injection in /login', status: 'active' as const }],
     attempts: [
-      { id: 'att_1', actionSummary: 'GET /login?user=admin', fingerprint: 'fp_sql_1', outcome: 'failed' },
+      {
+        id: 'att_1',
+        actionSummary: 'GET /login?user=admin',
+        fingerprint: 'fp_sql_1',
+        outcome: 'failed',
+      },
     ],
-    artifacts: [
-      { id: 'art_1', path: '/tmp/app.py', description: 'web app source code' },
-    ],
+    artifacts: [{ id: 'art_1', path: '/tmp/app.py', description: 'web app source code' }],
     allowedToolIds: ['http_request', 'python_exec'],
   }
 
@@ -66,7 +73,11 @@ describe('ContextCompiler Suite', () => {
   })
 
   it('restricts Specialist context to domain relevant items', () => {
-    const specialist = SpecialistContextCompiler.compileSpecialistContext(sampleInput, 'web', 'gpt-4o')
+    const specialist = SpecialistContextCompiler.compileSpecialistContext(
+      sampleInput,
+      'web',
+      'gpt-4o',
+    )
     expect(specialist.renderedText).toContain('SPECIALIST BRIEF: WEB')
   })
 })
