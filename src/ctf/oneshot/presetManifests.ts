@@ -329,4 +329,126 @@ export const PRESET_ONESHOT_MANIFESTS: OneShotManifest[] = [
       falsePositiveRisk: 'low',
     },
   },
+  {
+    id: 'classical-cipher-sweep',
+    displayName: 'Classical Cipher Sweep',
+    category: 'crypto',
+    description:
+      'Instantly tries all common classical ciphers: ROT1-25, Atbash, Vigenere, Bacon, Rail Fence, Morse, A1Z26.',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
+    maturity: 'stable',
+    enabledByDefault: true,
+    allowedProfiles: ['crypto', 'encoding', 'default'],
+    inputMatchers: {
+      taskTags: [
+        'cipher',
+        'classical',
+        'decrypt',
+        'decode',
+        'rot',
+        'caesar',
+        'substitution',
+        'vigenere',
+        'atbash',
+        'morse',
+      ],
+      taskCategories: ['crypto', 'encoding'],
+    },
+    runner: {
+      type: 'process',
+      command: ['python3', 'oneshot/scripts/classical_cipher_sweep.py', '--input', '${input}'],
+    },
+    resources: {
+      timeoutSeconds: 10,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|picoCTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'low',
+    },
+  },
+  {
+    id: 'xor-bruteforce',
+    displayName: 'XOR Bruteforce Solver',
+    category: 'crypto',
+    description: 'Bruteforces single-byte and multi-byte XOR keys with English frequency scoring.',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
+    maturity: 'stable',
+    enabledByDefault: true,
+    allowedProfiles: ['crypto', 'reverse', 'default'],
+    inputMatchers: {
+      taskTags: ['xor', 'xored', 'exclusive', 'byte', 'key', 'encrypted'],
+      taskCategories: ['crypto', 'reverse'],
+    },
+    runner: {
+      type: 'process',
+      command: ['python3', 'oneshot/scripts/xor_bruteforce.py', '--hex', '${hex}'],
+    },
+    resources: {
+      timeoutSeconds: 15,
+      maxOutputBytes: 50000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|picoCTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'fast',
+      falsePositiveRisk: 'medium',
+    },
+  },
+  {
+    id: 'archive-recursive',
+    displayName: 'Archive Recursive Extractor',
+    category: 'forensics',
+    description:
+      'Recursively extracts nested archives (zip in zip in tar, etc.) and searches for flags.',
+    source: {
+      repository: 'https://github.com/ovogogogo/agent_CTF',
+    },
+    maturity: 'stable',
+    enabledByDefault: true,
+    allowedProfiles: ['forensics', 'file-forensics', 'default'],
+    inputMatchers: {
+      extensions: ['.zip', '.tar', '.gz', '.bz2', '.xz', '.7z', '.rar', '.jar'],
+      taskTags: ['archive', 'zip', 'nested', 'matryoshka', 'dolls', 'extract', 'compress'],
+      taskCategories: ['forensics'],
+    },
+    runner: {
+      type: 'process',
+      command: ['python3', 'oneshot/scripts/archive_recursive.py', '--file', '${filePath}'],
+    },
+    resources: {
+      timeoutSeconds: 60,
+      maxOutputBytes: 100000,
+    },
+    network: {
+      mode: 'none',
+      requiresScopeApproval: false,
+    },
+    output: {
+      parser: 'regex',
+      flagPatterns: ['(flag\\{[^}]+\\}|CTF\\{[^}]+\\}|picoCTF\\{[^}]+\\})'],
+    },
+    scheduling: {
+      costTier: 'medium',
+      falsePositiveRisk: 'low',
+    },
+  },
 ]
