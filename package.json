@@ -48,6 +48,10 @@
   "files": [
     "dist/bin",
     "dist/src",
+    "oneshot/manifests",
+    "oneshot/scripts",
+    "src/knowledge",
+    ".env.example",
     "README.md",
     "AUDIT.md",
     "LICENSE"

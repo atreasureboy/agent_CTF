@@ -18,8 +18,10 @@
  * objects.
  */
 
-import { resolve } from 'path'
+import { resolve, join } from 'path'
 import { existsSync, readFileSync } from 'fs'
+
+import { locateAssetFromModule } from './assetPaths.js'
 
 import { ExecutionEngine } from './engine.js'
 import type { Renderer } from '../ui/renderer.js'
@@ -211,8 +213,11 @@ const PROFILE_KNOWLEDGE_FILES: Record<string, string[]> = {
 
 function loadKnowledgeContext(cwd: string, profileId: string): string {
   try {
-    const dir = resolve(cwd, 'src', KNOWLEDGE_DIR_NAME)
-    if (!existsSync(dir)) return ''
+    const cwdDir = resolve(cwd, 'src', KNOWLEDGE_DIR_NAME)
+    const dir = existsSync(cwdDir)
+      ? cwdDir
+      : locateAssetFromModule(import.meta.url, join('src', KNOWLEDGE_DIR_NAME))
+    if (!dir || !existsSync(dir)) return ''
     const wanted =
       PROFILE_KNOWLEDGE_FILES[profileId] ?? PROFILE_KNOWLEDGE_FILES['orchestrator'] ?? []
     const files = wanted.slice(0, KNOWLEDGE_MAX_FILES)

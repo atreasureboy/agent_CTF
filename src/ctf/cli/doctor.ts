@@ -12,6 +12,7 @@
 
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { locateAssetFromModule } from '../../core/assetPaths.js'
 import {
   HealthChecker,
   formatDoctor,
@@ -42,7 +43,12 @@ export async function runDoctorCommand(argv: string[], deps: DoctorDeps): Promis
 
   // 2. Optional: oneshot manifest health.
   if (showOneshot) {
-    const manifestsDir = deps.manifestsDir ?? join(cwd, 'oneshot', 'manifests')
+    const cwdManifestsDir = join(cwd, 'oneshot', 'manifests')
+    const manifestsDir =
+      deps.manifestsDir ??
+      (existsSync(cwdManifestsDir)
+        ? cwdManifestsDir
+        : locateAssetFromModule(import.meta.url, join('oneshot', 'manifests')))
     const catalog = globalOneShotCatalog
     // eslint-disable-next-line
     catalog.invalidList().length // accessed to suppress unused warning

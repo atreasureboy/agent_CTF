@@ -14,6 +14,8 @@ import {
   formatDoctor,
 } from '../oneshot/index.js'
 import { join } from 'path'
+import { existsSync } from 'fs'
+import { locateAssetFromModule } from '../../core/assetPaths.js'
 
 export interface OneshotDeps {
   stdout: NodeJS.WritableStream
@@ -25,7 +27,12 @@ export async function runOneshotCommand(argv: string[], deps: OneshotDeps): Prom
   const { stdout } = deps
   const sub = argv[0]
   const cwd = process.cwd()
-  const manifestsDir = deps.manifestsDir ?? join(cwd, 'oneshot', 'manifests')
+  const cwdManifestsDir = join(cwd, 'oneshot', 'manifests')
+  const manifestsDir =
+    deps.manifestsDir ??
+    (existsSync(cwdManifestsDir)
+      ? cwdManifestsDir
+      : locateAssetFromModule(import.meta.url, join('oneshot', 'manifests')))
 
   if (sub === 'list') {
     const catalog = globalOneShotCatalog

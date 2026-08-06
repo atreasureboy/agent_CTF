@@ -1107,3 +1107,40 @@ CI 工作流静态审查 + 仓库卫生（secrets、tracked artifacts、LICENSE�
 | `pnpm test:coverage`             | ✅ 退出码 0（lines 54.53% / branches 43.26% 达标） |
 | `pnpm audit`                     | ✅ **0 known vulnerabilities**                     |
 | `pnpm install --frozen-lockfile` | ✅ lockfile 一致                                   |
+
+---
+
+## §23 · 第六次全面审计复核 — 2026-08-06 (v0.6.0 · 打包资产 & 随处可运行)
+
+### 审计范围
+
+对"发布可用性"做专项审计：`npm pack --dry-run` 产物清单 ×
+运行时资产解析路径（`oneshot/manifests`、`src/knowledge`）交叉比对，
+外加脚本卫生（`bash -n`、`py_compile`）、遗留项复核、tsconfig 孤儿检查。
+
+### 本轮发现与修复
+
+| #   | 严重级 | 发现                                                                                                                                                                                                                                                                                                  | 修复                                                                                                                                                                                                                                                                                                 |
+| --- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 🟠 MED | **npm 包缺资产**：`package.json#files` 只含 dist + 文档，`oneshot/{manifests,scripts}` 与 `src/knowledge` 不随包发布；且三处运行时（`createCTFTaskRuntime`、`cli/oneshot`、`cli/doctor`）+ 知识库加载（`harness`）只从 **cwd** 解析资产 → 全局安装或换目录运行即"oneshot 目录为空 / 知识库静默丢失"。 | ① 新增 `src/core/assetPaths.ts`：锚定调用模块目录、向上最多 4 级探测的资产定位器（覆盖 src/ 与 dist/ 全部模块深度）；② 四处解析点改为 **cwd 优先 + 包内资产回退**（catalog upsert → cwd 同 id 覆盖包内版）；③ `files` 增列 `oneshot/manifests`、`oneshot/scripts`、`src/knowledge`、`.env.example`。 |
+| 2   | 🟡 LOW | 上述行为无测试保护。                                                                                                                                                                                                                                                                                  | 新增 `tests/assetPaths.test.ts`（候选序、深度 0–4、缺失返回 ''、真实仓库布局解析）；并在空目录实测 `dist/bin/ovogogogo-ctf.js oneshot list` → **accepted 16**（修复前为 0）。                                                                                                                        |
+| 3   | 🟡 LOW | README 测试计数滞后（94/819）。                                                                                                                                                                                                                                                                       | 更新为实测 95 files / 824 tests。                                                                                                                                                                                                                                                                    |
+
+### 复核确认（无需动作）
+
+- `setup.sh` / `start.sh` `bash -n` 通过；`oneshot/scripts/*.py` + `bench/**/*.py` `py_compile` 全过。
+- `tests/UPSTREAM.md` 已存在（§19 遗留项 H9 实际早已关闭）。
+- §19 遗留项 H4（dual MCP）/ A11（console.error 诊断）维持低优先级判定：均为有意为之的运行时诊断面，无功能缺陷。
+- secret 扫描：仍仅命中脱敏测试夹具。
+
+### 当前质量门禁 (v0.6.0 实测)
+
+| 检查项                          | 结果                                                  |
+| ------------------------------- | ----------------------------------------------------- |
+| `pnpm run format:check`         | ✅ 全部符合 Prettier                                  |
+| `pnpm run lint`                 | ✅ 0 errors（304 type-safety warnings，已知/接受）    |
+| `pnpm run build`                | ✅ 成功                                               |
+| `pnpm test`                     | ✅ 95/95 files, 824/824 tests                         |
+| `pnpm test:coverage`            | ✅ 退出码 0（lines 54.62% / branches 43.32%）         |
+| `npm pack --dry-run` 资产完整性 | ✅ oneshot(26) + src/knowledge(5) + .env.example 随包 |
+| 空目录 E2E：`oneshot list`      | ✅ accepted 16（包内回退生效）                        |

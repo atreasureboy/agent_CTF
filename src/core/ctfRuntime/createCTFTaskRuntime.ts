@@ -66,6 +66,7 @@ import { runnerFor } from '../../ctf/oneshot/runner.js'
 import { OneShotRegistry } from '../../ctf/oneshot/registry.js'
 import { OneShotCatalog } from '../../ctf/oneshot/catalog.js'
 import { loadManifestsFromDir } from '../../ctf/oneshot/manifestLoader.js'
+import { locateAssetFromModule } from '../assetPaths.js'
 import {
   ChallengeConcurrencyPool,
   type QueuedChallenge,
@@ -409,11 +410,16 @@ export async function createCTFTaskRuntime(
   const runnerRegistry = new BackgroundJobRunnerRegistryImpl()
 
   const oneShotCatalog = new OneShotCatalog()
-  const manifestsRoot = `${cwd}/oneshot/manifests`
-  try {
-    loadManifestsFromDir(manifestsRoot, oneShotCatalog)
-  } catch {
-    /* best-effort */
+  // Load the manifests bundled with the package first, then overlay the
+  // cwd-local catalog (upsert semantics → operator cwd wins on id clash).
+  const bundledManifestsDir = locateAssetFromModule(import.meta.url, join('oneshot', 'manifests'))
+  for (const dir of [bundledManifestsDir, join(cwd, 'oneshot', 'manifests')]) {
+    if (!dir) continue
+    try {
+      loadManifestsFromDir(dir, oneShotCatalog)
+    } catch {
+      /* best-effort */
+    }
   }
   const oneShotRegistry = new OneShotRegistry(oneShotCatalog)
 
