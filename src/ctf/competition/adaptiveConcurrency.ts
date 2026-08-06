@@ -121,5 +121,6 @@ export class AdaptiveConcurrencyController {
     this.successWindow.length = 0
     this.totalSolved = 0
     this.totalFailed = 0
+    this.currentConcurrency = this.minConcurrency
   }
 }

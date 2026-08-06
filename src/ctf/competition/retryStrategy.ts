@@ -48,13 +48,16 @@ export const CATEGORY_RETRY_PROFILES: Record<string, string[]> = {
 
 /**
  * Get the retry chain for a category.
- * The initial profile is skipped (it was already attempted).
+ * The first entry (the initial profile) is excluded — it was already
+ * attempted by the caller. Only ALTERNATIVE profiles are returned.
  * If `retryOn` specifies 'no_flag_found', runMainAgent returning
  * successfully but without a flag also triggers retry.
  */
 export function getRetryProfiles(category: string): string[] {
   const normalized = category.toLowerCase()
-  return CATEGORY_RETRY_PROFILES[normalized] ?? ['triage']
+  const chain = CATEGORY_RETRY_PROFILES[normalized] ?? ['triage']
+  // Skip the first profile (already the initial attempt)
+  return chain.slice(1)
 }
 
 /**

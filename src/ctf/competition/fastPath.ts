@@ -125,8 +125,13 @@ export async function runFastPath(
           }
         }
       }
-    } catch {
-      // Manifest failed — continue to next one
+    } catch (err) {
+      // Manifest failed — log and continue to next one
+      // eslint-disable-next-line no-console
+      console.error(
+        `[fast-path] manifest ${manifestId} failed:`,
+        (err as Error)?.message ?? String(err),
+      )
       continue
     }
   }

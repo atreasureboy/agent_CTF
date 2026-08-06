@@ -468,6 +468,8 @@ export async function createCTFTaskRuntime(
       if (jobUnsub) jobUnsub()
       healthStore.dispose()
       await trajectoryRecorder.dispose()
+      // §Round-5 — Clear cross-challenge cache to free memory
+      crossCache.clear()
     }
   }
 
@@ -516,7 +518,21 @@ export async function createCTFTaskRuntime(
     const result = await taskRuntime.orchestrator.runMainAgent(taskDesc)
     if (result.status !== 'completed') return undefined
     const state = taskRuntime.orchestrator.store.getState()
-    const extraction = flagExtractionPipeline.extract(state)
+
+    // Build pseudo-stdout from agent observations & run summaries so the
+    // stdout regex pass (Pass 1) can find flags in agent output text.
+    const agentTexts: string[] = []
+    for (const obs of state.observations ?? []) {
+      const text = (obs as unknown as Record<string, unknown>).text
+      if (typeof text === 'string' && text.length > 0) agentTexts.push(text)
+    }
+    for (const run of state.agentRuns ?? []) {
+      const summary = (run as unknown as Record<string, unknown>).resultSummary
+      if (typeof summary === 'string' && summary.length > 0) agentTexts.push(summary)
+    }
+    const pseudoStdout = agentTexts.join('\n') || undefined
+
+    const extraction = flagExtractionPipeline.extract(state, pseudoStdout)
     if (extraction.best && extraction.best.confidence >= 0.55) {
       return extraction.best.value
     }
@@ -557,7 +573,12 @@ export async function createCTFTaskRuntime(
               )
               return { status: 'solved', flag: fastResult.flag }
             }
-          } catch {
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error(
+              '[competition] cached fast-path error:',
+              (err as Error)?.message ?? String(err),
+            )
             /* fall through */
           }
         }
@@ -589,7 +610,12 @@ export async function createCTFTaskRuntime(
             return { status: 'solved', flag: fastResult.flag }
           }
           // Fast path didn't find a flag — fall through to LLM
-        } catch {
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error(
+            '[competition] classification fast-path error:',
+            (err as Error)?.message ?? String(err),
+          )
           /* fall through */
         }
       }
@@ -599,10 +625,15 @@ export async function createCTFTaskRuntime(
       const deadline = Date.now() + retryConfig.deadlineMs
       const initialProfile = getProfile(challenge.category)
 
+      // Filter retry profiles to exclude the initial profile (avoids duplicate
+      // attempts when getProfile() returns a profile that is also in the
+      // category's retry chain).
+      const alternateProfiles = retryConfig.retryProfiles.filter((p) => p !== initialProfile)
+
       for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
         if (Date.now() > deadline || signal.aborted) break
 
-        const profileId = attempt === 0 ? initialProfile : retryConfig.retryProfiles[attempt - 1]
+        const profileId = attempt === 0 ? initialProfile : alternateProfiles[attempt - 1]
         if (!profileId) break
 
         const taskId = `task_${challenge.id}_${Date.now()}`
@@ -643,10 +674,21 @@ export async function createCTFTaskRuntime(
           if (attempt > 0) {
             crossCache.recordFailure(profileId)
           }
-        } catch {
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[competition] retry attempt ${attempt} (${profileId}) failed:`,
+            (err as Error)?.message ?? String(err),
+          )
           crossCache.recordFailure(profileId)
         } finally {
           await taskRuntime.dispose()
+
+          // §Round-4 — Apply delay between retry attempts
+          const delay = retryConfig.retryDelayMs
+          if (delay > 0 && attempt < retryConfig.maxRetries) {
+            await new Promise((r) => setTimeout(r, delay))
+          }
         }
       }
 
@@ -724,9 +766,15 @@ export async function createCTFTaskRuntime(
       if (handle.status === 'solved') {
         solved.push({ taskId: handle.challenge.id, flag: handle.foundFlag ?? 'unknown' })
       } else {
+        const reason =
+          handle.status === 'failed'
+            ? 'execution failed'
+            : handle.status === 'timeout'
+              ? 'timed out'
+              : 'unknown'
         failed.push({
           taskId: handle.challenge.id,
-          reason: handle.status === 'failed' ? 'execution failed' : 'unknown',
+          reason,
         })
       }
     }

@@ -274,7 +274,8 @@ describe('RetryStrategy', () => {
   it('maps category to retry profile chain', () => {
     expect(getRetryProfiles('crypto')).toContain('triage')
     expect(getRetryProfiles('pwn')).toContain('reverse')
-    expect(getRetryProfiles('unknown_cat')).toEqual(['triage'])
+    // After slice(1): unknown_cat chain ['triage'] → [] (no alternatives for unknown)
+    expect(getRetryProfiles('unknown_cat')).toEqual([])
   })
 
   it('all known categories have retry profiles', () => {

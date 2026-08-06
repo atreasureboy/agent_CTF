@@ -49,6 +49,9 @@ interface ToolStats {
   totalSuccessTimeMs: number
 }
 
+/** Cap on solvedPatterns to prevent unbounded growth in large batches. */
+const MAX_PATTERNS = 500
+
 export class CrossChallengeCache {
   /** Successful solve patterns, keyed by category + keyword intersection. */
   private solvedPatterns: PatternRecord[] = []
@@ -76,6 +79,12 @@ export class CrossChallengeCache {
       path,
       recordedAt: Date.now(),
     })
+
+    // §Audit — Evict oldest patterns when we exceed the cap (FIFO).
+    // This prevents unbounded growth during very large competition batches.
+    while (this.solvedPatterns.length > MAX_PATTERNS) {
+      this.solvedPatterns.shift()
+    }
     this.totalRecorded++
 
     // Update tool stats

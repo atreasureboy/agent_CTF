@@ -196,10 +196,14 @@ export class CTFPlatformAdapter {
           message: res.message,
         }
       case 'already_submitted':
+        // CTFd status 'already_solved' means the flag was correct — the
+        // challenge was already solved. Report as accepted so the upstream
+        // solver counts it as a win.
         return {
-          status: 'rejected',
-          accepted: false,
-          message: res.message,
+          status: 'accepted',
+          accepted: true,
+          message: `[Already submitted] ${res.message}`,
+          points: res.points ?? 100,
         }
       case 'rate_limited':
         return {
