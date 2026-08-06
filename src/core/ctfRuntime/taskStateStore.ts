@@ -29,6 +29,7 @@ import {
   type CTFTaskPhase,
   type CTFTaskState,
   type HandoffRecord,
+  type TaskDiagnostic,
 } from './taskState.js'
 import { combineIndependentConfidences } from '../ctfReasoning/evidence.js'
 import type { CTFTaskEvent, TaskStateListener, Unsubscribe } from './taskEvents.js'
@@ -231,6 +232,7 @@ export class CTFTaskStateStore {
         'PENDING_ACTION_ADDED',
         'PENDING_ACTION_STATUS_CHANGED',
         'REASONING_BUDGET_CONSUMED',
+        'DIAGNOSTIC_ADDED',
         'REASONING_FAILED',
         'FLAG_CANDIDATE_DETECTED',
         'FLAG_CANDIDATE_VALIDATED',
@@ -761,6 +763,26 @@ export function reduceInternal(state: CTFTaskState, event: CTFTaskEvent): CTFTas
 
     case 'REASONING_BUDGET_CONSUMED': {
       return { ...state, reasoningBudget: event.snapshot }
+    }
+
+    case 'DIAGNOSTIC_ADDED': {
+      // §Audit v0.2.0 — non-failure diagnostic record. Unlike
+      // REASONING_FAILED this does NOT mark the runtime as degraded.
+      // Used for informational diagnostics (LMSummarizer output,
+      // AutoPrompter framing, etc.) that should be in the audit log
+      // but are not subsystem failures.
+      return {
+        ...state,
+        diagnostics: [
+          ...state.diagnostics,
+          {
+            kind: event.kind as TaskDiagnostic['kind'],
+            source: event.source as TaskDiagnostic['source'],
+            message: event.message,
+            at: event.at,
+          },
+        ],
+      }
     }
 
     case 'REASONING_FAILED': {

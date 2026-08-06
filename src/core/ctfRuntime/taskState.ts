@@ -87,6 +87,8 @@ export interface TaskDiagnostic {
     | 'one_shot_cleanup_window'
     | 'lock_deadlock_avoided'
     | 'task_degraded'
+    | 'lm_summary'
+    | 'auto_prompt'
   source?: 'main-agent' | 'workflow' | 'oneshot' | 'specialist' | 'manual'
   attemptId?: string
   runId?: string

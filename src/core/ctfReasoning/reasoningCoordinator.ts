@@ -219,10 +219,14 @@ async function runCycles(
           observations: liveState.observations,
           maxLength: 1500,
         })
+        // §Audit v0.2.0 — use DIAGNOSTIC_ADDED instead of REASONING_FAILED.
+        // LMSummarizer success is not a failure; marking the runtime degraded
+        // for a successful summarization was incorrect.
         options.store.apply({
-          type: 'REASONING_FAILED',
+          type: 'DIAGNOSTIC_ADDED',
+          kind: 'lm_summary',
           source: 'main-agent',
-          error: { message: `lm-summary: ${summary.text.slice(0, 200)}` },
+          message: `lm-summary: ${summary.text.slice(0, 200)}`,
           at: Date.now(),
         })
       } catch {
@@ -247,10 +251,13 @@ async function runCycles(
       // Surface framing as a diagnostic. (We don't write back to
       // input because ProcessReasoningInputsInput is a parameter
       // the caller owns.)
+      // §Audit v0.2.0 — use DIAGNOSTIC_ADDED. AutoPrompter success is
+      // not a reasoning failure and should not mark the runtime degraded.
       options.store.apply({
-        type: 'REASONING_FAILED', // we reuse this event for audit.
+        type: 'DIAGNOSTIC_ADDED',
+        kind: 'auto_prompt',
         source: 'main-agent',
-        error: { message: `auto-prompt framing: ${framed.framing.slice(0, 200)}` },
+        message: `auto-prompt framing: ${framed.framing.slice(0, 200)}`,
         at: Date.now(),
       })
     } catch {

@@ -195,6 +195,13 @@ export type CTFTaskEvent =
       error: { code?: string; message: string }
       at: number
     }
+  | {
+      type: 'DIAGNOSTIC_ADDED'
+      kind: string
+      source: string
+      message: string
+      at: number
+    }
   | { type: 'PENDING_ACTION_ADDED'; pending: PendingSuggestedAction }
   | {
       type: 'PENDING_ACTION_STATUS_CHANGED'
