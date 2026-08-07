@@ -1144,3 +1144,44 @@ CI 工作流静态审查 + 仓库卫生（secrets、tracked artifacts、LICENSE�
 | `pnpm test:coverage`            | ✅ 退出码 0（lines 54.62% / branches 43.32%）         |
 | `npm pack --dry-run` 资产完整性 | ✅ oneshot(26) + src/knowledge(5) + .env.example 随包 |
 | 空目录 E2E：`oneshot list`      | ✅ accepted 16（包内回退生效）                        |
+
+---
+
+## §24 · 第七次全面审计复核 — 2026-08-06 (v0.7.0 · 死配置清理 & 运行时卫生)
+
+### 审计范围
+
+对前 6 轮遗留做**收束审计**：死配置文件、`@ts-ignore`/类型抑制模式、
+版本标记一致性、dist 产物齐全性、`doctor`/`oneshot list` 编译物端到端。
+
+### 本轮发现与修复
+
+| #   | 严重级  | 发现                                                                                                                                                                                    | 修复                               |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 1   | 🟡 LOW  | `tsconfig.test.json` 无任何脚本/CI/tool 引用，与 `tsconfig.json` 编译范围完全重叠、无附加语义 → 纯死配置。                                                                              | 删除。                             |
+| 2   | ⬜ NOTE | 全仓 96 处类型抑制均为 `as unknown as` / `as any`（零 `@ts-ignore`），根因是 registry / JSONL envelope 动态访问，已在 `eslint.config.js` 第二轮豁免表覆盖，历轮判定接受。               | 无需动作。                         |
+| 3   | ⬜ NOTE | `bin/*.ts` `VERSION` 与 `package.json#version` 均标 `0.1.0`，与 7 轮审计修订号（v0.1.0..v0.7.0）是两个独立维度：修订号指审计轮次，`0.1.0` 是发布版号。README 架构图 `v0.1.0` 同步于此。 | 维持现状；本文档记录此一致性判定。 |
+
+### 其他复核（全绿，无需干预）
+
+- `dist/bin/ovogogogo-ctf.js doctor` 正常（READY × 4 tools）✅
+- `dist/bin/ovogogogo.js --help` banner 正常 ✅
+- `ovogogogo-ctf oneshot list` 从别名 cwd 返回 16 manifests ✅
+- `dist/src/core/assetPaths.js` / `.d.ts` / `.map` 均已产出 ✅
+- `NODE_ENV` 仅 2 处合规引用（taskStateStore 测试抑制、production guard）；`console.*` 处均带 `eslint-disable` 且用途恰当 ✅
+- `punycode` 弃用告警来自 Node 22 内建 + openai SDK 传递依赖，无运行时影响 ✅
+- `setup.sh` / `start.sh` / `oneshot/scripts/*.py` 语法/编译全过 ✅
+
+### 当前质量门禁 (v0.7.0 实测)
+
+| 检查项                    | 结果                                 |
+| ------------------------- | ------------------------------------ |
+| `pnpm run format:check`   | ✅ 全部符合 Prettier                 |
+| `pnpm run lint`           | ✅ 0 errors                          |
+| `pnpm run build`          | ✅ 成功                              |
+| `pnpm test`               | ✅ 95/95 files, 824/824 tests        |
+| `pnpm test:coverage`      | ✅ 棘轮通过                          |
+| `pnpm audit`              | ✅ 0 vulnerabilities                 |
+| 空目录 `oneshot list` E2E | ✅ 16 manifests                      |
+| `dist/` `doctor` E2E      | ✅ READY                             |
+| 死配置 / 死代码           | ✅ 已清理（tsconfig.test.json 移除） |
