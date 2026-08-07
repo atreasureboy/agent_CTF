@@ -210,6 +210,9 @@ npx tsx bin/ovogogogo-ctf.ts --profile crypto --run-workflow encoding_sweep --te
 
 # Solve an autonomous CTF task with orchestrator
 npx tsx bin/ovogogogo-ctf.ts --profile orchestrator "Analyze the provided pcap file and recover the admin password"
+
+# Connect to a live GZCTF/CTFd competition — fetch challenges, solve, auto-submit flags
+npx tsx bin/ovogogogo-ctf.ts gzctf-solve --url https://ctf.example.com --token $GZCTF_TOKEN
 ```
 
 ---

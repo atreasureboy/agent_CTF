@@ -26,6 +26,7 @@ import { existsSync, readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import OpenAI from 'openai'
 import type { Renderer } from '../src/ui/renderer.js'
+import type { GzctfBridgeOptions } from '../src/ctf/cli/gzctfBridge.js'
 import type {
   createCTFTaskRuntime,
   CTFTaskRuntime,
@@ -111,6 +112,7 @@ OPTIONS
 
 COMMANDS
   batch <dir>               Solve all challenge manifests in a directory concurrently
+  gzctf-solve               Connect to GZCTF/CTFd, fetch challenges, solve, submit flags
   solve <challenge.json>    Solve a single challenge manifest
   oneshot list              List available one-shot manifests
   doctor [--oneshot]        Check environment health
@@ -348,6 +350,43 @@ ONEShot COMMANDS (six_goal §十四)
       return 1
     }
     return runBatchCommand(argv[3], argv.slice(4), { stdout, stderr, env })
+  }
+
+  // ── GZCTF Bridge — connect, fetch, solve, submit
+  if (argv[2] === 'gzctf-solve') {
+    const { runGzctfBridge } = await import('../src/ctf/cli/gzctfBridge.js')
+    const bridgeArgs: Record<string, string> = {}
+    for (let i = 3; i < argv.length; i++) {
+      if (argv[i] === '--url' && argv[i + 1]) bridgeArgs.url = argv[++i]
+      else if (argv[i] === '--token' && argv[i + 1]) bridgeArgs.token = argv[++i]
+      else if (argv[i] === '--platform' && argv[i + 1]) bridgeArgs.platform = argv[++i]
+      else if (argv[i] === '--category' && argv[i + 1]) bridgeArgs.category = argv[++i]
+      else if (argv[i] === '--challenge-id' && argv[i + 1]) bridgeArgs.challengeId = argv[++i]
+      else if (argv[i] === '--timeout' && argv[i + 1]) bridgeArgs.timeout = argv[++i]
+      else if (argv[i] === '--work-dir' && argv[i + 1]) bridgeArgs.workDir = argv[++i]
+      else if (argv[i] === '--model' && argv[i + 1]) bridgeArgs.model = argv[++i]
+    }
+    if (!bridgeArgs.url || !bridgeArgs.token) {
+      stderr.write(`${RED}error:${RESET} gzctf-solve requires --url and --token\n`)
+      stdout.write(
+        'Usage: ovogogogo-ctf gzctf-solve --url <url> --token <token> [--platform gzctf|ctfd] [--category <cat>] [--challenge-id <id>] [--timeout 300]\n',
+      )
+      return 1
+    }
+    const options: GzctfBridgeOptions = {
+      url: bridgeArgs.url,
+      token: bridgeArgs.token,
+      platform: (bridgeArgs.platform as 'gzctf' | 'ctfd') ?? 'gzctf',
+      category: bridgeArgs.category,
+      challengeId: bridgeArgs.challengeId,
+      timeout: bridgeArgs.timeout ? parseInt(bridgeArgs.timeout, 10) : undefined,
+      workDir: bridgeArgs.workDir,
+      model: bridgeArgs.model,
+      stdout,
+      stderr,
+    }
+    const results = await runGzctfBridge(options)
+    return results.some((r) => !r.solved) ? 1 : 0
   }
 
   // §十四 — parseArgs inside the try block so missing-value / unknown-flag

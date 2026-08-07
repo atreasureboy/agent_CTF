@@ -1,6 +1,7 @@
 import { FlagDiscriminator } from './flagDiscriminator.js'
 import type { SubmissionRequest, SubmissionResponse } from './submissionController.js'
-import { CTFPlatformAdapter, type CTFdConfig } from '../ctfPlatform/ctfPlatformAdapter.js'
+import { CTFPlatformAdapter, type CtfPlatformConfig } from '../ctfPlatform/ctfPlatformAdapter.js'
+type CTFdConfig = CtfPlatformConfig
 
 export type SubmissionMode = 'auto' | 'manual'
 

@@ -113,7 +113,7 @@ describe('Heavy-Duty Flagship Mechanisms (CAI, BUUCTF, Cyber-Zero)', () => {
       })
 
       expect(result.verdict).toBe('rate_limited')
-      expect(result.message).toContain('Too many flag submission attempts')
+      expect(result.message).toContain('Rate limited')
 
       vi.unstubAllGlobals()
     })
