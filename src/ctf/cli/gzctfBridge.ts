@@ -9,7 +9,7 @@
  * Without --challenge-id, all unsolved challenges are solved sequentially.
  */
 
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join, resolve as resolvePath, dirname } from 'path'
 import { execSync } from 'child_process'
 import { fileURLToPath } from 'url'
@@ -125,13 +125,25 @@ export async function runGzctfBridge(opts: GzctfBridgeOptions): Promise<SolveRes
       const env = { ...process.env }
       env.OPENAI_API_KEY = opts.token
       if (opts.model) env.OVOGO_MODEL = opts.model
+      const repoRootCandidates = [
+        resolvePath(__dirname, '..', '..', '..'),
+        resolvePath(__dirname, '..', '..', '..', '..'),
+      ]
+      const repoRoot =
+        repoRootCandidates.find((p) => existsSync(join(p, 'package.json'))) ?? repoRootCandidates[0]
+      env.OVOGO_CTF_CLI = join(repoRoot, 'bin', 'ovogogogo-ctf.ts')
 
       const startTime = Date.now()
-      const cliPath = resolvePath(__dirname, '..', '..', '..', 'bin', 'ovogogogo-ctf.ts')
+      // Resolve solve.ts path across source + compiled layouts (dist/src/ctf/cli → 4 up = root)
+      const solvePathCandidates = [
+        resolvePath(__dirname, '..', '..', '..', 'src', 'ctf', 'cli', 'solve.ts'),
+        resolvePath(__dirname, '..', '..', '..', '..', 'src', 'ctf', 'cli', 'solve.ts'),
+      ]
+      const solvePath = solvePathCandidates.find((p) => existsSync(p)) ?? solvePathCandidates[0]
       let flag: string | null = null
 
       try {
-        const output = execSync(`npx tsx "${cliPath}" solve "${manifestPath}"`, {
+        const output = execSync(`npx tsx "${solvePath}" "${manifestPath}"`, {
           cwd: process.cwd(),
           env,
           timeout: timeout * 1000,

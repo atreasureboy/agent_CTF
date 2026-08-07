@@ -96,3 +96,4 @@ bench/solvebench/challenges/*/secret.txt
 __pycache__/
 *.pyc
 *.pyo
+gzctf_work/
